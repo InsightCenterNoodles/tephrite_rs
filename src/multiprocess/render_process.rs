@@ -1,0 +1,28 @@
+use bevy::prelude::*;
+
+use crate::{config::get_child_configuration, multiprocess::app::make_common_app};
+
+/// Function to run a render (or child) process
+pub(crate) fn run() -> AppExit {
+    // Get child config
+    let child_config = get_child_configuration();
+    let rank = child_config.process_rank;
+
+    info!("{rank}: Running render process {}", std::process::id());
+
+    let mut app = make_common_app();
+
+    app.add_plugins(crate::backfill_link::BackfillPlugin);
+
+    // Add in replication components
+    app.add_plugins(crate::replication::reader::ReplicationReaderPlugin);
+
+    debug!("{rank}: Render replication ready...");
+
+    // exec
+    let result = app.run();
+
+    debug!("{rank}: Stopping renderer...");
+
+    result
+}

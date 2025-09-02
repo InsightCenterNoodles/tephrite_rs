@@ -1,0 +1,28 @@
+[package]
+name = "tephrite_rs"
+version = "0.1.0"
+edition = "2024"
+
+[build-dependencies]
+dirs = "6"
+bindgen = "0.72"
+pkg-config = "0.3"
+anyhow = "1"
+
+[dependencies]
+bitflags = "2"
+bevy = "0.16"
+bytemuck = "1"
+itertools = "*"
+thiserror = "*"
+libc = "0.2"
+wgpu-types = "*"
+teph_macro = {path = "./crates/teph_macro"}
+
+# Enable a small amount of optimization in the dev profile.
+[profile.dev]
+opt-level = 1
+
+# Enable a large amount of optimization in the dev profile for dependencies.
+[profile.dev.package."*"]
+opt-level = 3
