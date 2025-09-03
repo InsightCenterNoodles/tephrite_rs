@@ -1,12 +1,15 @@
 mod mailbox;
 
-use bevy::{math::DVec3, platform::collections::HashMap, prelude::*};
+use bevy::{
+    math::{DQuat, DVec3},
+    platform::collections::HashMap,
+    prelude::*,
+};
 use bytemuck::{cast_slice, cast_slice_mut};
 use std::{
     io::{Cursor, Read, Write},
     mem::size_of,
     net::{SocketAddr, TcpStream},
-    sync::mpsc::{Receiver, SyncSender, sync_channel},
     time::Duration,
 };
 
@@ -58,7 +61,7 @@ fn read_be_f64(r: &mut impl Read) -> std::io::Result<f64> {
 }
 fn read_be_f64_n<const N: usize>(r: &mut impl Read) -> std::io::Result<[f64; N]> {
     let mut out = [0.0; N];
-    r.read(cast_slice_mut(&mut out))?;
+    r.read_exact(cast_slice_mut(&mut out))?;
     Ok(out)
 }
 
@@ -128,9 +131,9 @@ impl MessageHeader {
         self.packet_length() - size_of::<MessageHeader>()
     }
 
-    fn timestamp(&self) -> (u32, u32) {
-        (self.0[1] as u32, self.0[2] as u32)
-    }
+    // fn timestamp(&self) -> (u32, u32) {
+    //     (self.0[1] as u32, self.0[2] as u32)
+    // }
 
     fn sender(&self) -> i32 {
         self.0[3]
@@ -142,7 +145,7 @@ impl MessageHeader {
 }
 
 struct ConnectionInfo {
-    senders: Vec<String>,
+    senders: HashMap<String, SharedItemState>,
     host: SocketAddr,
 }
 
@@ -172,28 +175,23 @@ fn get_message(stream: &mut impl Read, buffer: &mut Vec<u8>) -> Result<MessageHe
 
     buffer.resize(ceil_length, 0);
 
-    stream.read(&mut buffer[..])?;
+    stream.read_exact(&mut buffer[..])?;
 
     Ok(header)
 }
 
 // =============================================================================
 
-#[derive(Debug)]
-struct ComponentInfo {
+type SharedItemState = std::sync::Arc<mailbox::Mailbox<ItemState>>;
+
+struct SenderInfo {
     id: i32,
     name: String,
-    user_id: TrackedItemID,
 }
 
-impl Default for ComponentInfo {
-    fn default() -> Self {
-        Self {
-            id: -1,
-            name: Default::default(),
-            user_id: TrackedItemID(-1),
-        }
-    }
+struct TypeInfo {
+    id: i32,
+    name: String,
 }
 
 struct VRPNClient {
@@ -202,7 +200,7 @@ struct VRPNClient {
 }
 
 impl VRPNClient {
-    fn new(senders: Vec<String>, host_string: &str, tx: SyncSender<VRPNMessage>) -> Result<Self> {
+    fn new(to_watch: HashMap<String, SharedItemState>, host_string: &str) -> Result<Self> {
         let host: SocketAddr = if host_string.contains(':') {
             host_string.parse()
         } else {
@@ -210,10 +208,15 @@ impl VRPNClient {
         }
         .unwrap();
 
-        let conn_info = ConnectionInfo { senders, host };
+        let conn_info = ConnectionInfo {
+            senders: to_watch,
+            host,
+        };
 
-        println!("Start connection...");
+        trace!("Start connection...");
         let mut remote = TcpStream::connect_timeout(&conn_info.host, Duration::from_secs(10))?;
+
+        remote.set_read_timeout(Some(Duration::from_millis(100)))?;
 
         write_vrpn_cookie(&mut remote)?;
 
@@ -224,6 +227,7 @@ impl VRPNClient {
         })?;
 
         if versions.0 != 7 {
+            warn!("Unknown VRPN version!");
             return Err(std::io::Error::new(
                 std::io::ErrorKind::Unsupported,
                 "unknown vrpn version",
@@ -232,63 +236,126 @@ impl VRPNClient {
 
         Ok(Self {
             remote,
-            message_state: MessageState::new(conn_info.senders, tx.clone()),
+            message_state: MessageState::new(conn_info.senders),
         })
     }
 
-    fn service(&mut self) {
+    fn service(&mut self, shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>) {
         let mut buffer = Vec::new();
 
-        loop {
-            let header = get_message(&mut self.remote, &mut buffer);
-
-            let Ok(header) = header else {
-                break;
-            };
-
-            if self
-                .message_state
-                .handle_message(header, &buffer, &mut self.remote)
-                .is_err()
-            {
-                break;
+        while shutdown.load(std::sync::atomic::Ordering::Acquire) {
+            match get_message(&mut self.remote, &mut buffer) {
+                Ok(header) => {
+                    if self
+                        .message_state
+                        .handle_message(header, &buffer, &mut self.remote)
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+                Err(ref e)
+                    if e.kind() == std::io::ErrorKind::WouldBlock
+                        || e.kind() == std::io::ErrorKind::TimedOut =>
+                {
+                    continue;
+                }
+                Err(_) => break,
             }
         }
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct TrackedItemID(pub i32);
+// MARK: Sender Lists
 
-struct ComponentList(Vec<Option<ComponentInfo>>);
+struct SenderList {
+    infos: Vec<Option<SenderInfo>>,
+    to_watch: HashMap<String, SharedItemState>,
+    watched: HashMap<usize, SharedItemState>,
+}
 
 const MAX_KNOWN_COMPONENTS: usize = 1024;
 
-impl ComponentList {
-    fn new() -> Self {
-        Self(Vec::with_capacity(128))
+impl SenderList {
+    fn new(to_watch: HashMap<String, SharedItemState>) -> Self {
+        Self {
+            infos: Vec::with_capacity(128),
+            to_watch,
+            watched: Default::default(),
+        }
+    }
+
+    fn is_watching(&self, name: &str) -> bool {
+        self.to_watch.contains_key(name)
     }
 
     #[inline]
-    fn lookup(&self, index: usize) -> Option<&ComponentInfo> {
-        self.0.get(index).map(|x| x.as_ref()).flatten()
+    fn lookup(&self, index: usize) -> Option<&SharedItemState> {
+        self.watched.get(&index)
     }
 
     #[inline]
-    fn lookup_result(&self, index: usize) -> Result<&ComponentInfo> {
+    fn lookup_result(&self, index: usize) -> Result<&SharedItemState> {
         self.lookup(index).ok_or_else(|| {
             std::io::Error::new(std::io::ErrorKind::NotFound, "Missing component info")
         })
     }
 
-    fn install(&mut self, index: usize, value: ComponentInfo) -> Option<()> {
-        if self.0.get(index).is_some() {
-            // already have this, bail
+    fn install(&mut self, index: usize, name: String) -> Option<()> {
+        if matches!(self.infos.get(index), Some(Some(_))) {
             return None;
         }
 
         if index >= MAX_KNOWN_COMPONENTS {
             // can't install
+            warn!("overflow! dropping component");
+            return None;
+        }
+
+        // install
+
+        if let Some(w) = self.to_watch.get(&name) {
+            self.watched.insert(index, w.clone());
+        }
+
+        self.infos.resize_with(index + 1, || None);
+
+        *(self.infos.get_mut(index).expect("we just resized this")) = Some(SenderInfo {
+            id: index as i32,
+            name,
+        });
+
+        Some(())
+    }
+}
+
+struct TypeList(Vec<Option<TypeInfo>>);
+
+impl TypeList {
+    fn new() -> Self {
+        Self(Vec::with_capacity(128))
+    }
+
+    #[inline]
+    fn lookup(&self, index: usize) -> Option<&TypeInfo> {
+        self.0.get(index).map(|x| x.as_ref()).flatten()
+    }
+
+    #[inline]
+    fn lookup_result(&self, index: usize) -> Result<&TypeInfo> {
+        self.lookup(index).ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "Missing component info")
+        })
+    }
+
+    fn install(&mut self, index: usize, value: TypeInfo) -> Option<()> {
+        if matches!(self.0.get(index), Some(Some(_))) {
+            return None;
+        }
+
+        if index >= MAX_KNOWN_COMPONENTS {
+            // can't install
+            warn!("overflow! dropping component");
             return None;
         }
 
@@ -299,49 +366,31 @@ impl ComponentList {
     }
 }
 
+// MARK: Message State
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct ItemState {
+    position: DVec3,
+    rotation: DQuat,
+}
+
 struct MessageState {
-    to_watch: HashMap<String, std::sync::Arc<mailbox::Mailbox>>,
-    tx: SyncSender<VRPNMessage>,
-    remote_sender_list: ComponentList,
-    remote_type_list: ComponentList,
+    remote_sender_list: SenderList,
+    remote_type_list: TypeList,
 
     tracker_pos_quat_message_idx: i32,
-    tracker_velocity_message_idx: i32,
 }
 
 impl MessageState {
-    fn new(to_watch: Vec<String>, tx: SyncSender<VRPNMessage>) -> Self {
-        let remote_sender_list = ComponentList::new();
-        let remote_type_list = ComponentList::new();
+    fn new(to_watch: HashMap<String, SharedItemState>) -> Self {
+        let remote_sender_list = SenderList::new(to_watch);
+        let remote_type_list = TypeList::new();
 
         Self {
-            to_watch,
-            tx,
             remote_sender_list,
             remote_type_list,
             tracker_pos_quat_message_idx: -100,
-            tracker_velocity_message_idx: -101,
         }
-    }
-
-    fn produce(&mut self, m: VRPNMessage) -> Result<()> {
-        let result = self.tx.try_send(m);
-
-        use std::sync::mpsc::TrySendError;
-
-        match result {
-            Err(TrySendError::Full(_)) => {
-                //println!("Dropping VRPN message...too fast!");
-                // discard.. for now
-            }
-            Err(TrySendError::Disconnected(_)) => {
-                // we are done
-                return Ok(());
-            }
-            _ => {}
-        }
-
-        return Ok(());
     }
 
     fn handle_pos_quat(&mut self, sender: usize, source: &mut impl Read) -> Result<()> {
@@ -350,42 +399,24 @@ impl MessageState {
 
         let pos_and_quat: [f64; 7] = read_be_f64_n(source)?;
 
-        self.produce(VRPNMessage::Pos(
-            self.remote_sender_list.lookup_result(sender)?.user_id,
-            PositionRotation {
-                pos: transform_position(pos_and_quat[0..3].try_into().unwrap()),
-                rot: transform_rotation(pos_and_quat[3..].try_into().unwrap()),
-            },
-        ))
+        self.remote_sender_list
+            .lookup_result(sender)?
+            .write(ItemState {
+                position: transform_position(pos_and_quat[0..3].try_into().unwrap()).into(),
+                rotation: transform_rotation(pos_and_quat[3..].try_into().unwrap()).into(),
+            });
         // println!(
         //     "{}: Pos {:?}",
         //     self.remote_sender_list[sender].name, pos_and_quat
         // );
-    }
 
-    fn handle_velocity(&mut self, sender: usize, source: &mut impl Read) -> Result<()> {
-        // we need to skip a double here for the timestamp?
-        let _dummy = read_be_f64(source)?;
-
-        let velocities: [f64; 8] = read_be_f64_n(source)?;
-
-        self.produce(VRPNMessage::Vel(
-            self.remote_sender_list.lookup_result(sender)?.user_id,
-            Velocity {
-                pos: velocities[0..3].try_into().unwrap(),
-            },
-        ))
-
-        // println!(
-        //     "{}: Vel {:?}",
-        //     self.remote_sender_list[sender].name, velocities
-        // );
+        Ok(())
     }
 
     fn handle_message(
         &mut self,
         header: MessageHeader,
-        payload: &Vec<u8>,
+        payload: &[u8],
         output: &mut impl Write,
     ) -> Result<()> {
         //println!("Dispatch message {}", header.ty());
@@ -401,16 +432,16 @@ impl MessageState {
 
         let mut cursor = Cursor::new(payload);
 
-        fn extract_i32(c: &mut impl Read) -> i32 {
+        fn extract_i32(c: &mut impl Read) -> Result<i32> {
             let mut ret = [0u8; 4];
-            c.read(&mut ret).unwrap();
-            i32::from_be_bytes(ret)
+            c.read_exact(&mut ret)?;
+            Ok(i32::from_be_bytes(ret))
         }
 
         fn extract_prefixed_string(c: &mut impl Read) -> Result<String> {
-            println!("Extract NAME");
-            let len = extract_i32(c);
-            println!("LEN: {len}");
+            trace!("Extract NAME");
+            let len = extract_i32(c)?;
+            trace!("LEN: {len}");
             // apparently the names are encoded with length + 1
             // now, we might not care, because no other string comes after...
             // the strings DO include a null, so we need to strip that
@@ -438,31 +469,16 @@ impl MessageState {
             v if v == self.tracker_pos_quat_message_idx => {
                 self.handle_pos_quat(header.sender() as usize, &mut cursor)
             }
-            v if v == self.tracker_velocity_message_idx => {
-                self.handle_velocity(header.sender() as usize, &mut cursor)
-            }
             TYPE_SENDER => {
                 let sender_id = header.sender();
                 let sender_name = extract_prefixed_string(&mut cursor)?;
-                println!("New sender {sender_id}: '{sender_name}'");
+                trace!("New sender {sender_id}: '{sender_name}'");
 
-                let bounce =
-                    sender_name.starts_with("VRPN Control") || self.to_watch.contains(&sender_name);
+                let bounce = sender_name.starts_with("VRPN Control")
+                    || self.remote_sender_list.is_watching(&sender_name);
 
-                self.remote_sender_list.install(
-                    sender_id as usize,
-                    ComponentInfo {
-                        id: sender_id,
-                        name: sender_name.clone(),
-                        user_id: TrackedItemID(
-                            self.to_watch
-                                .iter()
-                                .position(|f| f == &sender_name)
-                                .map(|f| f as i32)
-                                .unwrap_or(-1),
-                        ),
-                    },
-                );
+                self.remote_sender_list
+                    .install(sender_id as usize, sender_name.clone());
 
                 if bounce {
                     return write_message(output, sender_id, TYPE_SENDER, payload);
@@ -473,28 +489,23 @@ impl MessageState {
             TYPE_CONNTYPE => {
                 let type_id = header.sender();
                 let type_name = extract_prefixed_string(&mut cursor)?;
-                println!("New type {type_id}: '{type_name}'");
+                trace!("New type {type_id}: '{type_name}'");
 
                 match type_name.as_str() {
                     "vrpn_Tracker Pos_Quat" => {
                         self.tracker_pos_quat_message_idx = type_id;
-                        println!("Recognising pos quat message as {type_id}");
-                    }
-                    "vrpn_Tracker Velocity" => {
-                        self.tracker_velocity_message_idx = type_id;
-                        println!("Recognising velocity message as {type_id}");
+                        trace!("Recognising pos quat message as {type_id}");
                     }
                     _ => {
-                        println!("Unrecognised name '{}'", type_name.as_str())
+                        trace!("Unrecognised name '{}'", type_name.as_str())
                     }
                 }
 
                 self.remote_type_list.install(
                     type_id as usize,
-                    ComponentInfo {
+                    TypeInfo {
                         id: type_id,
                         name: type_name,
-                        user_id: TrackedItemID(-1),
                     },
                 );
 
@@ -502,16 +513,16 @@ impl MessageState {
                 write_message(output, type_id, TYPE_CONNTYPE, payload)
             }
             TYPE_UDPDESC => {
-                println!("Skipping UDP description");
+                trace!("Skipping UDP description");
                 return Ok(());
             }
             TYPE_LOGDESC => {
-                println!("Skipping Log description");
+                trace!("Skipping Log description");
                 return Ok(());
             }
             TYPE_DISCONN => {
                 // Docs say this will never be sent over the wire...
-                println!("Skipping disconn description");
+                trace!("Skipping disconn description");
                 return Ok(());
             }
             _ => {
@@ -524,74 +535,60 @@ impl MessageState {
 
 // Bevy Side =============================================================================
 
-fn transform_position(p: [f64; 3]) -> [f64; 3] {
-    [-p[0], p[2], p[1]]
+fn transform_position(p: [f64; 3]) -> DVec3 {
+    DVec3::new(-p[0], p[2], p[1])
 }
 
-fn transform_rotation(p: [f64; 4]) -> [f64; 4] {
-    [-p[0], p[2], p[1], p[3]]
-}
-
-fn vrpn_spinner(senders: Vec<String>, host_string: String, tx: SyncSender<VRPNMessage>) {
-    let mut state = VRPNClient::new(senders, &host_string, tx).expect("unable to connect");
-
-    state.service();
-}
-
-pub fn start_vrpn_client(senders: Vec<String>, host_string: &str) -> VRPNResource {
-    let (tx, rx) = sync_channel(32);
-
-    let host_string = host_string.to_owned();
-
-    let handle = std::thread::spawn(|| {
-        vrpn_spinner(senders, host_string, tx);
-    });
-
-    VRPNResource {
-        vrpn_thread: handle,
-        rx,
+fn transform_rotation(p: [f64; 4]) -> DQuat {
+    DQuat {
+        x: -p[0],
+        y: p[2],
+        z: p[1],
+        w: p[3],
     }
 }
 
-#[derive(Debug)]
-pub enum VRPNMessage {
-    Pos(TrackedItemID, PositionRotation),
-    Vel(TrackedItemID, Velocity),
+fn vrpn_spinner(
+    to_watch: HashMap<String, SharedItemState>,
+    host_string: String,
+    shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) {
+    let mut state = VRPNClient::new(to_watch, &host_string).expect("unable to connect");
+
+    state.service(shutdown);
 }
 
-#[derive(Debug)]
-pub struct PositionRotation {
-    pub pos: [f64; 3],
-    pub rot: [f64; 4],
+/// We parse names as Item@Host:Port
+
+fn start_vrpn_client(
+    to_watch: HashMap<String, SharedItemState>,
+    host_string: &str,
+    res: &mut VRPNResource,
+) {
+    let host_string = host_string.to_owned();
+
+    let sd = res.shutdown.clone();
+
+    let handle = std::thread::spawn(|| {
+        vrpn_spinner(to_watch, host_string, sd);
+    });
+
+    res.vrpn_threads.push(handle);
 }
 
-#[derive(Debug)]
-pub struct Velocity {
-    pub pos: [f64; 3],
-}
-
+#[derive(Resource)]
 pub struct VRPNResource {
     shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    vrpn_thread: Option<std::thread::JoinHandle<()>>,
-    rx: Receiver<VRPNMessage>,
+    vrpn_threads: Vec<std::thread::JoinHandle<()>>,
 }
 
 impl VRPNResource {
-    pub fn for_all_message(&mut self, mut f: impl FnMut(VRPNMessage)) {
-        loop {
-            let message = self.rx.try_recv();
-
-            let Ok(message) = message else {
-                return;
-            };
-
-            f(message);
-        }
-    }
-
     pub fn wait_for_shutdown(self) {
-        drop(self.rx);
-        self.vrpn_thread.join().unwrap();
+        self.shutdown
+            .store(false, std::sync::atomic::Ordering::Release);
+        for t in self.vrpn_threads {
+            t.join().unwrap();
+        }
     }
 }
 
@@ -610,50 +607,55 @@ impl VRPNLink {
 
 #[derive(Component)]
 struct VRPNLinkConnected {
-    reader: std::sync::Mutex<VRPNResource>,
+    reader: SharedItemState,
 }
 
 fn check_for_new_vrpn(
     mut commands: Commands,
     query: Query<(Entity, &VRPNLink), Without<VRPNLinkConnected>>,
+    mut res: NonSendMut<VRPNResource>,
 ) {
+    //to_watch: HashMap<String, SharedItemState>,
+
+    // split all connections by host.
+
+    // Note that if more of these come along, we do NOT reuse existing connections. thats a WIP.
+
+    let mut map: HashMap<String, HashMap<String, SharedItemState>> = HashMap::default();
+
     for (e, l) in query.iter() {
-        let reader = start_vrpn_client(vec![l.sender.clone()], &format!("{}:{}", l.host, l.port));
+        let host = format!("{}:{}", l.host, l.port);
 
-        println!("Creating new VRPN reader!");
+        let state = std::sync::Arc::new(mailbox::Mailbox::new(Default::default()));
 
-        commands.entity(e).insert(VRPNLinkConnected {
-            reader: std::sync::Mutex::new(reader),
-        });
+        map.entry(host)
+            .and_modify(|x| {
+                x.insert(l.sender.clone(), state.clone());
+            })
+            .or_insert_with(|| {
+                let mut ret = HashMap::default();
+                ret.insert(l.sender.clone(), state.clone());
+                ret
+            });
+
+        commands
+            .entity(e)
+            .insert(VRPNLinkConnected { reader: state });
+    }
+
+    for (k, v) in map {
+        start_vrpn_client(v, &k, &mut res);
     }
 }
 
-fn service_vrpn(
-    mut commands: Commands,
-    mut query: Query<(Entity, &VRPNLinkConnected, &mut Transform)>,
-) {
-    use std::sync::mpsc::TryRecvError;
+/// System to service any VRPN content
+fn service_vrpn(mut query: Query<(&VRPNLinkConnected, &mut Transform)>) {
+    for (c, mut tf) in query.iter_mut() {
+        let new_pos = c.reader.read();
 
-    for (e, c, mut tf) in query.iter_mut() {
-        let lock = c.reader.lock().unwrap();
-
-        loop {
-            match lock.rx.try_recv() {
-                Ok(message) => match message {
-                    VRPNMessage::Pos(_, position_rotation) => {
-                        let p: DVec3 = position_rotation.pos.into();
-                        tf.translation = p.as_vec3();
-                    }
-                    _ => {}
-                },
-                Err(x) => match x {
-                    TryRecvError::Empty => break,
-                    TryRecvError::Disconnected => {
-                        commands.entity(e).remove::<VRPNLinkConnected>();
-                    }
-                },
-            }
-        }
+        // TODO: rotation. need to check mappings
+        tf.translation = new_pos.position.as_vec3();
+        tf.rotation = new_pos.rotation.as_quat();
     }
 }
 
@@ -661,6 +663,10 @@ pub struct VRPNPlugin;
 
 impl Plugin for VRPNPlugin {
     fn build(&self, app: &mut App) {
+        app.insert_resource(VRPNResource {
+            shutdown: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
+            vrpn_threads: vec![],
+        });
         app.add_systems(FixedUpdate, (check_for_new_vrpn, service_vrpn));
     }
 }
