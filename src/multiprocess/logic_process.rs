@@ -1,7 +1,8 @@
 use bevy::{app::App, prelude::*};
 
 use crate::{
-    common::Head, multiprocess::app::make_common_app, prelude::Replicated, vrpn::VRPNLink,
+    common::Head, config::get_child_configuration, multiprocess::app::make_common_app,
+    prelude::Replicated, vrpn::VRPNLink,
 };
 
 pub(crate) fn setup() -> App {
@@ -50,10 +51,8 @@ pub(crate) fn setup() -> App {
 
 fn setup_tracked_head(mut commands: Commands) {
     println!("Setup tracked head");
-    commands.spawn((
-        Replicated,
-        Transform::default(),
-        Head,
-        VRPNLink::new("Head0".into(), "10.79.144.3".into(), 3883),
-    ));
+
+    let h = get_child_configuration().vrpn_config.head.clone();
+
+    commands.spawn((Replicated, Transform::default(), Head, VRPNLink::new(h)));
 }

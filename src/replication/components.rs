@@ -6,7 +6,7 @@ use bevy::prelude::Component;
 /// replicated to all children processes. At the moment, this must be manually
 /// added to your entities:
 ///
-/// ```
+/// ```ignore
 /// commands.spawn((
 ///     PbrBundle {
 ///         mesh: meshes.add(Circle::new(4.0)),

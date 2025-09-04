@@ -1,5 +1,3 @@
-mod mailbox;
-
 use bevy::{
     math::{DQuat, DVec3},
     platform::collections::HashMap,
@@ -13,16 +11,22 @@ use std::{
     time::Duration,
 };
 
+/// All VRPN messages are aligned to doubles
 const VRPN_ALIGN: usize = 8;
+/// VRPN magic header byte length
 const VRPN_MAGIC_LENGTH: usize = 16;
+/// The size in bytes of the VRPN header cookie (version, etc)
 const VRPN_COOKIE_SIZE: usize = VRPN_MAGIC_LENGTH + VRPN_ALIGN;
+/// Default port for VRPN connections
 const VRPN_DEFAULT_PORT: u16 = 3883;
+/// The size of the header in bytes
 const HEADER_SIZE_BYTES: usize = size_of::<MessageHeader>();
 
 const _: () = assert!(HEADER_SIZE_BYTES == 24, "Header size does not match spec!");
 
 type Result<T> = std::io::Result<T>;
 
+/// Write a header to a stream
 fn write_vrpn_cookie(w: &mut impl Write) -> Result<()> {
     // Magic. This roughly corresponds with
     // "vrpn: ver. 07.33  0\x00í\x00\x00\x00"
@@ -34,6 +38,7 @@ fn write_vrpn_cookie(w: &mut impl Write) -> Result<()> {
     w.write_all(&COOKIE)
 }
 
+/// Validate the header of a message, and return version info
 fn check_vrpn_cookie(bytes: &[u8]) -> Option<(u32, u32, u32)> {
     let major = &bytes[11..13];
     let minor = &bytes[14..16];
@@ -46,6 +51,7 @@ fn check_vrpn_cookie(bytes: &[u8]) -> Option<(u32, u32, u32)> {
     Some((major, minor, log))
 }
 
+/// Read a VRPN cookie from a stream
 fn read_vrpn_cookie(r: &mut impl Read) -> Result<[u8; VRPN_COOKIE_SIZE]> {
     let mut incoming = [0u8; VRPN_COOKIE_SIZE];
 
@@ -54,20 +60,25 @@ fn read_vrpn_cookie(r: &mut impl Read) -> Result<[u8; VRPN_COOKIE_SIZE]> {
     Ok(incoming)
 }
 
+/// Consume a double from the stream
 fn read_be_f64(r: &mut impl Read) -> std::io::Result<f64> {
     let mut b = [0u8; 8];
     r.read_exact(&mut b)?;
     Ok(f64::from_bits(u64::from_be_bytes(b)))
 }
+
+/// Consume a number of doubles from the stream
 fn read_be_f64_n<const N: usize>(r: &mut impl Read) -> std::io::Result<[f64; N]> {
-    let mut out = [0.0; N];
+    let mut out = [0u64; N];
     r.read_exact(cast_slice_mut(&mut out))?;
-    Ok(out)
+    Ok(out.map(|x| f64::from_bits(u64::from_be(x))))
 }
 
+/// The header of a VRPN message
 #[derive(Debug, Default)]
 struct MessageHeader([i32; 6]);
 
+/// Construct a new header for a sender, type, and payload
 fn make_header_for(sender: i32, ty: i32, payload: &[u8]) -> MessageHeader {
     let total_len = payload.len().next_multiple_of(8) + HEADER_SIZE_BYTES;
 
@@ -108,6 +119,7 @@ fn write_message(dest: &mut impl Write, sender: i32, ty: i32, payload: &[u8]) ->
 }
 
 impl MessageHeader {
+    /// Consume a header from a stream
     fn read(reader: &mut impl Read) -> Result<Self> {
         let mut h = MessageHeader::default();
         reader.read_exact(cast_slice_mut(&mut h.0[..]))?;
@@ -115,6 +127,7 @@ impl MessageHeader {
         Ok(h)
     }
 
+    /// Write this header to the stream
     fn write(&self, writer: &mut impl Write) -> Result<()> {
         let v = self.0.map(|f| f.to_be());
         writer.write_all(&cast_slice(&v))?;
@@ -122,23 +135,23 @@ impl MessageHeader {
         Ok(())
     }
 
+    /// The length of the message package. This includes everything
     #[inline]
     fn packet_length(&self) -> usize {
         self.0[0] as usize
     }
 
+    /// The length of just the payload for this message
     fn payload_length(&self) -> usize {
         self.packet_length() - size_of::<MessageHeader>()
     }
 
-    // fn timestamp(&self) -> (u32, u32) {
-    //     (self.0[1] as u32, self.0[2] as u32)
-    // }
-
+    /// The sender id of the message
     fn sender(&self) -> i32 {
         self.0[3]
     }
 
+    /// The type of the message sender
     fn ty(&self) -> i32 {
         self.0[4]
     }
@@ -151,6 +164,8 @@ struct ConnectionInfo {
 
 // =============================================================================
 
+/// Read a message and payload to the given buffer. The header is returned.
+/// Buffer is a cached allocation that will be used as a scratch space
 fn get_message(stream: &mut impl Read, buffer: &mut Vec<u8>) -> Result<MessageHeader> {
     //println!("Getting next message...");
 
@@ -182,24 +197,20 @@ fn get_message(stream: &mut impl Read, buffer: &mut Vec<u8>) -> Result<MessageHe
 
 // =============================================================================
 
-type SharedItemState = std::sync::Arc<mailbox::Mailbox<ItemState>>;
+type SharedItemState = std::sync::Arc<seqlock::SeqLock<ItemState>>;
 
-struct SenderInfo {
-    id: i32,
-    name: String,
+fn new_shared_item_state() -> SharedItemState {
+    std::sync::Arc::new(seqlock::SeqLock::new(ItemState::default()))
 }
 
-struct TypeInfo {
-    id: i32,
-    name: String,
-}
-
+/// A connection + state to a specific VRPN server
 struct VRPNClient {
     remote: TcpStream,
     message_state: MessageState,
 }
 
 impl VRPNClient {
+    /// Create a new connection with a list of items to watch
     fn new(to_watch: HashMap<String, SharedItemState>, host_string: &str) -> Result<Self> {
         let host: SocketAddr = if host_string.contains(':') {
             host_string.parse()
@@ -240,10 +251,11 @@ impl VRPNClient {
         })
     }
 
-    fn service(&mut self, shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+    /// Wait for messages. Note that this function does not return until the provided bool is false.
+    fn run(&mut self, run: std::sync::Arc<std::sync::atomic::AtomicBool>) {
         let mut buffer = Vec::new();
 
-        while shutdown.load(std::sync::atomic::Ordering::Acquire) {
+        while run.load(std::sync::atomic::Ordering::Acquire) {
             match get_message(&mut self.remote, &mut buffer) {
                 Ok(header) => {
                     if self
@@ -266,20 +278,21 @@ impl VRPNClient {
     }
 }
 
-// MARK: Sender Lists
+// MARK: Sender List
 
+/// A list of senders (objects) and associated state
 struct SenderList {
-    infos: Vec<Option<SenderInfo>>,
     to_watch: HashMap<String, SharedItemState>,
     watched: HashMap<usize, SharedItemState>,
 }
 
+/// Limit on known components for defensive purposes
 const MAX_KNOWN_COMPONENTS: usize = 1024;
 
 impl SenderList {
     fn new(to_watch: HashMap<String, SharedItemState>) -> Self {
         Self {
-            infos: Vec::with_capacity(128),
+            //infos: Vec::with_capacity(128),
             to_watch,
             watched: Default::default(),
         }
@@ -290,26 +303,21 @@ impl SenderList {
     }
 
     #[inline]
-    fn lookup(&self, index: usize) -> Option<&SharedItemState> {
-        self.watched.get(&index)
-    }
-
-    #[inline]
-    fn lookup_result(&self, index: usize) -> Result<&SharedItemState> {
-        self.lookup(index).ok_or_else(|| {
+    fn lookup(&self, index: usize) -> Result<&SharedItemState> {
+        println!("Lookup index {index}");
+        self.watched.get(&index).ok_or_else(|| {
             std::io::Error::new(std::io::ErrorKind::NotFound, "Missing component info")
         })
     }
 
-    fn install(&mut self, index: usize, name: String) -> Option<()> {
-        if matches!(self.infos.get(index), Some(Some(_))) {
-            return None;
-        }
-
+    fn install(&mut self, index: usize, name: String) -> Result<()> {
         if index >= MAX_KNOWN_COMPONENTS {
             // can't install
             warn!("overflow! dropping component");
-            return None;
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Component index overflow",
+            ));
         }
 
         // install
@@ -318,78 +326,34 @@ impl SenderList {
             self.watched.insert(index, w.clone());
         }
 
-        self.infos.resize_with(index + 1, || None);
-
-        *(self.infos.get_mut(index).expect("we just resized this")) = Some(SenderInfo {
-            id: index as i32,
-            name,
-        });
-
-        Some(())
-    }
-}
-
-struct TypeList(Vec<Option<TypeInfo>>);
-
-impl TypeList {
-    fn new() -> Self {
-        Self(Vec::with_capacity(128))
-    }
-
-    #[inline]
-    fn lookup(&self, index: usize) -> Option<&TypeInfo> {
-        self.0.get(index).map(|x| x.as_ref()).flatten()
-    }
-
-    #[inline]
-    fn lookup_result(&self, index: usize) -> Result<&TypeInfo> {
-        self.lookup(index).ok_or_else(|| {
-            std::io::Error::new(std::io::ErrorKind::NotFound, "Missing component info")
-        })
-    }
-
-    fn install(&mut self, index: usize, value: TypeInfo) -> Option<()> {
-        if matches!(self.0.get(index), Some(Some(_))) {
-            return None;
-        }
-
-        if index >= MAX_KNOWN_COMPONENTS {
-            // can't install
-            warn!("overflow! dropping component");
-            return None;
-        }
-
-        // install
-        self.0.resize_with(index + 1, || None);
-        *(self.0.get_mut(index).expect("we just resized this")) = Some(value);
-        Some(())
+        Ok(())
     }
 }
 
 // MARK: Message State
 
+/// The last known state of a VRPN item
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ItemState {
     position: DVec3,
     rotation: DQuat,
 }
 
+/// The state of the VRPN connection
 struct MessageState {
     remote_sender_list: SenderList,
-    remote_type_list: TypeList,
 
+    /// The index of the position/rotation message type
     tracker_pos_quat_message_idx: i32,
 }
 
 impl MessageState {
     fn new(to_watch: HashMap<String, SharedItemState>) -> Self {
         let remote_sender_list = SenderList::new(to_watch);
-        let remote_type_list = TypeList::new();
 
         Self {
             remote_sender_list,
-            remote_type_list,
-            tracker_pos_quat_message_idx: -100,
+            tracker_pos_quat_message_idx: -10000, // set this to something we could never see
         }
     }
 
@@ -397,22 +361,29 @@ impl MessageState {
         // we need to skip a double here for the timestamp?
         let _dummy = read_be_f64(source)?;
 
-        let pos_and_quat: [f64; 7] = read_be_f64_n(source)?;
+        let pos: [f64; 3] = read_be_f64_n(source)?;
+        let quat: [f64; 4] = read_be_f64_n(source)?;
 
-        self.remote_sender_list
-            .lookup_result(sender)?
-            .write(ItemState {
-                position: transform_position(pos_and_quat[0..3].try_into().unwrap()).into(),
-                rotation: transform_rotation(pos_and_quat[3..].try_into().unwrap()).into(),
-            });
-        // println!(
-        //     "{}: Pos {:?}",
-        //     self.remote_sender_list[sender].name, pos_and_quat
-        // );
+        dbg!(pos, quat);
+
+        match self.remote_sender_list.lookup(sender) {
+            Ok(item) => {
+                (*item.lock_write()) = ItemState {
+                    position: transform_position(pos.into()).into(),
+                    rotation: transform_rotation(quat.into()).into(),
+                };
+            }
+            Err(_) => {
+                // now this can happen if a server is sending us an update for something we didn't ask for.
+                // this isn't an error, its just mean. Bail.
+            }
+        }
 
         Ok(())
     }
 
+    /// Handle a message from a stream. The header should have already been decoded and the payload passed in here
+    /// Output should be a reverse stream to the server, as some messages require a reply.
     fn handle_message(
         &mut self,
         header: MessageHeader,
@@ -472,13 +443,13 @@ impl MessageState {
             TYPE_SENDER => {
                 let sender_id = header.sender();
                 let sender_name = extract_prefixed_string(&mut cursor)?;
-                trace!("New sender {sender_id}: '{sender_name}'");
+                println!("New sender {sender_id}: '{sender_name}'");
 
                 let bounce = sender_name.starts_with("VRPN Control")
                     || self.remote_sender_list.is_watching(&sender_name);
 
                 self.remote_sender_list
-                    .install(sender_id as usize, sender_name.clone());
+                    .install(sender_id as usize, sender_name.clone())?;
 
                 if bounce {
                     return write_message(output, sender_id, TYPE_SENDER, payload);
@@ -494,20 +465,11 @@ impl MessageState {
                 match type_name.as_str() {
                     "vrpn_Tracker Pos_Quat" => {
                         self.tracker_pos_quat_message_idx = type_id;
-                        trace!("Recognising pos quat message as {type_id}");
                     }
                     _ => {
                         trace!("Unrecognised name '{}'", type_name.as_str())
                     }
                 }
-
-                self.remote_type_list.install(
-                    type_id as usize,
-                    TypeInfo {
-                        id: type_id,
-                        name: type_name,
-                    },
-                );
 
                 // bounce all types by default
                 write_message(output, type_id, TYPE_CONNTYPE, payload)
@@ -533,12 +495,16 @@ impl MessageState {
     }
 }
 
-// Bevy Side =============================================================================
+// MARK: Bevy Side
 
+/// Transform position from VRPN coordinates to our coordinate system
+#[inline]
 fn transform_position(p: [f64; 3]) -> DVec3 {
     DVec3::new(-p[0], p[2], p[1])
 }
 
+/// Transform rotation from VRPN coordinates to our coordinate system
+#[inline]
 fn transform_rotation(p: [f64; 4]) -> DQuat {
     DQuat {
         x: -p[0],
@@ -548,18 +514,21 @@ fn transform_rotation(p: [f64; 4]) -> DQuat {
     }
 }
 
+/// Thread to constantly service a VRPN client
 fn vrpn_spinner(
     to_watch: HashMap<String, SharedItemState>,
     host_string: String,
     shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
 ) {
-    let mut state = VRPNClient::new(to_watch, &host_string).expect("unable to connect");
+    let Ok(mut state) = VRPNClient::new(to_watch, &host_string) else {
+        error!("Unable to connect to {host_string}");
+        return;
+    };
 
-    state.service(shutdown);
+    state.run(shutdown);
 }
 
-/// We parse names as Item@Host:Port
-
+/// Start a VRPN client thread. host should contain the name/ip:port
 fn start_vrpn_client(
     to_watch: HashMap<String, SharedItemState>,
     host_string: &str,
@@ -576,6 +545,7 @@ fn start_vrpn_client(
     res.vrpn_threads.push(handle);
 }
 
+/// Resource holding application VRPN state
 #[derive(Resource)]
 pub struct VRPNResource {
     shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
@@ -583,6 +553,7 @@ pub struct VRPNResource {
 }
 
 impl VRPNResource {
+    #[allow(unused)]
     pub fn wait_for_shutdown(self) {
         self.shutdown
             .store(false, std::sync::atomic::Ordering::Release);
@@ -592,63 +563,67 @@ impl VRPNResource {
     }
 }
 
+/// Connect the position and rotation of this object to a provided VRPN object
 #[derive(Component)]
-pub struct VRPNLink {
-    pub sender: String,
-    pub host: String,
-    pub port: u16,
-}
+#[component(immutable)]
+pub struct VRPNLink(crate::config::VRPNAddress);
 
 impl VRPNLink {
-    pub fn new(sender: String, host: String, port: u16) -> Self {
-        Self { sender, host, port }
+    pub fn new(address: crate::config::VRPNAddress) -> Self {
+        Self(address)
     }
 }
 
+/// Represents the connected VRPN state
 #[derive(Component)]
 struct VRPNLinkConnected {
     reader: SharedItemState,
 }
 
+/// Establish connections for VRPN links
 fn check_for_new_vrpn(
+    trigger: Trigger<OnAdd, VRPNLink>,
     mut commands: Commands,
-    query: Query<(Entity, &VRPNLink), Without<VRPNLinkConnected>>,
+    query: Query<&VRPNLink, Without<VRPNLinkConnected>>,
     mut res: NonSendMut<VRPNResource>,
 ) {
-    //to_watch: HashMap<String, SharedItemState>,
+    let entity = trigger.target();
 
-    // split all connections by host.
+    let Ok(link) = query.get(entity) else {
+        // Somehow this got added to something WITH a link already? we dont handle this yet.
+        return;
+    };
 
     // Note that if more of these come along, we do NOT reuse existing connections. thats a WIP.
 
+    // index by [endpoint][sender]
     let mut map: HashMap<String, HashMap<String, SharedItemState>> = HashMap::default();
 
-    for (e, l) in query.iter() {
-        let host = format!("{}:{}", l.host, l.port);
+    // Not very fast...
+    let endpoint = format!("{}:{}", link.0.host, link.0.port);
 
-        let state = std::sync::Arc::new(mailbox::Mailbox::new(Default::default()));
+    let state = new_shared_item_state();
 
-        map.entry(host)
-            .and_modify(|x| {
-                x.insert(l.sender.clone(), state.clone());
-            })
-            .or_insert_with(|| {
-                let mut ret = HashMap::default();
-                ret.insert(l.sender.clone(), state.clone());
-                ret
-            });
+    map.entry(endpoint)
+        .and_modify(|x| {
+            x.insert(link.0.sender.clone(), state.clone());
+        })
+        .or_insert_with(|| {
+            let mut ret = HashMap::default();
+            ret.insert(link.0.sender.clone(), state.clone());
+            ret
+        });
 
-        commands
-            .entity(e)
-            .insert(VRPNLinkConnected { reader: state });
-    }
+    commands
+        .entity(entity)
+        .insert(VRPNLinkConnected { reader: state });
 
     for (k, v) in map {
         start_vrpn_client(v, &k, &mut res);
     }
 }
 
-/// System to service any VRPN content
+/// Update object position and rotation from VRPN
 fn service_vrpn(mut query: Query<(&VRPNLinkConnected, &mut Transform)>) {
     for (c, mut tf) in query.iter_mut() {
         let new_pos = c.reader.read();
@@ -659,6 +634,7 @@ fn service_vrpn(mut query: Query<(&VRPNLinkConnected, &mut Transform)>) {
     }
 }
 
+/// Plugin to handle VRPN connectivity
 pub struct VRPNPlugin;
 
 impl Plugin for VRPNPlugin {
@@ -667,41 +643,113 @@ impl Plugin for VRPNPlugin {
             shutdown: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
             vrpn_threads: vec![],
         });
-        app.add_systems(FixedUpdate, (check_for_new_vrpn, service_vrpn));
+        app.add_observer(check_for_new_vrpn);
+        app.add_systems(FixedUpdate, service_vrpn);
     }
 }
 
 #[cfg(test)]
 mod test {
-    //use std::io::Cursor;
+    use std::io::Cursor;
 
-    //use super::{MessageState, check_vrpn_cookie, get_message};
-    use super::check_vrpn_cookie;
+    use bevy::math::{DVec4, dvec3, dvec4};
+
+    use super::{MessageState, check_vrpn_cookie, get_message, new_shared_item_state};
 
     #[test]
     fn check_cookie() {
-        const COOKIE: [u8; 24] = [
-            0x76, 0x72, 0x70, 0x6e, 0x3a, 0x20, 0x76, 0x65, 0x72, 0x2e, 0x20, 0x30, 0x37, 0x2e,
-            0x33, 0x33, 0x20, 0x20, 0x30, 0x00, 0xed, 0x00, 0x00, 0x00,
-        ];
+        const COOKIE: &[u8; 24] = include_bytes!("../../test_assets/vrpn/0_remote_cookie.bin");
 
-        assert_eq!(check_vrpn_cookie(&COOKIE).unwrap(), (7, 33, 0));
+        assert_eq!(check_vrpn_cookie(COOKIE).unwrap(), (7, 33, 0));
+    }
+
+    fn handle_bytes<F>(path: &str, mut f: F)
+    where
+        F: FnMut(&mut Cursor<Vec<u8>>),
+    {
+        let data = std::fs::read(path).unwrap();
+        let to_read = data.len();
+        let mut src_cursor = Cursor::new(data);
+
+        while src_cursor.position() as usize != to_read {
+            f(&mut src_cursor);
+        }
     }
 
     #[test]
     fn test_read() {
-        // let data = std::fs::read("assets/vrpn/dump_setup.bin").unwrap();
-        // let mut src_cursor = Cursor::new(data);
+        let data = std::fs::read("test_assets/vrpn/1_content.bin").unwrap();
+        let to_read = data.len();
+        let mut src_cursor = Cursor::new(data);
 
-        // let mut buffer = Vec::new();
-        // let mut state = MessageState::new(vec!["Head0".into()]);
+        let head_state = new_shared_item_state();
+        let joy_state = new_shared_item_state();
 
-        // let mut output = Vec::new();
+        let mut buffer = Vec::new();
+        let mut state = MessageState::new(
+            [
+                ("Head0".into(), head_state.clone()),
+                ("Joystick0".into(), joy_state.clone()),
+            ]
+            .into(),
+        );
 
-        // loop {
-        //     let header = get_message(&mut src_cursor, &mut buffer);
+        let mut output = Vec::new();
 
-        //     state.handle_message(header, &buffer, &mut output);
-        // }
+        while src_cursor.position() as usize != to_read {
+            let header = get_message(&mut src_cursor, &mut buffer).unwrap();
+
+            state.handle_message(header, &buffer, &mut output).unwrap();
+        }
+
+        handle_bytes("test_assets/vrpn/2_content.bin", |c| {
+            let header = get_message(c, &mut buffer).unwrap();
+
+            state.handle_message(header, &buffer, &mut output).unwrap();
+        });
+
+        output.clear();
+
+        assert!(
+            head_state.read().position.distance(dvec3(
+                0.12531011353529492,
+                0.8024732135411116,
+                0.867021419799275,
+            )) < 0.0001
+        );
+
+        let head_rot: DVec4 = head_state.read().rotation.into();
+
+        dbg!(head_rot);
+
+        assert!(
+            head_rot.distance(dvec4(
+                -0.020877551525891363,
+                0.47324795399249914,
+                0.01506643379176776,
+                0.8805529538062977,
+            )) < 0.0001
+        );
+
+        assert!(
+            joy_state.read().position.distance(dvec3(
+                -0.4458300779842322,
+                0.8178812792378916,
+                2.1620918226860906,
+            )) < 0.0001
+        );
+
+        let joy_rot: DVec4 = joy_state.read().rotation.into();
+
+        dbg!(joy_rot);
+
+        assert!(
+            joy_rot.distance(dvec4(
+                -0.016291261755337204,
+                0.5886627161145235,
+                0.009137776752529683,
+                0.8081629182801645,
+            )) < 0.0001
+        );
     }
 }

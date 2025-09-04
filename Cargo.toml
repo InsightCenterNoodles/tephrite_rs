@@ -18,6 +18,7 @@ thiserror = "*"
 libc = "0.2"
 wgpu-types = "*"
 teph_macro = {path = "./crates/teph_macro"}
+seqlock = "0.2"
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]

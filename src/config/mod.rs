@@ -1,10 +1,9 @@
 use crate::multiprocess::child_process_id;
 use bevy::{
-    ecs::resource::Resource,
     math::{DVec3, IVec2},
     reflect::Reflect,
 };
-use std::sync::OnceLock;
+use std::{str::FromStr, sync::OnceLock};
 
 /// Physical location of the display, as measured in room coordinates
 #[derive(Debug, Default, Reflect, Clone)]
@@ -14,7 +13,54 @@ pub struct ScreenPhys {
     pub upper_right: DVec3,
 }
 
-#[derive(Debug, Default, Clone, Reflect, Resource)]
+#[derive(Debug, Default, Clone)]
+pub struct VRPNAddress {
+    pub sender: String,
+    pub host: String,
+    pub port: u16,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum VRPNAddressParseError {
+    #[error("Missing address part {0}")]
+    MissingPart(String),
+    #[error("Bad port {0}")]
+    BadPort(#[from] std::num::ParseIntError),
+}
+
+impl FromStr for VRPNAddress {
+    type Err = VRPNAddressParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // Should be in the form of sender@host:port
+        let mut iter = s.split(&['@', ':']);
+        let sender = iter
+            .next()
+            .ok_or_else(|| VRPNAddressParseError::MissingPart("sender".into()))?;
+        let host = iter
+            .next()
+            .ok_or_else(|| VRPNAddressParseError::MissingPart("host".into()))?;
+        let port = iter
+            .next()
+            .ok_or_else(|| VRPNAddressParseError::MissingPart("port".into()))?;
+
+        let port: u16 = port.parse()?;
+
+        Ok(Self {
+            sender: sender.into(),
+            host: host.into(),
+            port,
+        })
+    }
+}
+
+/// Configure VRPN connectivity
+#[derive(Debug, Default, Clone)]
+pub struct VRPNConfig {
+    pub head: VRPNAddress,
+}
+
+#[derive(Debug, Default, Clone)]
 pub struct Configuration {
     /// The rank of the process
     pub process_rank: u32,
@@ -30,6 +76,9 @@ pub struct Configuration {
 
     /// The pixel resolution of the display (w, h)
     pub resolution: IVec2,
+
+    /// VRPN configuration information
+    pub vrpn_config: VRPNConfig,
 }
 
 fn get_hacky_config() -> [ScreenPhys; 6] {
@@ -69,6 +118,7 @@ fn get_hacky_config() -> [ScreenPhys; 6] {
 
 static CONFIG: OnceLock<Configuration> = OnceLock::new();
 
+/// Build a dummy config till we can figure out how to work with files
 fn build_child_config() -> Configuration {
     let process_rank = child_process_id();
 
@@ -98,6 +148,9 @@ fn build_child_config() -> Configuration {
         display_name: Some(format!(":0.{process_rank}")),
         display_physical: get_hacky_config()[physical_id as usize].clone(),
         resolution: (1920, 1200).into(),
+        vrpn_config: VRPNConfig {
+            head: "Head0@10.79.144.3:3883".parse().unwrap(),
+        },
     }
 }
 

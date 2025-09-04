@@ -1,5 +1,6 @@
 use crate::transcript;
 
+/// Marker for the entity that represents the user's head
 #[derive(bevy::prelude::Component, Debug)]
 pub(crate) struct Head;
 
