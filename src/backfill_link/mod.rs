@@ -124,7 +124,7 @@ fn setup_session(app: &mut App) {
         };
 
         if let Some(d) = &child_config.display_name {
-            backfill::config_display(&config, &d);
+            backfill::config_display(&config, d);
         }
 
         if let Some(index) = &child_config.card_index {

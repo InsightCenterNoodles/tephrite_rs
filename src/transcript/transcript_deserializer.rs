@@ -76,21 +76,6 @@ pub fn deserialize_pod_slice<T: TDeserialize + Pod>(r: &mut impl Read) -> Vec<T>
     ret
 }
 
-/// Another counterpart to [`serialize_pod_slice`]; sometimes you can serialize
-/// as a slice, but you need to be careful on deserialization for insertion in
-/// a container
-// pub fn deserialize_pod_slice_with<T, F>(r: &mut impl Read, mut f: F)
-// where
-//     T: TDeserialize + Pod,
-//     F: FnMut(T),
-// {
-//     let count: usize = deserialize(r);
-
-//     for _ in 0..count {
-//         f(deserialize(r))
-//     }
-// }
-
 macro_rules! impl_ser_tuple {
     ( $( $type:ident ),* ) => {
         impl< $($type : TDeserialize),* > TDeserialize for ($($type,)*) {

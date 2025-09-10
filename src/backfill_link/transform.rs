@@ -20,7 +20,7 @@ fn update_tfs(
     session: NonSend<Session>,
 ) {
     for (be, tf) in &query {
-        crate::backfill::set_transform(&session.0, be.0, (&tf.compute_matrix()).into());
+        crate::backfill::set_transform(&session.0, be.0, &tf.compute_matrix());
     }
 }
 
@@ -33,7 +33,7 @@ fn update_parent(
         if let Ok(parent_e) = b_ent_check.get(parent.0) {
             crate::backfill::set_parent(&session.0, be.0, parent_e.0);
             if let Some(tf) = tf {
-                crate::backfill::set_transform(&session.0, be.0, (&tf.compute_matrix()).into());
+                crate::backfill::set_transform(&session.0, be.0, &tf.compute_matrix());
             }
         }
     }

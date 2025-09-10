@@ -12,7 +12,7 @@ fn main() -> anyhow::Result<()> {
     // 1) Try pkg-config first
     if let Some(meta) = try_pkg_config(pc_names) {
         emit_link_info(&meta.lib_paths, &meta.libs);
-        let include_dir = meta.include_paths.get(0).cloned();
+        let include_dir = meta.include_paths.first().cloned();
         generate_bindings(include_dir.as_deref(), header_hints)?;
         return Ok(());
     }

@@ -12,7 +12,7 @@ use super::instruction::{
     EntityRemoved, HierarchyChange, ReplicateAsset,
 };
 
-/// ============================================================================
+// ============================================================================
 
 /// The system set that all component replication efforts belong to
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]

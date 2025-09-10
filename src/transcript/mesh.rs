@@ -6,8 +6,9 @@ use crate::transcript::deserialize;
 
 use super::deserialize_pod_slice;
 use super::{
+    TDeserialize, TSerialize,
     common::{byte_deserialize, byte_serialize},
-    serialize_pod_slice, TDeserialize, TSerialize,
+    serialize_pod_slice,
 };
 
 impl TSerialize for Indices {
@@ -249,18 +250,17 @@ impl TDeserialize for MeshVertexAttribute {
     fn deserialize(r: &mut impl std::io::Read) -> Self {
         let id = deserialize(r);
 
-        const POS_ID : MeshVertexAttributeId = Mesh::ATTRIBUTE_POSITION.id;
-        const NOR_ID : MeshVertexAttributeId = Mesh::ATTRIBUTE_NORMAL.id;
+        const POS_ID: MeshVertexAttributeId = Mesh::ATTRIBUTE_POSITION.id;
+        const NOR_ID: MeshVertexAttributeId = Mesh::ATTRIBUTE_NORMAL.id;
 
-        const UV0_ID : MeshVertexAttributeId = Mesh::ATTRIBUTE_UV_0.id;
-        const UV1_ID : MeshVertexAttributeId = Mesh::ATTRIBUTE_UV_1.id;
+        const UV0_ID: MeshVertexAttributeId = Mesh::ATTRIBUTE_UV_0.id;
+        const UV1_ID: MeshVertexAttributeId = Mesh::ATTRIBUTE_UV_1.id;
 
-        const TAN_ID : MeshVertexAttributeId = Mesh::ATTRIBUTE_TANGENT.id;
-        const COL_ID : MeshVertexAttributeId = Mesh::ATTRIBUTE_COLOR.id;
+        const TAN_ID: MeshVertexAttributeId = Mesh::ATTRIBUTE_TANGENT.id;
+        const COL_ID: MeshVertexAttributeId = Mesh::ATTRIBUTE_COLOR.id;
 
-        const JW_ID : MeshVertexAttributeId = Mesh::ATTRIBUTE_JOINT_WEIGHT.id;
-        const JI_ID : MeshVertexAttributeId = Mesh::ATTRIBUTE_JOINT_INDEX.id;
-        
+        const JW_ID: MeshVertexAttributeId = Mesh::ATTRIBUTE_JOINT_WEIGHT.id;
+        const JI_ID: MeshVertexAttributeId = Mesh::ATTRIBUTE_JOINT_INDEX.id;
 
         match id {
             POS_ID => Mesh::ATTRIBUTE_POSITION,
@@ -274,7 +274,7 @@ impl TDeserialize for MeshVertexAttribute {
 
             JW_ID => Mesh::ATTRIBUTE_JOINT_WEIGHT,
             JI_ID => Mesh::ATTRIBUTE_JOINT_INDEX,
-            _ => panic!("Unknown vertex attribute!")
+            _ => panic!("Unknown vertex attribute!"),
         }
     }
 }
@@ -332,7 +332,7 @@ impl TDeserialize for Mesh {
             let unsafe_id: usize = unsafe { std::mem::transmute(aid) };
 
             let attrib = &ATTRIB_LOOKUP[unsafe_id];
-            ret.insert_attribute(attrib.clone(), data);
+            ret.insert_attribute(*attrib, data);
         }
 
         if let Some(index) = Option::<Indices>::deserialize(r) {

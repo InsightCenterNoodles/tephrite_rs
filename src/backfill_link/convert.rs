@@ -141,7 +141,7 @@ pub fn convert_mesh(
     debug_assert_eq!(std::mem::size_of::<bffi::ushort3>(), 6);
 
     backfill::mesh_from_refs(
-        &session,
+        session,
         backfill::BlobReference::whole(&vert_blob),
         vcount as u32,
         backfill::BlobReference::whole(&index_blob),
@@ -159,7 +159,7 @@ pub fn convert_material(
     session: &backfill::FSessionHandle,
     material: &StandardMaterial,
 ) -> Option<backfill::FMaterialHandle> {
-    let bmat = backfill::material(&session, backfill::MatConfigFlags::empty(), 0).unwrap();
+    let bmat = backfill::material(session, backfill::MatConfigFlags::empty(), 0).unwrap();
 
     let color = material.base_color.to_linear();
 

@@ -14,6 +14,7 @@ type MeshMap = AssetMap<Mesh, backfill::FMeshHandle>;
 type MaterialMap = AssetMap<StandardMaterial, backfill::FMaterialHandle>;
 
 // Non send.
+#[derive(Default)]
 pub(crate) struct AssetCache {
     meshes: MeshMap,
     materials: MaterialMap,
@@ -23,15 +24,6 @@ impl AssetCache {
     pub fn clear(&mut self) {
         self.materials.clear();
         self.meshes.clear();
-    }
-}
-
-impl Default for AssetCache {
-    fn default() -> Self {
-        Self {
-            meshes: Default::default(),
-            materials: Default::default(),
-        }
     }
 }
 
@@ -52,7 +44,7 @@ fn watch_mesh_change(
 
                 debug!("Added new mesh {id}");
             }
-            AssetEvent::Modified { id } => {
+            AssetEvent::Modified { id: _ } => {
                 debug!("WE DONT HANDLE THIS YET");
             }
             AssetEvent::Removed { id } => {
@@ -163,7 +155,6 @@ impl Plugin for RenderableBindingPlugin {
 }
 
 /// create/refresh when renderable or asset data changes
-
 fn sync_binding_on_renderability_and_asset_changes(
     mut commands: Commands,
 
@@ -262,7 +253,6 @@ fn sync_binding_on_renderability_and_asset_changes(
 }
 
 /// If BEntity arrives *after* renderable, attach (or refresh) binding
-
 fn on_bentity_added_attach_binding_if_renderable(
     mut commands: Commands,
     q: Query<
@@ -290,7 +280,6 @@ fn on_bentity_added_attach_binding_if_renderable(
 }
 
 /// remove binding if prerequisites go away (lost mesh/material/BEntity)
-
 fn remove_binding_when_prereqs_missing(
     mut commands: Commands,
     q_to_remove: Query<

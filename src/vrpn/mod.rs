@@ -123,14 +123,14 @@ impl MessageHeader {
     fn read(reader: &mut impl Read) -> Result<Self> {
         let mut h = MessageHeader::default();
         reader.read_exact(cast_slice_mut(&mut h.0[..]))?;
-        h.0 = h.0.map(|f| i32::from_be(f));
+        h.0 = h.0.map(i32::from_be);
         Ok(h)
     }
 
     /// Write this header to the stream
     fn write(&self, writer: &mut impl Write) -> Result<()> {
         let v = self.0.map(|f| f.to_be());
-        writer.write_all(&cast_slice(&v))?;
+        writer.write_all(cast_slice(&v))?;
 
         Ok(())
     }
@@ -364,13 +364,13 @@ impl MessageState {
         let pos: [f64; 3] = read_be_f64_n(source)?;
         let quat: [f64; 4] = read_be_f64_n(source)?;
 
-        dbg!(pos, quat);
+        //dbg!(pos, quat);
 
         match self.remote_sender_list.lookup(sender) {
             Ok(item) => {
                 (*item.lock_write()) = ItemState {
-                    position: transform_position(pos.into()).into(),
-                    rotation: transform_rotation(quat.into()).into(),
+                    position: transform_position(pos),
+                    rotation: transform_rotation(quat),
                 };
             }
             Err(_) => {
@@ -476,20 +476,20 @@ impl MessageState {
             }
             TYPE_UDPDESC => {
                 trace!("Skipping UDP description");
-                return Ok(());
+                Ok(())
             }
             TYPE_LOGDESC => {
                 trace!("Skipping Log description");
-                return Ok(());
+                Ok(())
             }
             TYPE_DISCONN => {
                 // Docs say this will never be sent over the wire...
                 trace!("Skipping disconn description");
-                return Ok(());
+                Ok(())
             }
             _ => {
                 //println!("Unknown message type: {x}");
-                return Ok(());
+                Ok(())
             }
         }
     }
@@ -720,7 +720,7 @@ mod test {
 
         let head_rot: DVec4 = head_state.read().rotation.into();
 
-        dbg!(head_rot);
+        //dbg!(head_rot);
 
         assert!(
             head_rot.distance(dvec4(
@@ -741,7 +741,7 @@ mod test {
 
         let joy_rot: DVec4 = joy_state.read().rotation.into();
 
-        dbg!(joy_rot);
+        //dbg!(joy_rot);
 
         assert!(
             joy_rot.distance(dvec4(

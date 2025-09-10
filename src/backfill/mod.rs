@@ -1,4 +1,3 @@
-use bevy::math;
 use std::{marker::PhantomData, ptr::NonNull};
 
 #[allow(non_camel_case_types, non_upper_case_globals, non_snake_case, unused)]
@@ -23,10 +22,15 @@ pub trait FFIHandle {
 }
 
 /// Types that know how to release themselves via the C API.
+/// # Safety
+/// This trait is only to be implemented for reference counted pointer types
 pub unsafe trait Releasable: FFIHandle {
     fn release(ptr: *mut Self::Raw);
 }
 
+/// Types that know how to retain (copy) themselves by the C API
+/// # Safety
+/// This trait is only to be implemented for reference counted pointer types
 pub unsafe trait Retainable: Releasable {
     fn retain(ptr: *mut Self::Raw);
 }
@@ -67,8 +71,8 @@ impl<T: Retainable> Clone for Handle<T> {
     fn clone(&self) -> Self {
         T::retain(self.ptr.as_ptr());
         Self {
-            ptr: self.ptr.clone(),
-            _pd: self._pd.clone(),
+            ptr: self.ptr,
+            _pd: self._pd,
         }
     }
 }

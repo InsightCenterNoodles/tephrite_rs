@@ -26,7 +26,7 @@ pub fn make_common_app() -> App {
         DiagnosticsPlugin,
         AssetPlugin::default(),
         AnimationPlugin,
-        bevy::scene::ScenePlugin::default(),
+        bevy::scene::ScenePlugin,
         bevy::render::mesh::MeshPlugin,
         bevy::render::texture::ImagePlugin::default(),
         bevy::pbr::MaterialPlugin::<StandardMaterial>::default(),
