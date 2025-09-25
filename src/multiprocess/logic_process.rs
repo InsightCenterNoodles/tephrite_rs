@@ -6,7 +6,7 @@ use crate::{
 };
 
 pub(crate) fn setup() -> App {
-    // set up MP state
+    // set up MP state. In the future, this will be pulled from the config. but that is not finalized yet.
     //let child_count = 1;
     //let child_count = 12;
     let child_count = 2;
@@ -28,23 +28,26 @@ pub(crate) fn setup() -> App {
         .expect("determine current executable")
         .to_owned();
 
+    // session
+    let session_id = crate::multiprocess::generate_session_id();
+
     let _child_list: Vec<_> = (0..child_count)
         .map(|i| {
             let current_exe = current_exe.clone();
+            let session_clone = session_id.clone();
             std::thread::spawn(move || {
-                println!("Spawning {i}...");
-                let mut c = std::process::Command::new(current_exe)
-                    .env(crate::multiprocess::CHILD_ENV_VARIABLE, i.to_string())
-                    .spawn()
-                    .expect("launching render process");
+                info!("Spawning {i}...");
 
-                let status = c.wait().unwrap();
-                println!("Completed {i} {status}");
+                let mut command = std::process::Command::new(current_exe);
+                crate::multiprocess::install_ids(&mut command, &session_clone, i);
+
+                let mut command = command.spawn().expect("launching render process");
+
+                let status = command.wait().unwrap();
+                info!("Completed {i} {status}");
             })
         })
         .collect();
-
-    println!("Done spawning");
 
     app
 }

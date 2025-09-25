@@ -2,7 +2,7 @@ pub(crate) mod backfill;
 pub(crate) mod backfill_link;
 pub(crate) mod common;
 pub(crate) mod config;
-pub(crate) mod multiprocess;
+pub mod multiprocess;
 pub(crate) mod replication;
 pub(crate) mod transcript;
 pub(crate) mod vrpn;

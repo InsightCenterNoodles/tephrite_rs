@@ -2,31 +2,84 @@
 //!
 //! This region is structured with a header block containing a barrier data structure, and after an offset, a data region.
 //!
-//! TODO: Alter shmem block name with UUID
 //! TODO: Move to shared_memory and raw_sync crates
 
+use bevy::log::{debug, warn};
 use libc::*;
-use std::ffi::CString;
+use std::{ffi::CString, sync::LazyLock};
 
 // Name of shared memory region
-const SHMEM_NAME_PREFIX: &str = "/TEPHRITE_SHMEM_BLOCK";
+const SHMEM_NAME_PREFIX: &str = "TEPH_SHMEM";
+
 // Size of shared memory region. Not resizable at this time.
-const SHMEM_BLOCK_SIZE: i64 = 2i64.pow(33);
-// Bookkeeping is stored in a region of this size at the start of the block
+// Since we are sending large textures, meshes, and huge instance lists, this is a 'safe' bound.
+// Previous versions would break at 2 gigs. In the future, we should shard this.
+const SHMEM_DEFAULT_BLOCK_SIZE: u64 = 2u64.pow(33);
+
+// Size of shared memory region for testing purposes.
+const SHMEM_TESTING_BLOCK_SIZE: u64 = 2u64.pow(17);
+
+// Bookkeeping is stored in a region of this size at the start of the block.
 const SHMEM_DATA_OFFSET: usize = 1024;
+
+// At the moment, the header consists only of a shared barrier, this must be at offset 0. The header MUST be larger than this.
+
 // Amount of usable memory in block
-const SHMEM_USABLE_SIZE: usize = (SHMEM_BLOCK_SIZE - SHMEM_DATA_OFFSET as i64) as usize;
+static SHMEM_BLOCK_SIZE: LazyLock<usize> = LazyLock::new(|| {
+    if std::env::var("TEPHRITE_TEST_PROCESS").is_ok() {
+        (SHMEM_TESTING_BLOCK_SIZE) as usize
+    } else {
+        (SHMEM_DEFAULT_BLOCK_SIZE) as usize
+    }
+});
+
+// Amount of usable memory in block
+static SHMEM_USABLE_SIZE: LazyLock<usize> = LazyLock::new(|| {
+    let blk_size = *SHMEM_BLOCK_SIZE;
+    assert!(blk_size > SHMEM_DATA_OFFSET);
+    println!("BLOCK SIZE {blk_size}");
+    blk_size - SHMEM_DATA_OFFSET
+});
 
 fn get_shared_mem_block_name() -> CString {
-    let id = unsafe { getuid() };
+    // This is a UUID string under the hood
+    let session_id = super::session_id();
 
-    let formatted = format!("{SHMEM_NAME_PREFIX}.{id}");
+    let session_id: String = session_id
+        .as_str()
+        .chars()
+        .skip_while(|x| !x.is_ascii_alphanumeric())
+        .collect();
+
+    let formatted = format!("/{SHMEM_NAME_PREFIX}.{}", session_id.as_str());
+    //let formatted = format!("/{SHMEM_NAME_PREFIX}");
+
+    if cfg!(target_os = "macos") {
+        // Truncate the name. Mac os X limits this to 31!
+        // This _should_ be ok, as we are not going to be running this app multiple times here
+        let mut f = formatted.clone();
+        f.truncate(31);
+        println!("KEY: {f}");
+        return CString::new(f).unwrap();
+    }
+
+    println!("KEY: {formatted}");
 
     CString::new(formatted).unwrap()
 }
 
+// In the future can we just wrap the call somehow?
+#[inline]
+fn check_pthread_call(ret: i32, region: &'static str) {
+    if ret == 0 {
+        return;
+    }
+
+    panic!("Pthread call failed: {region}, errorcode {ret}");
+}
+
 /// State for multiprocess communication
-pub(crate) struct MPCommunicator {
+pub struct MPCommunicator {
     /// Address of shmem block
     shmem_addr: *mut c_void,
     /// Address of data region in block
@@ -47,6 +100,8 @@ impl MPCommunicator {
 
         let map_result = map_shmem_handle(handle);
 
+        unsafe { close(handle) }; // Do not leak FDs
+
         let barrier = create_and_install_barrier(map_result, process_count);
 
         Self {
@@ -64,6 +119,9 @@ impl MPCommunicator {
 
         let map_result = map_shmem_handle(handle);
 
+        // can close handle after mapping
+        unsafe { close(handle) };
+
         let barrier = map_result as *mut pthread_barrier_t;
 
         Self {
@@ -75,28 +133,50 @@ impl MPCommunicator {
     }
 
     pub fn barrier(&self) {
-        //println!("Waiting barrier {}", unsafe { getpid() });
+        println!("Waiting barrier {}", unsafe { getpid() });
+
+        let hdr = self.shmem_addr as *const u64;
+        unsafe {
+            println!(
+                "pid {} hdr[0..2]={:x} {:x}",
+                libc::getpid(),
+                *hdr,
+                *hdr.add(1)
+            );
+        }
+
         let waitval = unsafe { pthread_barrier_wait(self.barrier) };
 
-        // we dont seem to have access to the constant PTHREAD_BARRIER_SERIAL_THREAD. This, however appears to be negative on a lot of platforms. On linux, this appears to return positive error codes, so we assert that everything is negative here.
-        assert!(waitval <= 0);
+        #[cfg(any(target_os = "linux"))]
+        const SERIAL: i32 = libc::PTHREAD_BARRIER_SERIAL_THREAD;
+        #[cfg(target_os = "macos")]
+        const SERIAL: i32 = PTHREAD_BARRIER_SERIAL_THREAD;
+
+        if waitval != 0 && waitval != SERIAL {
+            panic!("barrier wait failed: {waitval}");
+        }
     }
 
     /// Obtain a const slice of the data exchange region
+    #[inline]
     pub fn data_slice(&self) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(self.shmem_data_addr as *const u8, SHMEM_USABLE_SIZE) }
+        unsafe { std::slice::from_raw_parts(self.shmem_data_addr as *const u8, *SHMEM_USABLE_SIZE) }
     }
 
     /// Obtain a mutable slice of the data exchange region
     #[allow(dead_code)]
+    #[inline]
     pub fn data_slice_mut(&mut self) -> &mut [u8] {
         unsafe {
-            std::slice::from_raw_parts_mut(self.shmem_data_addr as *mut u8, SHMEM_USABLE_SIZE)
+            std::slice::from_raw_parts_mut(self.shmem_data_addr as *mut u8, *SHMEM_USABLE_SIZE)
         }
     }
 
+    /// Obtain a raw pointer and size to the data region. These MUST NOT be stored, and are
+    /// invalid as soon as the communicator is dropped!
+    #[inline]
     pub(crate) unsafe fn parts(&self) -> (*mut c_void, size_t) {
-        (self.shmem_data_addr, SHMEM_USABLE_SIZE)
+        (self.shmem_data_addr, *SHMEM_USABLE_SIZE)
     }
 }
 
@@ -109,16 +189,24 @@ fn create_and_install_barrier(
         use std::mem::MaybeUninit;
         let mut battr = MaybeUninit::zeroed().assume_init();
 
-        assert_eq!(pthread_barrierattr_init(&mut battr), 0);
+        check_pthread_call(
+            pthread_barrierattr_init(&mut battr),
+            "barrier attribute init",
+        );
 
-        assert_eq!(
+        check_pthread_call(
             pthread_barrierattr_setpshared(&mut battr, PTHREAD_PROCESS_SHARED),
-            0
+            "attr: set process shared",
         );
 
         let barrier = map_result as *mut pthread_barrier_t;
 
-        assert_eq!(pthread_barrier_init(barrier, &battr, process_count), 0);
+        check_pthread_call(
+            pthread_barrier_init(barrier, &battr, process_count),
+            "init barrier",
+        );
+
+        println!("NEW BARRIER {process_count}");
 
         // we can now destroy the barrier attr
         pthread_barrierattr_destroy(&mut battr);
@@ -127,12 +215,14 @@ fn create_and_install_barrier(
     }
 }
 
+const OPEN_MODES: c_uint = (S_IRUSR | S_IWUSR) as c_uint;
+
 /// Opens an existing shared memory region, and returns a handle
 fn open_shmem_handle() -> i32 {
     let handle = unsafe {
-        let mode = S_IRWXU | S_IRWXG | S_IRWXO;
         let name = get_shared_mem_block_name();
-        shm_open(name.as_ptr(), O_RDWR, mode as c_uint)
+        println!("SHM NAME (child): {name:?}");
+        shm_open(name.as_ptr(), O_RDWR, OPEN_MODES)
     };
 
     if handle < 0 {
@@ -146,7 +236,7 @@ fn open_shmem_handle() -> i32 {
 
 /// Resizes a shared memory region
 fn truncate_handle(handle: i32) {
-    let truncate_result = unsafe { ftruncate(handle, SHMEM_BLOCK_SIZE) };
+    let truncate_result = unsafe { ftruncate(handle, *SHMEM_BLOCK_SIZE as i64) };
 
     if truncate_result < 0 {
         panic!(
@@ -162,10 +252,11 @@ fn create_shmem_handle() -> i32 {
         // first attempt to unlink if there are stale objects around
         let name = get_shared_mem_block_name();
 
+        println!("SHM NAME (parent): {name:?}");
+
         shm_unlink(name.as_ptr());
 
-        let mode = S_IRWXU | S_IRWXG | S_IRWXO;
-        shm_open(name.as_ptr(), O_RDWR | O_CREAT | O_TRUNC, mode as c_uint)
+        shm_open(name.as_ptr(), O_RDWR | O_CREAT | O_TRUNC, OPEN_MODES)
     };
 
     if handle < 0 {
@@ -195,9 +286,9 @@ fn map_shmem_handle(handle: i32) -> *mut c_void {
         {
             mmap(
                 std::ptr::null_mut(),
-                SHMEM_BLOCK_SIZE.try_into().unwrap(),
+                (*SHMEM_BLOCK_SIZE).try_into().unwrap(),
                 PROT_READ | PROT_WRITE,
-                MAP_SHARED,
+                MAP_SHARED | libc::MAP_HASSEMAPHORE,
                 handle,
                 0,
             )
@@ -215,15 +306,17 @@ fn map_shmem_handle(handle: i32) -> *mut c_void {
 
 impl Drop for MPCommunicator {
     fn drop(&mut self) {
-        println!("Destroying Communicator");
+        debug!("Destroying Communicator");
         // we don't technically HAVE to do this, but it feels good.
         let ret = unsafe {
-            pthread_barrier_destroy(self.barrier);
-            munmap(self.shmem_addr, SHMEM_BLOCK_SIZE.try_into().unwrap())
+            if self.owner {
+                pthread_barrier_destroy(self.barrier);
+            }
+            munmap(self.shmem_addr, (*SHMEM_BLOCK_SIZE).try_into().unwrap())
         };
 
         if ret != 0 {
-            println!("unable to unmap shared memory block");
+            warn!("unable to unmap shared memory block");
         }
 
         if self.owner {
@@ -231,7 +324,7 @@ impl Drop for MPCommunicator {
             let ret = unsafe { shm_unlink(name.as_ptr()) };
 
             if ret != 0 {
-                println!("unable to unlink shared memory block");
+                warn!("unable to unlink shared memory block");
             }
         }
     }
@@ -362,3 +455,36 @@ mod emulate {
 
 #[cfg(target_os = "macos")]
 use emulate::*;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+
+    /// After the owner drops, the shm object should be unlinked and re-open should fail.
+    #[test]
+    fn unlink_on_drop_removes_segment() {
+        unsafe { env::set_var("TEPHRITE_TEST_PROCESS", "1") };
+
+        let session = crate::multiprocess::generate_session_id();
+
+        crate::multiprocess::install_session_id(&session);
+
+        // Create and immediately drop to trigger unlink
+        {
+            let _owner = MPCommunicator::create(1);
+        }
+        // Try to open again with the same name: should fail with ENOENT
+        let name = super::get_shared_mem_block_name();
+        let fd = unsafe { shm_open(name.as_ptr(), O_RDWR, OPEN_MODES) };
+        assert!(
+            fd < 0,
+            "shm_open unexpectedly succeeded after owner drop (fd={fd})"
+        );
+        let err = std::io::Error::last_os_error();
+        // Not all platforms set ENOENT consistently, so just make sure it failed.
+        // If you want strictness on Linux:
+        #[cfg(target_os = "linux")]
+        assert_eq!(err.raw_os_error(), Some(libc::ENOENT));
+    }
+}

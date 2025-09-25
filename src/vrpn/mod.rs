@@ -45,6 +45,10 @@ fn check_vrpn_cookie(bytes: &[u8]) -> Option<(u32, u32, u32)> {
     let log = bytes[18] as u32;
     const ZERO_ASCII: u32 = 48;
 
+    if bytes[0..10] != *b"vrpn: ver." {
+        return None;
+    }
+
     let major: u32 = std::str::from_utf8(major).ok()?.parse().ok()?;
     let minor: u32 = std::str::from_utf8(minor).ok()?.parse().ok()?;
     let log = log - ZERO_ASCII;
@@ -179,7 +183,7 @@ fn get_message(stream: &mut impl Read, buffer: &mut Vec<u8>) -> Result<MessageHe
 
     //println!("Read payload {ceil_length}");
 
-    const MAX_PAYLOAD: usize = 64 * 1024;
+    const MAX_PAYLOAD: usize = 128 * 1024;
 
     if ceil_length > MAX_PAYLOAD {
         return Err(std::io::Error::new(
@@ -304,7 +308,7 @@ impl SenderList {
 
     #[inline]
     fn lookup(&self, index: usize) -> Result<&SharedItemState> {
-        println!("Lookup index {index}");
+        //println!("Lookup index {index}");
         self.watched.get(&index).ok_or_else(|| {
             std::io::Error::new(std::io::ErrorKind::NotFound, "Missing component info")
         })
@@ -417,7 +421,9 @@ impl MessageState {
             // now, we might not care, because no other string comes after...
             // the strings DO include a null, so we need to strip that
 
-            if len <= 0 {
+            const MAX_NAME: i32 = 64 * 1024;
+
+            if len <= 0 || len > MAX_NAME {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
                     "bad length",
@@ -443,7 +449,7 @@ impl MessageState {
             TYPE_SENDER => {
                 let sender_id = header.sender();
                 let sender_name = extract_prefixed_string(&mut cursor)?;
-                println!("New sender {sender_id}: '{sender_name}'");
+                debug!("New sender {sender_id}: '{sender_name}'");
 
                 let bounce = sender_name.starts_with("VRPN Control")
                     || self.remote_sender_list.is_watching(&sender_name);
@@ -538,7 +544,7 @@ fn start_vrpn_client(
 
     let sd = res.shutdown.clone();
 
-    let handle = std::thread::spawn(|| {
+    let handle = std::thread::spawn(move || {
         vrpn_spinner(to_watch, host_string, sd);
     });
 
@@ -585,7 +591,7 @@ fn check_for_new_vrpn(
     trigger: Trigger<OnAdd, VRPNLink>,
     mut commands: Commands,
     query: Query<&VRPNLink, Without<VRPNLinkConnected>>,
-    mut res: NonSendMut<VRPNResource>,
+    mut res: ResMut<VRPNResource>,
 ) {
     let entity = trigger.target();
 
