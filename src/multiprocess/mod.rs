@@ -3,6 +3,7 @@
 pub(crate) mod app;
 pub mod logic_process;
 pub mod render_process;
+pub mod shared_buffer;
 pub mod shared_mem;
 
 /// Environment variable to determine if a process is a render process
@@ -10,6 +11,17 @@ const CHILD_ENV_VARIABLE: &str = "TEPHRITE_CHILD_PROCESS";
 
 /// Environment variable to mark which process group we are in
 const SESSION_ENV_VARIABLE: &str = "TEPHRITE_PROCESS_GROUP";
+
+// Name of shared memory region
+const SHMEM_NAME_PREFIX: &str = "TEPH_SHMEM";
+
+// Size of shared memory region. Not resizable at this time.
+// Since we are sending large textures, meshes, and huge instance lists, this is a 'safe' bound.
+// Previous versions would break at 2 gigs. In the future, we should shard this.
+const SHMEM_DEFAULT_BLOCK_SIZE: u64 = 2u64.pow(32);
+
+// Size of shared memory region for testing purposes.
+const SHMEM_TESTING_BLOCK_SIZE: u64 = 2u64.pow(17);
 
 /// Ask if this child was launched by a logic process
 pub fn is_child_process() -> bool {
@@ -65,4 +77,31 @@ pub fn install_session_id(session_id: &SessionID) {
     unsafe {
         std::env::set_var(SESSION_ENV_VARIABLE, &session_id.0);
     }
+}
+
+fn get_shared_mem_block_name() -> std::ffi::CString {
+    // This is a UUID string under the hood
+    let session_id = session_id();
+
+    let session_id: String = session_id
+        .as_str()
+        .chars()
+        .skip_while(|x| !x.is_ascii_alphanumeric())
+        .collect();
+
+    let formatted = format!("/{SHMEM_NAME_PREFIX}.{}", session_id.as_str());
+    //let formatted = format!("/{SHMEM_NAME_PREFIX}");
+
+    if cfg!(target_os = "macos") {
+        // Truncate the name. Mac os X limits this to 31!
+        // This _should_ be ok, as we are not going to be running this app multiple times here
+        let mut f = formatted.clone();
+        f.truncate(31);
+        println!("KEY: {f}");
+        return std::ffi::CString::new(f).unwrap();
+    }
+
+    println!("KEY: {formatted}");
+
+    std::ffi::CString::new(formatted).unwrap()
 }

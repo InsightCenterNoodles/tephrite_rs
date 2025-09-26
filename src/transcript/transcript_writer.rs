@@ -1,33 +1,36 @@
 use std::io::Write;
 
-use crate::multiprocess::shared_mem::MPCommunicator;
+//use crate::multiprocess::shared_mem::MPCommunicator;
 
 pub struct TranscriptWriter {
-    multiprocess_comm: MPCommunicator,
+    //multiprocess_comm: MPCommunicator,
     start: PtrWrapper,
     avail: isize,
 }
 
 impl TranscriptWriter {
     pub fn new(process_count: u32) -> Self {
-        let state = MPCommunicator::create(process_count);
+        todo!();
+        // let state = MPCommunicator::create(process_count);
 
-        let (sptr, len) = unsafe { state.parts() };
-        Self {
-            multiprocess_comm: state,
-            start: PtrWrapper(sptr as *mut u8),
-            avail: len as isize,
-        }
+        // let (sptr, len) = unsafe { state.parts() };
+        // Self {
+        //     multiprocess_comm: state,
+        //     start: PtrWrapper(sptr as *mut u8),
+        //     avail: len as isize,
+        // }
     }
 
     pub fn reset(&mut self) {
-        let (sptr, len) = unsafe { self.multiprocess_comm.parts() };
-        self.start = PtrWrapper(sptr as *mut u8);
-        self.avail = len as isize;
+        todo!();
+        // let (sptr, len) = unsafe { self.multiprocess_comm.parts() };
+        // self.start = PtrWrapper(sptr as *mut u8);
+        // self.avail = len as isize;
     }
 
     pub fn barrier(&self) {
-        self.multiprocess_comm.barrier()
+        //self.multiprocess_comm.barrier()
+        todo!();
     }
 }
 

@@ -32,6 +32,11 @@ opt-level = 3
 [dev-dependencies]
 nix = "0.30"
 
+
 [[test]]
-name = "shared_mem"
+name = "shmem_integration"
+harness = false
+
+[[test]]
+name = "shared_buffer"
 harness = false
