@@ -1,7 +1,8 @@
-use crate::transcript::transcript_reader::TranscriptReader;
 use bevy::ecs::entity::EntityHashMap;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
+
+use crate::serialize::transcript_reader::TranscriptReaderResource;
 
 use super::instruction::*;
 
@@ -13,7 +14,7 @@ pub struct ReplicationReaderPlugin;
 impl Plugin for ReplicationReaderPlugin {
     fn build(&self, app: &mut App) {
         println!("Building reader...");
-        let transcript = TranscriptReader::new();
+        let transcript = TranscriptReaderResource::new();
 
         app.insert_non_send_resource(transcript);
         app.init_resource::<EntityMap>();
@@ -82,7 +83,7 @@ impl<T: Asset> RemoteAssetMap<T> {
 /// transcript
 ///
 fn child_system(
-    mut transcript: NonSendMut<TranscriptReader>,
+    mut transcript: NonSendMut<TranscriptReaderResource>,
     mut map: ResMut<EntityMap>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,

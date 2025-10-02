@@ -1,7 +1,7 @@
 use crate::replication::instruction::*;
 use crate::replication::sets::*;
+use crate::serialize::transcript_writer::TranscriptWriteStateResource;
 use crate::serialize::*;
-use crate::transcript::TranscriptWriteStateResource;
 use bevy::prelude::*;
 
 use crate::serialize::create_serialize_enum;

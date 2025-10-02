@@ -10,7 +10,7 @@ impl<A: Asset> FastWrite for AssetId<A> {
 }
 impl<A: Asset> FastRead for AssetId<A> {
     type Ret = Self;
-    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S)  -> Self::Ret {
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret {
         unsafe { byte_deserialize(r) }
     }
 }
@@ -24,7 +24,7 @@ impl<A: Asset> FastWrite for Handle<A> {
 }
 impl<A: Asset> FastRead for Handle<A> {
     type Ret = Self;
-    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S)  -> Self::Ret {
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret {
         Self::Weak(unsafe { AssetId::<A>::read_fast(r) })
     }
 }

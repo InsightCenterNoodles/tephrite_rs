@@ -1,7 +1,6 @@
 use crate::replication::components::Replicated;
+use crate::serialize::transcript_writer::*;
 use crate::serialize::*;
-use crate::transcript::TranscriptWriterResource;
-use crate::transcript::transcript_writer::TranscriptWriteStateResource;
 use bevy::prelude::*;
 
 use super::instruction::*;

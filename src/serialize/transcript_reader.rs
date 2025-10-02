@@ -1,10 +1,10 @@
 use crate::multiprocess::{child_process_id, get_shared_mem_block_name, shared_buffer::Consumer};
 
-pub struct TranscriptReader {
+pub struct TranscriptReaderResource {
     multiprocess_comm: Consumer,
 }
 
-impl TranscriptReader {
+impl TranscriptReaderResource {
     pub fn new() -> Self {
         let state =
             Consumer::new(&get_shared_mem_block_name(), child_process_id() as usize).unwrap();

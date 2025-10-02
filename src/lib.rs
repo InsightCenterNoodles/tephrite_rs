@@ -4,8 +4,7 @@ pub(crate) mod common;
 pub(crate) mod config;
 pub mod multiprocess;
 pub(crate) mod replication;
-pub mod serialize;
-pub(crate) mod transcript;
+pub(crate) mod serialize;
 pub(crate) mod vrpn;
 
 use bevy::app::Plugin;

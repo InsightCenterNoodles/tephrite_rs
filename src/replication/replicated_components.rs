@@ -5,8 +5,8 @@ use bevy::prelude::*;
 
 use crate::common::Head;
 
+use crate::serialize::transcript_writer::*;
 use crate::serialize::*;
-use crate::transcript::*;
 
 /// Builds systems to detect component changes
 macro_rules! detect_component_changes_impl {

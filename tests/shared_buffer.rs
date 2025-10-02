@@ -102,7 +102,7 @@ mod unix_only {
     use super::*;
 
     use tephrite_rs::multiprocess::shared_buffer::{
-        Consumer, Producer, buffer_ptr, compute_shmem_allocation_size,
+        Consumer, Producer, compute_shmem_allocation_size,
     };
 
     // Parent orchestrator: spawns the same binary in "roles".
