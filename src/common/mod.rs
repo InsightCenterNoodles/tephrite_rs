@@ -1,15 +1,19 @@
-use crate::transcript;
+use crate::serialize;
 
 /// Marker for the entity that represents the user's head
 #[derive(bevy::prelude::Component, Debug)]
 pub(crate) struct Head;
 
-impl transcript::TSerialize for Head {
-    fn serialize(&self, _: &mut impl std::io::Write) {}
+impl serialize::FastWrite for Head {
+    unsafe fn write_fast(&self, w: &mut impl serialize::ByteSink) {
+        // nothing to do.
+    }
 }
 
-impl transcript::TDeserialize for Head {
-    fn deserialize(_: &mut impl std::io::Read) -> Self {
+impl serialize::FastRead for Head {
+    type Ret = Self;
+
+    unsafe fn read_fast<'a, S: serialize::ByteSource<'a>>(r: &mut S) -> Self::Ret {
         Self
     }
 }

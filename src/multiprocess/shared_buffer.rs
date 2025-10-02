@@ -216,6 +216,51 @@ impl Producer {
         self.last_published = gen_next;
         (gen_next, slot)
     }
+
+    /// Split Interface
+    pub fn prepare(&mut self) -> PartialWriteState {
+        let gen_next = self.last_published + 1;
+        let slot = self.choose_slot_rr(gen_next);
+        let ptr = buffer_ptr(self.data_base, self.buf_size, slot);
+
+        // 1) Producer has exclusive write: fill buffer content.
+        PartialWriteState {
+            gen_next,
+            slot,
+            ptr,
+            size: self.buf_size,
+        }
+    }
+
+    pub fn commit(&mut self, state: PartialWriteState) -> (u64, u32) {
+        // 2) Make data visible: publish idx then bump gen with Release ordering.
+        self.control_block_mut()
+            .publish_idx
+            .store(state.slot, Relaxed);
+        self.control_block_mut()
+            .publish_gen
+            .store(state.gen_next, Release);
+
+        // 3) Strict lockstep: wait for all consumers to ack this generation.
+        wait_until_min_acked(self.control_block(), state.gen_next);
+
+        self.last_published = state.gen_next;
+        (state.gen_next, state.slot)
+    }
+}
+
+pub struct PartialWriteState {
+    gen_next: u64,
+    slot: u32,
+    ptr: *mut u8,
+    size: usize,
+}
+
+impl PartialWriteState {
+    #[inline(always)]
+    pub fn slice(&mut self) -> &mut [u8] {
+        unsafe { core::slice::from_raw_parts_mut(self.ptr, self.size) }
+    }
 }
 
 pub struct Consumer {

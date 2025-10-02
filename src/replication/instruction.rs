@@ -1,92 +1,83 @@
-use std::io::Write;
+use std::fmt::Debug;
 
 use bevy::prelude::Entity;
-use teph_macro::{serde_enum_framework, TSerialize};
 
-use super::ReplicatedComponentID;
-use crate::replication::ReplicatedAssetID;
-use crate::transcript::{
-    common::{byte_deserialize, byte_serialize},
-    deserialize,
-    macros::raw_item_helper,
-    TDeserialize, TSerialize,
+use crate::replication::replicated_assets::{AssetEnum, AssetEnumRef};
+use crate::replication::replicated_components::{ReplicatedComponent, ReplicatedComponentRef};
+use crate::replication::{
+    replicated_assets::ReplicatedAssetID, replicated_components::ReplicatedComponentID,
 };
+use crate::serialize::*;
 
-/// An instruction where an entity has been added
-#[derive(Debug, TSerialize)]
-pub struct EntityAdded {
-    pub entity: Entity,
-}
-
-/// An instruction where an entity has been removed
-#[derive(Debug, TSerialize)]
-pub struct EntityRemoved {
-    pub entity: Entity,
-}
+// MARK: Server side
 
 /// An instruction where a component has been added to an entity.
-///
-/// NOTE: You must write/read the component bundle with the ReplicatedComponent
-/// set of encoders and decoders RIGHT AFTER.
-#[derive(Debug)]
-pub struct ComponentAdded {
+pub struct ServerComponentAdded<'a> {
     pub entity: Entity,
-    // then parse out the component!
+    pub component: ReplicatedComponentRef<'a>,
 }
 
-impl TSerialize for ComponentAdded {
-    fn serialize(&self, w: &mut impl Write) {
-        self.entity.serialize(w);
-    }
-}
-
-impl TDeserialize for ComponentAdded {
-    fn deserialize(r: &mut impl std::io::Read) -> Self {
-        Self {
-            entity: deserialize(r),
+impl<'a> FastWrite for ServerComponentAdded<'a> {
+    unsafe fn write_fast(&self, w: &mut impl ByteSink) {
+        unsafe {
+            self.entity.write_fast(w);
+            self.component.write_fast(w);
         }
     }
 }
 
 /// An instruction that a component should be removed.
-#[derive(Debug, TSerialize)]
-pub struct ComponentRemoved {
+pub struct ServerComponentRemoved {
     pub entity: Entity,
     pub component: ReplicatedComponentID,
 }
 
-/// An instruction to replicate an asset.
-///
-/// NOTE: You must read/write the AssetEnum bundle DIRECTLY AFTER
-#[derive(Debug)]
-pub struct ReplicateAsset; // then parse out the asset!
-
-impl TSerialize for ReplicateAsset {
-    fn serialize(&self, _: &mut impl Write) {}
-}
-
-impl TDeserialize for ReplicateAsset {
-    fn deserialize(_: &mut impl std::io::Read) -> Self {
-        Self
+impl FastWrite for ServerComponentRemoved {
+    unsafe fn write_fast(&self, w: &mut impl ByteSink) {
+        unsafe {
+            self.entity.write_fast(w);
+            self.component.write_fast(w);
+        }
     }
 }
 
+/// An instruction to replicate an asset.
+pub struct ServerReplicateAsset<'a> {
+    pub asset: AssetEnumRef<'a>,
+}
+
+impl_fast_serialize_write_only!(ServerReplicateAsset<'a>,
+    lifetime: 'a,
+    keep: {
+        asset
+    },
+    skip: {
+    }
+);
+
 /// An instruction to remove an asset
-#[derive(Debug, TSerialize)]
 pub struct DropAsset {
     pub id: ReplicatedAssetID,
 }
+
+impl_fast_serialize!(DropAsset,
+    keep: {
+        id
+    },
+    skip: {
+    }
+);
 
 /// An instruction to change hierarchy of an entity.
 ///
 /// This is a special instruction as the components under the hood are protected
 /// and we can support deltas better this way
 #[derive(Debug)]
-pub struct HierarchyChange{
+pub struct HierarchyChange {
     pub new_parent: Option<Entity>,
     pub child: Entity,
 }
-raw_item_helper!(HierarchyChange);
+impl_fast_raw_item!(HierarchyChange);
 
 /// An instruction to stop parsing instructions.
 ///
@@ -95,37 +86,106 @@ raw_item_helper!(HierarchyChange);
 #[derive(Debug)]
 pub struct EndFrame;
 
-impl TSerialize for EndFrame {
-    fn serialize(&self, _: &mut impl Write) {}
+impl FastWrite for EndFrame {
+    #[inline(always)]
+    unsafe fn write_fast(&self, _w: &mut impl ByteSink) {}
 }
-
-impl TDeserialize for EndFrame {
-    fn deserialize(_: &mut impl std::io::Read) -> Self {
+impl FastRead for EndFrame {
+    type Ret = Self;
+    #[inline(always)]
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(_r: &mut S) -> Self {
         Self
     }
 }
 
 // Build the read/write machinery
-serde_enum_framework!(
-    Instruction,
-    EntityAdded,
-    EntityRemoved,
-    ComponentAdded,
-    ComponentRemoved,
-    ReplicateAsset,
-    DropAsset,
-    HierarchyChange,
-    EndFrame
+create_serialize_enum_write_only!(
+    ServerInstruction,
+    u8,
+    lifetime: 'a,
+    {
+        (0, EAdd, Entity),
+        (1, ERemove, Entity),
+        (2, CAdd, ServerComponentAdded<'a>),
+        (3, CRemove, ServerComponentRemoved),
+        (4, CAsset, ServerReplicateAsset<'a>),
+        (5, CDropAsset, DropAsset),
+        (6, HChange, HierarchyChange),
+        (7, EFrame, EndFrame),
+    }
 );
 
-impl TSerialize for Entity {
-    fn serialize(&self, w: &mut impl std::io::Write) {
-        self.to_bits().serialize(w);
+impl FastWrite for Entity {
+    #[inline(always)]
+    unsafe fn write_fast(&self, w: &mut impl ByteSink) {
+        unsafe { self.to_bits().write_fast(w) };
+    }
+}
+impl FastRead for Entity {
+    type Ret = Self;
+    #[inline(always)]
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self {
+        Entity::from_bits(read_fast(r))
     }
 }
 
-impl TDeserialize for Entity {
-    fn deserialize(r: &mut impl std::io::Read) -> Self {
-        Entity::from_bits(deserialize(r))
-    }
+// MARK: Client side
+
+/// An instruction where a component has been added to an entity.
+pub struct ClientComponentAdded {
+    pub entity: Entity,
+    pub component: ReplicatedComponent,
 }
+
+impl_fast_serialize!(ClientComponentAdded,
+    keep: {
+        entity,
+        component
+    },
+    skip: {
+    }
+);
+
+/// An instruction that a component should be removed.
+pub struct ClientComponentRemoved {
+    pub entity: Entity,
+    pub component: ReplicatedComponentID,
+}
+
+impl_fast_serialize!(ClientComponentRemoved,
+    keep: {
+        entity,
+        component
+    },
+    skip: {
+    }
+);
+
+/// An instruction to replicate an asset.
+pub struct ClientReplicateAsset {
+    pub asset: AssetEnum,
+}
+
+impl_fast_serialize!(ClientReplicateAsset,
+    keep: {
+        asset
+    },
+    skip: {
+    }
+);
+
+// Build the read/write machinery
+create_serialize_enum!(
+    ClientInstruction,
+    u8,
+    {
+        (0, EAdd, Entity),
+        (1, ERemove, Entity),
+        (2, CAdd, ClientComponentAdded),
+        (3, CRemove, ClientComponentRemoved),
+        (4, CAsset, ClientReplicateAsset),
+        (5, CDropAsset, DropAsset),
+        (6, HChange, HierarchyChange),
+        (7, EFrame, EndFrame),
+    }
+);

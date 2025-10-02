@@ -1,26 +1,23 @@
-//use crate::multiprocess::shared_mem::MPCommunicator;
+use crate::multiprocess::{child_process_id, get_shared_mem_block_name, shared_buffer::Consumer};
 
 pub struct TranscriptReader {
-    //multiprocess_comm: MPCommunicator,
+    multiprocess_comm: Consumer,
 }
 
 impl TranscriptReader {
     pub fn new() -> Self {
-        todo!();
-        // let state = MPCommunicator::attach();
+        let state =
+            Consumer::new(&get_shared_mem_block_name(), child_process_id() as usize).unwrap();
 
-        // Self {
-        //     multiprocess_comm: state,
-        // }
+        Self {
+            multiprocess_comm: state,
+        }
     }
 
-    pub fn get_slice(&self) -> &[u8] {
-        //self.multiprocess_comm.data_slice()
-        todo!();
-    }
-
-    pub fn barrier(&self) {
-        //self.multiprocess_comm.barrier()
-        todo!();
+    pub fn consume_next<F>(&mut self, mut f: F)
+    where
+        F: FnMut(u64, u32, &[u8]),
+    {
+        self.multiprocess_comm.consume_next(f);
     }
 }

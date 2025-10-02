@@ -20,4 +20,5 @@ use bevy::prelude::Component;
 /// ));
 /// ```
 #[derive(Component, Debug, Clone, Copy)]
+#[component(immutable)]
 pub struct Replicated;

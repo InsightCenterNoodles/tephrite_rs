@@ -1,5 +1,9 @@
 //! Functionality for multiple processes
 
+use std::hash::{Hash, Hasher};
+
+use bevy::log::debug;
+
 pub(crate) mod app;
 pub mod logic_process;
 pub mod render_process;
@@ -13,15 +17,15 @@ const CHILD_ENV_VARIABLE: &str = "TEPHRITE_CHILD_PROCESS";
 const SESSION_ENV_VARIABLE: &str = "TEPHRITE_PROCESS_GROUP";
 
 // Name of shared memory region
-const SHMEM_NAME_PREFIX: &str = "TEPH_SHMEM";
+const SHMEM_NAME_PREFIX: &str = "TEPH_";
 
 // Size of shared memory region. Not resizable at this time.
 // Since we are sending large textures, meshes, and huge instance lists, this is a 'safe' bound.
 // Previous versions would break at 2 gigs. In the future, we should shard this.
-const SHMEM_DEFAULT_BLOCK_SIZE: u64 = 2u64.pow(32);
+pub const SHMEM_DEFAULT_BLOCK_SIZE: u64 = 2u64.pow(32);
 
 // Size of shared memory region for testing purposes.
-const SHMEM_TESTING_BLOCK_SIZE: u64 = 2u64.pow(17);
+pub const SHMEM_TESTING_BLOCK_SIZE: u64 = 2u64.pow(17);
 
 /// Ask if this child was launched by a logic process
 pub fn is_child_process() -> bool {
@@ -79,7 +83,7 @@ pub fn install_session_id(session_id: &SessionID) {
     }
 }
 
-fn get_shared_mem_block_name() -> std::ffi::CString {
+pub fn get_shared_mem_block_name() -> String {
     // This is a UUID string under the hood
     let session_id = session_id();
 
@@ -89,19 +93,12 @@ fn get_shared_mem_block_name() -> std::ffi::CString {
         .skip_while(|x| !x.is_ascii_alphanumeric())
         .collect();
 
-    let formatted = format!("/{SHMEM_NAME_PREFIX}.{}", session_id.as_str());
-    //let formatted = format!("/{SHMEM_NAME_PREFIX}");
+    let mut hasher = std::hash::DefaultHasher::new();
+    session_id.hash(&mut hasher);
+    let session_id = hasher.finish();
 
-    if cfg!(target_os = "macos") {
-        // Truncate the name. Mac os X limits this to 31!
-        // This _should_ be ok, as we are not going to be running this app multiple times here
-        let mut f = formatted.clone();
-        f.truncate(31);
-        println!("KEY: {f}");
-        return std::ffi::CString::new(f).unwrap();
-    }
+    let formatted = format!("/{SHMEM_NAME_PREFIX}{}", session_id);
 
-    println!("KEY: {formatted}");
-
-    std::ffi::CString::new(formatted).unwrap()
+    debug!("KEY: {formatted}");
+    formatted
 }

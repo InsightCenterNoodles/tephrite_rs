@@ -1,70 +1,47 @@
 use bevy::prelude::*;
 
-use super::{
-    common::{byte_deserialize, byte_serialize},
-    deserialize, TDeserialize, TSerialize,
-};
+use crate::serialize::*;
 
-impl<A: Asset> TSerialize for AssetId<A> {
-    fn serialize(&self, w: &mut impl std::io::Write) {
+impl<A: Asset> FastWrite for AssetId<A> {
+    unsafe fn write_fast(&self, w: &mut impl ByteSink) {
         // this is, as they say, beyond unsafe. but it looks to be non-alloc all around
         unsafe { byte_serialize(self, w) };
     }
 }
-impl<A: Asset> TDeserialize for AssetId<A> {
-    fn deserialize(r: &mut impl std::io::Read) -> Self {
+impl<A: Asset> FastRead for AssetId<A> {
+    type Ret = Self;
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S)  -> Self::Ret {
         unsafe { byte_deserialize(r) }
     }
 }
 
 // =============================================================================
 
-impl<A: Asset> TSerialize for Handle<A> {
-    fn serialize(&self, w: &mut impl std::io::Write) {
-        self.id().serialize(w);
+impl<A: Asset> FastWrite for Handle<A> {
+    unsafe fn write_fast(&self, w: &mut impl ByteSink) {
+        unsafe { self.id().write_fast(w) };
     }
 }
-impl<A: Asset> TDeserialize for Handle<A> {
-    fn deserialize(r: &mut impl std::io::Read) -> Self {
-        Self::Weak(deserialize(r))
-    }
-}
-
-// =============================================================================
-
-impl TSerialize for Mesh3d {
-    fn serialize(&self, w: &mut impl std::io::Write) {
-        self.0.serialize(w);
-    }
-}
-
-impl TDeserialize for Mesh3d {
-    fn deserialize(r: &mut impl std::io::Read) -> Self {
-        Self(deserialize(r))
+impl<A: Asset> FastRead for Handle<A> {
+    type Ret = Self;
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S)  -> Self::Ret {
+        Self::Weak(unsafe { AssetId::<A>::read_fast(r) })
     }
 }
 
 // =============================================================================
 
-impl TSerialize for MeshMaterial3d<StandardMaterial> {
-    fn serialize(&self, w: &mut impl std::io::Write) {
-        self.0.serialize(w);
-    }
-}
+impl_fast_newtype!(Mesh3d);
 
-impl TDeserialize for MeshMaterial3d<StandardMaterial> {
-    fn deserialize(r: &mut impl std::io::Read) -> Self {
-        Self(deserialize(r))
-    }
-}
+// =============================================================================
+
+impl_fast_newtype!(MeshMaterial3d<StandardMaterial>);
 
 // =============================================================================
 
 #[cfg(test)]
 mod tests {
     use bevy::asset::AssetIndex;
-
-    use crate::transcript::test_serialization;
 
     use super::*;
 

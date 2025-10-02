@@ -1,68 +1,68 @@
-use std::io::Write;
+use crate::{
+    multiprocess::{
+        self,
+        shared_buffer::{PartialWriteState, Producer},
+    },
+    serialize::ByteSink,
+};
 
-//use crate::multiprocess::shared_mem::MPCommunicator;
-
-pub struct TranscriptWriter {
-    //multiprocess_comm: MPCommunicator,
-    start: PtrWrapper,
-    avail: isize,
+pub struct TranscriptWriterResource {
+    multiprocess_comm: Producer,
 }
 
-impl TranscriptWriter {
-    pub fn new(process_count: u32) -> Self {
-        todo!();
+impl TranscriptWriterResource {
+    pub fn new(child_count: u32) -> Self {
         // let state = MPCommunicator::create(process_count);
 
         // let (sptr, len) = unsafe { state.parts() };
-        // Self {
-        //     multiprocess_comm: state,
-        //     start: PtrWrapper(sptr as *mut u8),
-        //     avail: len as isize,
-        // }
+        Self {
+            multiprocess_comm: Producer::new(
+                &multiprocess::get_shared_mem_block_name(),
+                3,
+                multiprocess::SHMEM_DEFAULT_BLOCK_SIZE as usize,
+                child_count as usize,
+            )
+            .unwrap(),
+        }
     }
 
-    pub fn reset(&mut self) {
-        todo!();
-        // let (sptr, len) = unsafe { self.multiprocess_comm.parts() };
-        // self.start = PtrWrapper(sptr as *mut u8);
-        // self.avail = len as isize;
+    pub fn prepare(&mut self) -> TranscriptWriteStateResource {
+        TranscriptWriteStateResource {
+            state: self.multiprocess_comm.prepare(),
+            pos: 0,
+        }
     }
 
-    pub fn barrier(&self) {
-        //self.multiprocess_comm.barrier()
-        todo!();
+    pub fn commit(&mut self, state: TranscriptWriteStateResource) {
+        self.multiprocess_comm.commit(state.state);
     }
 }
 
-impl Write for TranscriptWriter {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        // rust does not yet have non-nightly intrinsics
+pub struct TranscriptWriteStateResource {
+    state: PartialWriteState,
+    pos: usize,
+}
 
-        let incoming_size = buf.len();
+impl ByteSink for TranscriptWriteStateResource {
+    #[inline(always)]
+    fn put_bytes(&mut self, src: &[u8]) {
+        let Some(end) = self.pos.checked_add(src.len()) else {
+            panic!("TranscriptWriter out of bounds")
+        };
 
-        self.avail -= incoming_size as isize;
+        let slice = self.state.slice();
 
-        if self.avail <= 0 {
-            panic!("Too much data this frame!");
+        if end > slice.len() {
+            panic!("TranscriptWriter out of bounds")
         }
-
+        // Safety: we just bounds-checked
         unsafe {
-            std::ptr::copy_nonoverlapping(buf.as_ptr(), self.start.0, incoming_size);
-            self.start.0 = self.start.0.byte_add(incoming_size);
+            std::ptr::copy_nonoverlapping(
+                src.as_ptr(),
+                slice.as_mut_ptr().add(self.pos),
+                src.len(),
+            );
         }
-
-        Ok(incoming_size)
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
+        self.pos = end;
     }
 }
-
-// Wrap a pointer to bless it for multithreading
-#[derive(Debug)]
-#[repr(transparent)]
-struct PtrWrapper(*mut u8);
-
-unsafe impl Send for PtrWrapper {}
-unsafe impl Sync for PtrWrapper {}

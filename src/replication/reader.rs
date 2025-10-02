@@ -1,20 +1,9 @@
-use crate::transcript::deserialize;
 use crate::transcript::transcript_reader::TranscriptReader;
 use bevy::ecs::entity::EntityHashMap;
-use bevy::pbr::CubemapVisibleEntities;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
-use bevy::render::primitives::CubemapFrusta;
 
-use super::ReplicatedAssetID;
-use super::instruction::{
-    ComponentAdded, ComponentRemoved, DecodeInstruction, DropAsset, EndFrame, EntityAdded,
-    EntityRemoved, ReplicateAsset, decode_Instruction,
-};
-use super::writer::{
-    ComponentUpdate, DecodeAssetEnum, DecodeReplicatedComponent, ReplicatedMesh,
-    ReplicatedStandardMaterial, decode_AssetEnum, decode_ReplicatedComponent,
-};
+use super::instruction::*;
 
 // =============================================================================
 
@@ -93,48 +82,130 @@ impl<T: Asset> RemoteAssetMap<T> {
 /// transcript
 ///
 fn child_system(
-    transcript: NonSendMut<TranscriptReader>,
+    mut transcript: NonSendMut<TranscriptReader>,
     mut map: ResMut<EntityMap>,
-    commands: Commands,
+    mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut mesh_map: ResMut<RemoteAssetMap<Mesh>>,
     mut material_map: ResMut<RemoteAssetMap<StandardMaterial>>,
 ) {
     // wait for transcript to be finished
-    transcript.barrier();
+    transcript.consume_next(|_, _, slice| {
+        consume_buffer(
+            slice,
+            &mut map,
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            &mut mesh_map,
+            &mut material_map,
+        );
+    });
 
-    let mut decoder = Decoder {
-        cursor: std::io::Cursor::new(transcript.get_slice()),
-        at_end: false,
-        last_entity: Entity::PLACEHOLDER,
-        map: &mut map,
-        commands,
-        meshes: &mut meshes,
-        materials: &mut materials,
-        mesh_map: &mut mesh_map,
-        material_map: &mut material_map,
-    };
+    // let mut decoder = Decoder {
+    //     cursor: std::io::Cursor::new(transcript.get_slice()),
+    //     at_end: false,
+    //     last_entity: Entity::PLACEHOLDER,
+    //     map: &mut map,
+    //     commands,
+    //     meshes: &mut meshes,
+    //     materials: &mut materials,
+    //     mesh_map: &mut mesh_map,
+    //     material_map: &mut material_map,
+    // };
 
-    // cheese the lifetime system
-    let ptr: *mut std::io::Cursor<&[u8]> = &mut decoder.cursor;
+    // // cheese the lifetime system
+    // let ptr: *mut std::io::Cursor<&[u8]> = &mut decoder.cursor;
 
-    loop {
-        decode_Instruction(unsafe { &mut *ptr }, &mut decoder);
-        if decoder.at_end {
-            break;
-        }
-    }
+    // loop {
+    //     //decode_Instruction(unsafe { &mut *ptr }, &mut decoder);
+    //     if decoder.at_end {
+    //         break;
+    //     }
+    // }
 
-    transcript.barrier();
+    // transcript.barrier();
     // hand control back to root
 }
 
-// =============================================================================
+#[inline(always)]
+fn consume_buffer(
+    bytes: &[u8],
+    map: &mut EntityMap,
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    mesh_map: &mut RemoteAssetMap<Mesh>,
+    material_map: &mut RemoteAssetMap<StandardMaterial>,
+) {
+    use crate::serialize::*;
+    let mut bytes = ByteReader::new(bytes);
 
+    loop {
+        let instruction = unsafe { ClientInstruction::read_fast(&mut bytes) };
+
+        match instruction {
+            ClientInstruction::EAdd(entity) => {
+                let local = commands.spawn_empty();
+
+                map.0.insert(entity, local.id());
+                println!("Mapping entity {:?} {:?}", entity, local.id());
+            }
+            ClientInstruction::ERemove(entity) => {
+                let local = map.map_remove(entity);
+                commands.entity(local).despawn();
+            }
+            ClientInstruction::CAdd(item) => {
+                let local = map.map(item.entity);
+
+                item.component.add_component(local, commands);
+            }
+            ClientInstruction::CRemove(item) => {
+                let local = map.map(item.entity);
+
+                item.component.remove_component(local, commands);
+            }
+            ClientInstruction::CAsset(item) => {
+                use crate::replication::replicated_assets::AssetEnum;
+
+                match item.asset {
+                    AssetEnum::Mesh(mesh) => mesh_map.insert(meshes, mesh.id, mesh.data),
+                    AssetEnum::StandardMaterial(standard_material) => {
+                        material_map.insert(materials, standard_material.id, standard_material.data)
+                    }
+                }
+            }
+            ClientInstruction::CDropAsset(drop_asset) => {
+                use crate::replication::replicated_assets::ReplicatedAssetID;
+
+                match drop_asset.id {
+                    ReplicatedAssetID::Mesh(asset_id) => mesh_map.remove(meshes, asset_id),
+                    ReplicatedAssetID::StandardMaterial(asset_id) => {
+                        material_map.remove(materials, asset_id)
+                    }
+                };
+            }
+            ClientInstruction::HChange(item) => match item.new_parent {
+                Some(parent) => {
+                    commands.entity(parent).add_child(item.child);
+                }
+                None => {
+                    commands.entity(item.child).remove::<ChildOf>();
+                }
+            },
+            ClientInstruction::EFrame(_) => {
+                return;
+            }
+        }
+    }
+}
+
+// =============================================================================
+/*
 /// Structure to support instruction read operations
 struct Decoder<'a> {
-    cursor: std::io::Cursor<&'a [u8]>,
+    cursor: ByteReader<'a>,
     at_end: bool,
     last_entity: Entity,
 
@@ -270,3 +341,4 @@ impl<'a> DecodeAssetEnum for Decoder<'a> {
         self.material_map.insert(self.materials, item.id, mat);
     }
 }
+     */
