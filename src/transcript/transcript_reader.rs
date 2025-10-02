@@ -14,7 +14,7 @@ impl TranscriptReader {
         }
     }
 
-    pub fn consume_next<F>(&mut self, mut f: F)
+    pub fn consume_next<F>(&mut self, f: F)
     where
         F: FnMut(u64, u32, &[u8]),
     {

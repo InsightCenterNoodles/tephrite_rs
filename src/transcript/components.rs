@@ -158,3 +158,34 @@ impl_fast_raw_item!(DirectionalLight);
 //         Self::default()
 //     }
 // }
+
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::serialize::fast_io::{ByteReader, ByteWriter};
+    use crate::serialize::fast_ser::{FastRead, FastWrite};
+
+    fn roundtrip<T: FastWrite + FastRead<Ret = T>>(x: &T) -> T {
+        let mut buf = [0u8; 256];
+        let mut w = ByteWriter::new(&mut buf);
+        unsafe { x.write_fast(&mut w) };
+        let mut r = ByteReader::new(&buf);
+        unsafe { T::read_fast(&mut r) }
+    }
+
+    #[test]
+    fn transform_roundtrip_kept_fields() {
+        let t = Transform {
+            translation: Vec3::new(1.0, -2.0, 3.5),
+            rotation: Quat::from_xyzw(0.1, 0.2, 0.3, 0.9),
+            scale: Vec3::new(2.0, 0.5, -1.5),
+        };
+
+        let out = roundtrip(&t);
+        assert_eq!(out.translation, t.translation);
+        assert_eq!(out.rotation, t.rotation);
+        assert_eq!(out.scale, t.scale);
+    }
+}

@@ -315,3 +315,65 @@ impl FastRead for Mesh {
         ret
     }
 }
+
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::serialize::fast_io::{ByteReader, ByteWriter};
+    use crate::serialize::fast_ser::{FastRead, FastWrite};
+
+    fn roundtrip<T: FastWrite + FastRead<Ret = T>>(x: &T) -> T {
+        let mut buf = [0u8; 2048];
+        let mut w = ByteWriter::new(&mut buf);
+        unsafe { x.write_fast(&mut w) };
+        let mut r = ByteReader::new(&buf);
+        unsafe { T::read_fast(&mut r) }
+    }
+
+    #[test]
+    fn indices_roundtrip_u16() {
+        let idx = Indices::U16(vec![0, 1, 2, 2, 3, 0]);
+        let out = roundtrip(&idx);
+
+        match (idx, out) {
+            (Indices::U16(items), Indices::U16(items2)) => assert_eq!(items, items2),
+            _ => panic!("Mismatch"),
+        }
+    }
+
+    #[test]
+    fn indices_roundtrip_u32() {
+        let idx = Indices::U32(vec![0, 1, 2, 2, 3, 0]);
+        let out = roundtrip(&idx);
+        match (idx, out) {
+            (Indices::U32(items), Indices::U32(items2)) => assert_eq!(items, items2),
+            _ => panic!("Mismatch"),
+        }
+    }
+
+    #[test]
+    fn vertex_attribute_values_roundtrip() {
+        let v = VertexAttributeValues::Float32x3(vec![[1.0, 2.0, 3.0], [4.5, 6.25, 8.125]]);
+        let out = roundtrip(&v);
+
+        match (v, out) {
+            (VertexAttributeValues::Float32x3(x), VertexAttributeValues::Float32x3(y)) => {
+                assert_eq!(x, y)
+            }
+            _ => panic!("Mismatch"),
+        }
+    }
+
+    #[test]
+    fn mesh_vertex_attribute_id_roundtrip() {
+        let a = Mesh::ATTRIBUTE_POSITION; // known attribute
+        let mut buf = [0u8; 64];
+        let mut w = ByteWriter::new(&mut buf);
+        unsafe { a.write_fast(&mut w) };
+        let mut r = ByteReader::new(&buf);
+        let out: MeshVertexAttribute = unsafe { MeshVertexAttribute::read_fast(&mut r) };
+        assert_eq!(out.id, a.id);
+    }
+}

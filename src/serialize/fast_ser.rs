@@ -93,32 +93,32 @@ impl FastRead for String {
 
 // we have to split this up because rusts specialization is still super immature, and hacks dont work
 
-macro_rules! slow_vec {
-    ($T:ty) => {
-        impl FastWrite for [$T] {
-            #[inline(always)]
-            unsafe fn write_fast(&self, w: &mut impl ByteSink) {
-                w.put_usize(self.len());
-                for v in **self {
-                    unsafe { v.write_fast(w) };
-                }
-            }
-        }
+// macro_rules! slow_vec {
+//     ($T:ty) => {
+//         impl FastWrite for [$T] {
+//             #[inline(always)]
+//             unsafe fn write_fast(&self, w: &mut impl ByteSink) {
+//                 w.put_usize(self.len());
+//                 for v in **self {
+//                     unsafe { v.write_fast(w) };
+//                 }
+//             }
+//         }
 
-        impl FastRead for Vec<$T> {
-            type Ret = Vec<$T>;
-            #[inline(always)]
-            unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret {
-                let n = unsafe { usize::read_fast(r) };
-                let mut v = Vec::with_capacity(n);
-                for _ in 0..n {
-                    v.push(unsafe { T::read_fast(r) });
-                }
-                v
-            }
-        }
-    };
-}
+//         impl FastRead for Vec<$T> {
+//             type Ret = Vec<$T>;
+//             #[inline(always)]
+//             unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret {
+//                 let n = unsafe { usize::read_fast(r) };
+//                 let mut v = Vec::with_capacity(n);
+//                 for _ in 0..n {
+//                     v.push(unsafe { T::read_fast(r) });
+//                 }
+//                 v
+//             }
+//         }
+//     };
+// }
 
 macro_rules! fast_vec {
     ($T:ty) => {

@@ -148,3 +148,94 @@ impl_fast_raw_item!(ImageCompareFunction);
 impl_fast_raw_item!(ImageSamplerBorderColor);
 impl_fast_raw_item!(TextureViewDimension);
 impl_fast_raw_item!(TextureAspect);
+
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::serialize::fast_io::{ByteReader, ByteWriter};
+    use crate::serialize::fast_ser::{FastRead, FastWrite};
+
+    fn roundtrip<T: FastWrite + FastRead<Ret = T>>(x: &T) -> T {
+        let mut buf = [0u8; 512];
+        let mut w = ByteWriter::new(&mut buf);
+        unsafe { x.write_fast(&mut w) };
+        let mut r = ByteReader::new(&buf);
+        unsafe { T::read_fast(&mut r) }
+    }
+
+    #[test]
+    fn extent3d_roundtrip() {
+        let e = Extent3d {
+            width: 16,
+            height: 8,
+            depth_or_array_layers: 1,
+        };
+        let out = roundtrip(&e);
+        assert_eq!(out, e);
+    }
+
+    #[test]
+    fn image_sampler_default_roundtrip() {
+        let s = ImageSampler::Default;
+        let out = roundtrip(&s);
+        assert!(matches!(out, ImageSampler::Default));
+    }
+
+    #[test]
+    fn image_sampler_descriptor_roundtrip() {
+        let desc = ImageSamplerDescriptor {
+            address_mode_u: ImageAddressMode::Repeat,
+            address_mode_v: ImageAddressMode::ClampToEdge,
+            address_mode_w: ImageAddressMode::MirrorRepeat,
+            mag_filter: ImageFilterMode::Linear,
+            min_filter: ImageFilterMode::Nearest,
+            mipmap_filter: ImageFilterMode::Nearest,
+            lod_min_clamp: 0.0,
+            lod_max_clamp: 1.0,
+            compare: Some(ImageCompareFunction::LessEqual),
+            anisotropy_clamp: 1,
+            border_color: Some(ImageSamplerBorderColor::TransparentBlack),
+            label: None,
+        };
+        let s = ImageSampler::Descriptor(desc);
+        let out = roundtrip(&s);
+        match out {
+            ImageSampler::Descriptor(d) => {
+                matches!(d.address_mode_u, ImageAddressMode::Repeat);
+                matches!(d.address_mode_v, ImageAddressMode::ClampToEdge);
+                matches!(d.address_mode_w, ImageAddressMode::MirrorRepeat);
+                matches!(d.mag_filter, ImageFilterMode::Linear);
+                matches!(d.min_filter, ImageFilterMode::Nearest);
+                matches!(d.mipmap_filter, ImageFilterMode::Nearest);
+                matches!(d.compare, Some(ImageCompareFunction::LessEqual));
+                matches!(d.anisotropy_clamp, 1);
+            }
+            _ => panic!("unexpected variant"),
+        }
+    }
+
+    #[test]
+    fn texture_view_descriptor_roundtrip() {
+        let d = TextureViewDescriptor {
+            format: Some(TextureFormat::Rgba8Unorm),
+            dimension: Some(TextureViewDimension::D2),
+            aspect: TextureAspect::All,
+            base_mip_level: 0,
+            mip_level_count: None,
+            base_array_layer: 0,
+            array_layer_count: None,
+            label: None,
+            usage: None,
+        };
+        let out = roundtrip(&d);
+        assert_eq!(out.format, d.format);
+        assert_eq!(out.dimension, d.dimension);
+        assert_eq!(out.aspect, d.aspect);
+        assert_eq!(out.base_mip_level, d.base_mip_level);
+        assert_eq!(out.mip_level_count, d.mip_level_count);
+        assert_eq!(out.base_array_layer, d.base_array_layer);
+        assert_eq!(out.array_layer_count, d.array_layer_count);
+    }
+}

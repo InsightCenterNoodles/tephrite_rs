@@ -60,3 +60,48 @@ impl_fast_raw_item!(Face);
 impl_fast_raw_item!(AlphaMode);
 impl_fast_raw_item!(ParallaxMappingMethod);
 impl_fast_raw_item!(OpaqueRendererMethod);
+
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::serialize::fast_io::{ByteReader, ByteWriter};
+    use crate::serialize::fast_ser::{FastRead, FastWrite};
+
+    fn roundtrip<T: FastWrite + FastRead<Ret = T>>(x: &T) -> T {
+        let mut buf = [0u8; 1024];
+        let mut w = ByteWriter::new(&mut buf);
+        unsafe { x.write_fast(&mut w) };
+        let mut r = ByteReader::new(&buf);
+        unsafe { T::read_fast(&mut r) }
+    }
+
+    #[test]
+    fn standard_material_core_fields_roundtrip() {
+        let mut m = StandardMaterial::default();
+        m.base_color = Color::srgba(0.1, 0.2, 0.3, 0.4);
+        m.perceptual_roughness = 0.75;
+        m.metallic = 0.25;
+        m.reflectance = 0.3;
+        m.flip_normal_map_y = true;
+        m.double_sided = true;
+        m.cull_mode = Some(Face::Back);
+        m.unlit = true;
+        m.fog_enabled = false;
+        m.alpha_mode = AlphaMode::Mask(0.5);
+
+        let out = roundtrip(&m);
+
+        assert_eq!(out.base_color, m.base_color);
+        assert_eq!(out.perceptual_roughness, m.perceptual_roughness);
+        assert_eq!(out.metallic, m.metallic);
+        assert_eq!(out.reflectance, m.reflectance);
+        assert_eq!(out.flip_normal_map_y, m.flip_normal_map_y);
+        assert_eq!(out.double_sided, m.double_sided);
+        assert_eq!(out.cull_mode, m.cull_mode);
+        assert_eq!(out.unlit, m.unlit);
+        assert_eq!(out.fog_enabled, m.fog_enabled);
+        assert_eq!(out.alpha_mode, m.alpha_mode);
+    }
+}

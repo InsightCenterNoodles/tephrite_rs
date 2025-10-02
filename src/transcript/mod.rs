@@ -9,5 +9,4 @@ pub mod mesh;
 pub(crate) mod transcript_reader;
 pub(crate) mod transcript_writer;
 
-pub(crate) use transcript_reader::*;
 pub(crate) use transcript_writer::*;
