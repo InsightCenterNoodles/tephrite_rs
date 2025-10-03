@@ -25,7 +25,7 @@ impl SharedMemory {
     /// Create a new multiprocess state. This should only be called by the root process.
     /// Note that the key here MUST start with a '/' AND must be less than 31 chars due to mac restrictions
     pub fn create(key: &str, size: usize) -> Result<Self> {
-        println!("Creating Communicator {}", unsafe { getpid() });
+        //println!("Creating Communicator {}", unsafe { getpid() });
 
         if !key.starts_with('/') || key[1..].contains('/') {
             return Err(std::io::Error::new(
@@ -172,7 +172,7 @@ const OPEN_MODES: c_uint = (S_IRUSR | S_IWUSR) as c_uint;
 /// Opens an existing shared memory region, and returns a handle
 fn open_shmem_handle(key: &CStr) -> Result<i32> {
     let handle = unsafe {
-        println!("SHM NAME (child): {key:?}");
+        //println!("SHM NAME (child): {key:?}");
         shm_open(key.as_ptr(), O_RDWR | O_CREAT | O_CLOEXEC, OPEN_MODES)
     };
 
@@ -200,7 +200,7 @@ fn truncate_handle(handle: i32, size: usize) -> Result<()> {
 /// with the given key. Watch out!
 fn create_shmem_handle(key: &CStr) -> Result<i32> {
     let handle = unsafe {
-        println!("SHM NAME (parent): {key:?}");
+        //println!("SHM NAME (parent): {key:?}");
 
         shm_unlink(key.as_ptr());
 

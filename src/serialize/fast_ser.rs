@@ -441,6 +441,7 @@ mod macros {
             }
         ) => {
 
+            #[derive(Debug)]
             pub(crate) enum $name $(<$lifetime>)? {
                 $(
                     $var_name ( $var_type ),
@@ -492,6 +493,7 @@ mod macros {
             }
         ) => {
 
+            #[derive(Debug)]
             pub(crate) enum $name $(<$lifetime>)? {
                 $(
                     $var_name ( $var_type ),
@@ -527,6 +529,7 @@ mod macros {
             }
         ) => {
 
+            #[derive(Debug)]
             pub(crate) enum $name {
                 $(
                     $var_name,

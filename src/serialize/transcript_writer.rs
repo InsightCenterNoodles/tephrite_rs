@@ -46,6 +46,7 @@ pub struct TranscriptWriteStateResource {
 impl ByteSink for TranscriptWriteStateResource {
     #[inline(always)]
     fn put_bytes(&mut self, src: &[u8]) {
+        //println!("PUT BYTES pos: {}, {}", self.pos, src.len());
         let Some(end) = self.pos.checked_add(src.len()) else {
             panic!("TranscriptWriter out of bounds")
         };
@@ -64,5 +65,6 @@ impl ByteSink for TranscriptWriteStateResource {
             );
         }
         self.pos = end;
+        //println!("PUT BYTES DONE {}", self.pos);
     }
 }

@@ -3,7 +3,7 @@ pub(crate) mod backfill_link;
 pub(crate) mod common;
 pub(crate) mod config;
 pub mod multiprocess;
-pub(crate) mod replication;
+pub mod replication;
 pub(crate) mod serialize;
 pub(crate) mod vrpn;
 

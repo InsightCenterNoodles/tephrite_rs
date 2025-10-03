@@ -158,7 +158,7 @@ mod unix_only {
         let mut cons = Consumer::new(key, id).unwrap();
         let mut seen = 0u64;
 
-        while seen < expect_frames - 1 {
+        while seen < expect_frames {
             cons.consume_next(|gen_id, slot, slice| {
                 // validate content
                 verify_frame_pattern(slice, buf_size, gen_id, slot);

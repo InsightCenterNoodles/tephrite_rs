@@ -21,7 +21,7 @@ macro_rules! detect_component_changes_impl {
         $app.add_systems(Last,
             (| query: Query<(Entity, &Replicated, & $T), Changed<$T>>, mut writer: NonSendMut<TranscriptWriteStateResource>| {
                 for (e, _, component) in query.iter() {
-                    //println!("CHANGED {e:?} {component:?}");
+                    println!("CHANGED {e:?} {component:?}");
                     let dest: &mut TranscriptWriteStateResource = &mut writer;
                     let component: & $T = component;
 

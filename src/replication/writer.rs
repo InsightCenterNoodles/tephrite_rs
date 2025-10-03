@@ -7,6 +7,23 @@ use super::instruction::*;
 
 // ============================================================================
 
+fn implicit_replication_check(
+    query: Query<
+        Entity,
+        (
+            Added<Mesh3d>,
+            Added<MeshMaterial3d<StandardMaterial>>,
+            Without<Replicated>,
+        ),
+    >,
+    mut commands: Commands,
+) {
+    for e in query.iter() {
+        println!("Adding replication to meshmat {e:?}");
+        commands.entity(e).insert(Replicated);
+    }
+}
+
 /// Check for any added replicated entities. We use a marker to see who we should replicate
 fn added_rep_check(
     query: Query<Entity, Added<Replicated>>,
@@ -40,6 +57,12 @@ impl ReplicationWriterPlugin {
     pub fn new(children_count: u32) -> Self {
         Self { children_count }
     }
+
+    // pub fn check(app: &mut App) {
+    //     app.world()
+    //         .get_non_send_resource::<TranscriptWriteStateResource>()
+    //         .unwrap();
+    // }
 }
 
 impl Plugin for ReplicationWriterPlugin {
@@ -47,12 +70,9 @@ impl Plugin for ReplicationWriterPlugin {
         use super::replicated_components::*;
         use super::sets::*;
 
-        let mut transcript = TranscriptWriterResource::new(self.children_count);
-
-        let session = transcript.prepare();
+        let transcript = TranscriptWriterResource::new(self.children_count);
 
         app.insert_non_send_resource(transcript);
-        app.insert_non_send_resource(session);
 
         // we want
         // - all asset deltas
@@ -62,11 +82,30 @@ impl Plugin for ReplicationWriterPlugin {
         // - all removes
         // - do sync
 
+        app.configure_sets(
+            Last,
+            (
+                EntityStartDeltaPhase, // slight changes here otherwise events get lost?
+                AssetDeltaPhase,
+                ComponentDeltaPhase,
+                EntityEndDeltaPhase,
+                FinalSyncPhase,
+            )
+                .chain(),
+        );
+
         crate::replication::replicated_assets::setup_replicated_asset_systems(app);
 
         setup_replicated_systems(app);
 
-        app.add_systems(Last, added_rep_check.in_set(EntityStartDeltaPhase));
+        app.add_systems(Startup, setup_shmem);
+
+        app.add_systems(
+            Last,
+            (implicit_replication_check, added_rep_check)
+                .chain()
+                .in_set(EntityStartDeltaPhase),
+        );
         app.add_systems(
             Last,
             (hierarchy_change_listener, hierarchy_remove_listener)
@@ -81,17 +120,7 @@ impl Plugin for ReplicationWriterPlugin {
         //app.configure_sets(Last, ResourceSyncSet.before(ComponentDeltaPhase));
         //app.configure_sets(Last, AssetDeltaPhase.before(ResourceSyncSet));
 
-        app.configure_sets(
-            Last,
-            (
-                EntityStartDeltaPhase, // slight changes here otherwise events get lost?
-                AssetDeltaPhase,
-                ComponentDeltaPhase,
-                EntityEndDeltaPhase,
-                FinalSyncPhase,
-            )
-                .chain(),
-        );
+        //println!("Setup writer {}", std::process::id());
     }
 }
 
@@ -137,26 +166,41 @@ fn hierarchy_remove_listener(
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 struct FinalSyncPhase;
 
+fn setup_shmem(world: &mut World) {
+    let mut transcript = world.non_send_resource_mut::<TranscriptWriterResource>();
+
+    let session = transcript.prepare();
+
+    world.insert_non_send_resource(session);
+}
+
 /// Core replication system. Handles obtaining a fresh transcript
 fn root_system(world: &mut World) {
+    //println!("PRODUCER END FRAME");
     let state = {
         let mut dest = world
             .remove_non_send_resource::<TranscriptWriteStateResource>()
             .unwrap();
 
-        let odest: &mut TranscriptWriteStateResource = &mut dest;
-
         // finish transcript
-        unsafe { ServerInstruction::EFrame(EndFrame).write_fast(odest) };
+        unsafe { ServerInstruction::EFrame(EndFrame).write_fast(&mut dest) };
 
         dest
     };
 
     // Commit all changes
-    if let Some(mut core) = world.get_non_send_resource_mut::<TranscriptWriterResource>() {
-        core.commit(state);
 
-        // now get the next state
-        core.prepare();
+    if let Some(n) = world
+        .get_non_send_resource_mut::<TranscriptWriterResource>()
+        .map(|mut core| {
+            core.commit(state);
+
+            // now get the next state
+            core.prepare()
+        })
+    {
+        world.insert_non_send_resource(n);
     }
+
+    //println!("PRODUCER END FRAME COMPLETE");
 }

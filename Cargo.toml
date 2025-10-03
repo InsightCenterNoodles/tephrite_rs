@@ -40,3 +40,7 @@ harness = false
 [[test]]
 name = "shared_buffer"
 harness = false
+
+[[test]]
+name = "replication_integration"
+harness = false

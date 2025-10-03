@@ -12,7 +12,8 @@ use crate::serialize::*;
 // MARK: Server side
 
 /// An instruction where a component has been added to an entity.
-pub struct ServerComponentAdded<'a> {
+#[derive(Debug)]
+pub(crate) struct ServerComponentAdded<'a> {
     pub entity: Entity,
     pub component: ReplicatedComponentRef<'a>,
 }
@@ -27,7 +28,8 @@ impl<'a> FastWrite for ServerComponentAdded<'a> {
 }
 
 /// An instruction that a component should be removed.
-pub struct ServerComponentRemoved {
+#[derive(Debug)]
+pub(crate) struct ServerComponentRemoved {
     pub entity: Entity,
     pub component: ReplicatedComponentID,
 }
@@ -42,7 +44,8 @@ impl FastWrite for ServerComponentRemoved {
 }
 
 /// An instruction to replicate an asset.
-pub struct ServerReplicateAsset<'a> {
+#[derive(Debug)]
+pub(crate) struct ServerReplicateAsset<'a> {
     pub asset: AssetEnumRef<'a>,
 }
 
@@ -56,7 +59,8 @@ impl_fast_serialize_write_only!(ServerReplicateAsset<'a>,
 );
 
 /// An instruction to remove an asset
-pub struct DropAsset {
+#[derive(Debug)]
+pub(crate) struct DropAsset {
     pub id: ReplicatedAssetID,
 }
 
@@ -73,7 +77,7 @@ impl_fast_serialize!(DropAsset,
 /// This is a special instruction as the components under the hood are protected
 /// and we can support deltas better this way
 #[derive(Debug)]
-pub struct HierarchyChange {
+pub(crate) struct HierarchyChange {
     pub new_parent: Option<Entity>,
     pub child: Entity,
 }
@@ -132,7 +136,8 @@ impl FastRead for Entity {
 // MARK: Client side
 
 /// An instruction where a component has been added to an entity.
-pub struct ClientComponentAdded {
+#[derive(Debug)]
+pub(crate) struct ClientComponentAdded {
     pub entity: Entity,
     pub component: ReplicatedComponent,
 }
@@ -147,7 +152,8 @@ impl_fast_serialize!(ClientComponentAdded,
 );
 
 /// An instruction that a component should be removed.
-pub struct ClientComponentRemoved {
+#[derive(Debug)]
+pub(crate) struct ClientComponentRemoved {
     pub entity: Entity,
     pub component: ReplicatedComponentID,
 }
@@ -162,7 +168,8 @@ impl_fast_serialize!(ClientComponentRemoved,
 );
 
 /// An instruction to replicate an asset.
-pub struct ClientReplicateAsset {
+#[derive(Debug)]
+pub(crate) struct ClientReplicateAsset {
     pub asset: AssetEnum,
 }
 

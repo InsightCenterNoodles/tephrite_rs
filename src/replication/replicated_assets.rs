@@ -15,7 +15,7 @@ macro_rules! make_change_detection {
               mut writer: NonSendMut<TranscriptWriteStateResource>| {
                 //println!("Checking for deltas to {}", stringify!($A));
                 for e in ev_asset.read() {
-                    //println!("EVENT {e:?}");
+                    println!("EVENT {e:?}");
                     match e {
                         AssetEvent::Added { id } => {
                             let asset = assets.get(*id).expect("obtaining new asset");
@@ -59,6 +59,7 @@ macro_rules! make_change_detection {
     };
 }
 
+#[derive(Debug)]
 pub(crate) struct ReplicatedAsset<T: Asset> {
     pub(crate) id: AssetId<T>,
     pub(crate) data: T,
@@ -84,6 +85,7 @@ impl<T: Asset + FastRead<Ret = T>> FastRead for ReplicatedAsset<T> {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct ReplicatedAssetRef<'a, T: Asset> {
     pub(crate) id: AssetId<T>,
     pub(crate) data: &'a T,

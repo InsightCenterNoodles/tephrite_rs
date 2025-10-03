@@ -13,7 +13,7 @@ pub struct ReplicationReaderPlugin;
 
 impl Plugin for ReplicationReaderPlugin {
     fn build(&self, app: &mut App) {
-        println!("Building reader...");
+        //println!("Building reader...");
         let transcript = TranscriptReaderResource::new();
 
         app.insert_non_send_resource(transcript);
@@ -121,12 +121,14 @@ fn consume_buffer(
     loop {
         let instruction = unsafe { ClientInstruction::read_fast(&mut bytes) };
 
+        //println!("CHILD: {instruction:?}");
+
         match instruction {
             ClientInstruction::EAdd(entity) => {
                 let local = commands.spawn_empty();
 
                 map.0.insert(entity, local.id());
-                println!("Mapping entity {:?} {:?}", entity, local.id());
+                //println!("Mapping entity {:?} {:?}", entity, local.id());
             }
             ClientInstruction::ERemove(entity) => {
                 let local = map.map_remove(entity);

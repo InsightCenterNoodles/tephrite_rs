@@ -6,7 +6,7 @@
 use core::mem::size_of;
 use core::sync::atomic::{
     AtomicU32, AtomicU64,
-    Ordering::{Acquire, Relaxed, Release},
+    Ordering::{AcqRel, Acquire, Relaxed, Release},
 };
 use std::io::Result;
 use std::time::Duration;
@@ -42,9 +42,12 @@ struct Padded64(AtomicU64);
 struct ControlBlock {
     magic: AtomicU64,   // sanity check
     buf_count: u32,     // N buffers (>= 2, ideally 3+)
-    buf_size: u32,      // bytes per buffer
+    buf_size: u64,      // bytes per buffer
     num_consumers: u32, // <= MAX_CONSUMERS
-    _pad0: u32,
+
+    // Rendezvous
+    ready_count: AtomicU32, // number of consumers that joined
+    started: AtomicU32,     // 0 = not started, 1 = started
 
     // Publication side:
     publish_gen: AtomicU64, // monotonically increasing frame number (starts at 0)
@@ -104,6 +107,7 @@ pub fn buffer_ptr(data_base: *mut u8, buf_size: usize, idx: u32) -> *mut u8 {
 pub struct Producer {
     #[allow(unused)]
     shared: SharedMemory, // keep a reference to shared memory alive
+    cached_ready: bool,
     cb: *mut ControlBlock,
     pub data_base: *mut u8,
     buf_size: usize,
@@ -117,6 +121,7 @@ impl Producer {
         buffer_size: usize,
         num_consumers: usize,
     ) -> Result<Self> {
+        println!("Creating new producer: {key} {num_buffers} {buffer_size} {num_consumers}");
         if num_buffers < 2 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -148,7 +153,6 @@ impl Producer {
             )
         };
 
-        cb.magic.store(MAGIC, Release);
         cb.buf_count = num_buffers.try_into().unwrap();
         cb.buf_size = buffer_size.try_into().unwrap();
         cb.num_consumers = num_consumers.try_into().unwrap();
@@ -159,11 +163,14 @@ impl Producer {
             cb.consumer_gen[i].0.store(0, Relaxed);
         }
 
+        cb.magic.store(MAGIC, Release);
+
         let data_ptr = unsafe { (pointer_base as *mut u8).byte_add(SHMEM_DATA_OFFSET) };
 
         Ok(Self {
             shared: shmem,
             cb,
+            cached_ready: false,
             data_base: data_ptr,
             buf_size: cb.buf_size as usize,
             last_published: cb.publish_gen.load(Relaxed),
@@ -178,6 +185,26 @@ impl Producer {
     #[inline]
     fn control_block_mut(&mut self) -> &mut ControlBlock {
         return unsafe { &mut *self.cb };
+    }
+
+    fn wait_until_ready(&mut self) {
+        if self.cached_ready {
+            return;
+        }
+        //println!("PRODUCER WAITING");
+        let need = self.control_block().num_consumers;
+        let mut spins = 0;
+        loop {
+            if self.control_block().ready_count.load(Acquire) == need {
+                break;
+            }
+            adaptive_pause(&mut spins);
+        }
+
+        self.control_block_mut().started.store(1, Release);
+        self.cached_ready = true;
+
+        //println!("PRODUCER READY");
     }
 
     /// Choose a reusable buffer slot by tracking which generations are safe to reclaim.
@@ -200,6 +227,10 @@ impl Producer {
         let slot = self.choose_slot_rr(gen_next);
         let ptr = buffer_ptr(self.data_base, self.buf_size, slot);
 
+        self.wait_until_ready();
+
+        //println!("PUBLISH {gen_next} {slot} {ptr:?}");
+
         // 1) Producer has exclusive write: fill buffer content.
         let buf = unsafe { core::slice::from_raw_parts_mut(ptr, self.buf_size) };
         write_fn(gen_next, slot, buf);
@@ -213,6 +244,8 @@ impl Producer {
         // 3) Strict lockstep: wait for all consumers to ack this generation.
         wait_until_min_acked(self.control_block(), gen_next);
 
+        //println!("COMMIT");
+
         self.last_published = gen_next;
         (gen_next, slot)
     }
@@ -222,6 +255,10 @@ impl Producer {
         let gen_next = self.last_published + 1;
         let slot = self.choose_slot_rr(gen_next);
         let ptr = buffer_ptr(self.data_base, self.buf_size, slot);
+
+        self.wait_until_ready();
+
+        //println!("PREPARE {gen_next} {slot} {ptr:?}");
 
         // 1) Producer has exclusive write: fill buffer content.
         PartialWriteState {
@@ -243,6 +280,8 @@ impl Producer {
 
         // 3) Strict lockstep: wait for all consumers to ack this generation.
         wait_until_min_acked(self.control_block(), state.gen_next);
+
+        //println!("COMMIT");
 
         self.last_published = state.gen_next;
         (state.gen_next, state.slot)
@@ -285,12 +324,44 @@ impl Consumer {
             std::hint::spin_loop();
         }
 
+        //println!("CLIENT CB IS READY");
+
         let data_ptr = unsafe { (pointer_base as *mut u8).byte_add(SHMEM_DATA_OFFSET) };
+
+        // Hard-forbid late attach: increment, then check gate; rollback if closed.
+        // This closes the race where the producer flips 'started' between our check and increment.
+        {
+            if cb.started.load(Acquire) != 0 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "late attach not allowed: producer already started",
+                ));
+            }
+            cb.ready_count.fetch_add(1, AcqRel);
+
+            if cb.started.load(Acquire) != 0 {
+                // Gate closed while we were joining; undo and error out.
+                cb.ready_count.fetch_sub(1, AcqRel);
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "late attach not allowed: producer already started",
+                ));
+            }
+        }
+
+        //println!("CONSUMER SIGNALLED");
+
+        // Wait for the producer to actually start
+        while cb.started.load(Acquire) == 0 {
+            std::hint::spin_loop();
+        }
 
         assert!(consumer_id < cb.num_consumers as usize);
         let last = cb.publish_gen.load(Relaxed); // join at current frontier
         // ack "gen 0" initially, or last if you want immediate alignment
         cb.consumer_gen[consumer_id].0.store(last, Relaxed);
+
+        //println!("CONSUMER READY");
 
         Ok(Self {
             shared: shmem,
@@ -318,6 +389,8 @@ impl Consumer {
         F: FnMut(u64, u32, &[u8]),
     {
         let (gen_id, slot, ptr) = self.wait_for_next();
+
+        //println!("CHILD WAIT {gen_id} {slot} {ptr:?}");
 
         let buf_size = self.control_block().buf_size as usize;
 
