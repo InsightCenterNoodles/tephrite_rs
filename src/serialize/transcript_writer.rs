@@ -1,3 +1,8 @@
+//! Writer side for binary transcripts over the shared memory ring buffer.
+//!
+//! The writer prepares a frame buffer, encodes messages via the `ByteSink`
+//! implementation on `TranscriptWriteStateResource`, and then commits the
+//! frame atomically for readers to consume.
 use crate::{
     multiprocess::{
         self,
@@ -6,11 +11,13 @@ use crate::{
     serialize::ByteSink,
 };
 
+/// Resource that creates and commits serialized frames into shared memory.
 pub struct TranscriptWriterResource {
     multiprocess_comm: Producer,
 }
 
 impl TranscriptWriterResource {
+    /// Create a writer with `child_count` expected consumers.
     pub fn new(child_count: u32) -> Self {
         // let state = MPCommunicator::create(process_count);
 
@@ -26,6 +33,7 @@ impl TranscriptWriterResource {
         }
     }
 
+    /// Start a new frame and obtain a writer for it.
     pub fn prepare(&mut self) -> TranscriptWriteStateResource {
         TranscriptWriteStateResource {
             state: self.multiprocess_comm.prepare(),
@@ -33,11 +41,13 @@ impl TranscriptWriterResource {
         }
     }
 
+    /// Commit a previously prepared frame; it becomes visible to readers.
     pub fn commit(&mut self, state: TranscriptWriteStateResource) {
         self.multiprocess_comm.commit(state.state);
     }
 }
 
+/// ByteSink over a shared memory frame under construction.
 pub struct TranscriptWriteStateResource {
     state: PartialWriteState,
     pos: usize,

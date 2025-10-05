@@ -1,9 +1,17 @@
+//! Serialization for `bevy::render::mesh::Mesh` and related types.
+//!
+//! - `Indices` and `VertexAttributeValues` use compact tagged encodings.
+//! - Only a fixed set of well-known vertex attributes are supported when
+//!   decoding; others will cause a panic. This matches the needs of the
+//!   replication pipeline and avoids string lookups.
+//! - Morph targets are not yet supported.
 use bevy::render::mesh::{Indices, MeshVertexAttribute, PrimitiveTopology, VertexAttributeValues};
 use bevy::render::render_asset::RenderAssetUsages;
 use bevy::{prelude::*, render::mesh::MeshVertexAttributeId};
 
 use crate::serialize::*;
 
+/// Compact encoding for index buffers: tag + raw vector.
 impl FastWrite for Indices {
     unsafe fn write_fast(&self, w: &mut impl ByteSink) {
         match self {
@@ -36,7 +44,7 @@ impl FastRead for Indices {
 impl_fast_raw_item!(MeshVertexAttributeId);
 
 // =============================================================================
-// ugh
+// Encode `VertexAttributeValues` by variant tag then vector payload.
 impl FastWrite for VertexAttributeValues {
     unsafe fn write_fast(&self, w: &mut impl ByteSink) {
         match self {
@@ -251,6 +259,7 @@ impl FastRead for MeshVertexAttribute {
 
 // =============================================================================
 
+/// Serialize core mesh state: topology, usage, attributes, and optional indices.
 impl FastWrite for Mesh {
     unsafe fn write_fast(&self, w: &mut impl ByteSink) {
         unsafe {
@@ -282,6 +291,9 @@ impl FastRead for Mesh {
 
         let attrib_count = unsafe { u8::read_fast(r) };
 
+        // Only a subset of attributes is supported by this decoder. The
+        // indices into this table must match `MeshVertexAttributeId` values
+        // for these attributes.
         const ATTRIB_LOOKUP: [MeshVertexAttribute; 8] = [
             Mesh::ATTRIBUTE_POSITION,
             Mesh::ATTRIBUTE_NORMAL,

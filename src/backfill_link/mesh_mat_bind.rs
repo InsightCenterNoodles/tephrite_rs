@@ -72,7 +72,7 @@ fn watch_material_change(
 
                 debug!("Added new material {id}");
             }
-            AssetEvent::Modified { id } => {
+            AssetEvent::Modified { .. } => {
                 debug!("WE DONT HANDLE THIS YET");
             }
             AssetEvent::Removed { id } => {
@@ -269,12 +269,12 @@ fn on_bentity_added_attach_binding_if_renderable(
     session: NonSend<Session>,
 ) {
     for (entity, bentity, existing_binding, mesh_opt, mat_opt) in &q {
-        if let Some((mesh_h, mat_h)) = is_renderable(mesh_opt, mat_opt) {
-            if existing_binding.is_none() {
-                debug!("Add new bindings");
-                let new_binding = build_binding_for(bentity, mesh_h, mat_h, &mut cache, &session);
-                commands.entity(entity).insert(new_binding);
-            }
+        if let Some((mesh_h, mat_h)) = is_renderable(mesh_opt, mat_opt)
+            && existing_binding.is_none()
+        {
+            debug!("Add new bindings");
+            let new_binding = build_binding_for(bentity, mesh_h, mat_h, &mut cache, &session);
+            commands.entity(entity).insert(new_binding);
         }
     }
 }

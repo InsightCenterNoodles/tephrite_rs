@@ -1,3 +1,8 @@
+//! Serialization for `bevy::image::Image` and related GPU descriptors.
+//!
+//! Skips fields that are compile-time or label-only metadata (e.g. `label`,
+//! `view_formats`) and focuses on the data and descriptor fields required to
+//! faithfully recreate images on the receiving side.
 use bevy::prelude::*;
 use bevy::{
     image::{
@@ -12,6 +17,7 @@ use wgpu_types::{
 
 use crate::serialize::*;
 
+// `Image` is serialized as raw pixel data plus the essential descriptors.
 impl_fast_serialize!(Image, keep: {
     data, texture_descriptor, sampler, texture_view_descriptor, asset_usage
 }, skip: {
@@ -21,6 +27,7 @@ impl_fast_serialize!(Image, keep: {
 
 type TD<'a> = wgpu_types::TextureDescriptor<Option<&'a str>, &'a [TextureFormat]>;
 
+// `TextureDescriptor` skips `label` and `view_formats`.
 impl_fast_serialize!(TD<'a>,
 lifetime: 'a,
 keep: {
@@ -75,6 +82,7 @@ impl_fast_raw_item!(TextureUsages);
 
 // =============================================================================
 
+/// Compact tag-based encoding for `ImageSampler` variants.
 impl FastWrite for ImageSampler {
     unsafe fn write_fast(&self, w: &mut impl ByteSink) {
         match self {
@@ -102,6 +110,8 @@ impl FastRead for ImageSampler {
 
 // =============================================================================
 
+// Serialize `ImageSamplerDescriptor` fully; all fields are needed to restore
+// sampler state.
 impl_fast_serialize!(
     ImageSamplerDescriptor,
     keep: {
@@ -124,6 +134,7 @@ impl_fast_serialize!(
 
 // =============================================================================
 
+// Keep only fields used for view configuration; skip labels/usages.
 impl_fast_serialize!(
     TextureViewDescriptor<'static>,
     keep: {

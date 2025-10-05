@@ -1,3 +1,8 @@
+//! Fast serialization adapters for glam/Bevy math types.
+//!
+//! These types are plain-old-data in memory (for Bevy/glam’s current layouts),
+//! so the serializers use raw byte copies for speed. Tests include layout guard
+//! checks to flag upstream changes early.
 use bevy::math::{Affine2, Mat2, Mat3, Vec2};
 use bevy::math::{Affine3A, Mat3A, Quat, Vec3, Vec3A};
 

@@ -163,7 +163,7 @@ fn consume_buffer(
             ClientInstruction::CAsset(item) => {
                 use crate::replication::replicated_assets::AssetEnum;
 
-                match item.asset {
+                match *item.asset {
                     AssetEnum::Mesh(mesh) => mesh_map.insert(meshes, mesh.id, mesh.data),
                     AssetEnum::StandardMaterial(standard_material) => {
                         material_map.insert(materials, standard_material.id, standard_material.data)

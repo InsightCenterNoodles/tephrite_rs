@@ -1,3 +1,17 @@
+//! Low-level in-memory I/O primitives used by the fast serializer.
+//!
+//! This module defines two traits:
+//! - `ByteSink`: append-only byte writer with helpers to encode primitives,
+//!   strings, and POD types using native endianness.
+//! - `ByteSource`: cursor-based reader that decodes the same primitives.
+//!
+//! Two concrete types implement these traits over fixed slices:
+//! - `ByteWriter<'a>` for `&'a mut [u8]`
+//! - `ByteReader<'a>` for `&'a [u8]`
+//!
+//! Bounds violations cause a panic; callers should pre-size buffers according
+//! to expected payload sizes. The format is intended for in-process and
+//! local multi-process usage where both ends share the same CPU endianness.
 use bytemuck::{Pod, Zeroable};
 use core::{fmt, mem, ptr};
 
@@ -9,6 +23,11 @@ fn oob() -> ! {
 
 // MARK: Traits
 
+/// Append-only sink for bytes using native-endian POD encoding.
+///
+/// Higher-level helpers (e.g. `put_pod_slice`, `put_str`) first write a length
+/// prefix (`usize`), then raw bytes. All methods advance an internal position.
+/// Implementations must panic on out-of-bounds writes.
 pub trait ByteSink {
     /// Core write implementation
     fn put_bytes(&mut self, src: &[u8]);
@@ -89,6 +108,7 @@ pub trait ByteSink {
         self.put_u8(v as u8);
     }
 
+    /// Write a UTF-8 string as `usize` length + bytes.
     #[inline(always)]
     fn put_str(&mut self, s: &str) {
         self.put_usize(s.len());
@@ -96,6 +116,12 @@ pub trait ByteSink {
     }
 }
 
+/// Cursor-based byte source corresponding to `ByteSink`.
+///
+/// Provides native-endian POD reads and convenience helpers to read
+/// length-prefixed POD slices and UTF-8 strings. Implementations must panic on
+/// out-of-bounds reads. `get_string` assumes the input is valid UTF-8 and may
+/// use unchecked conversion.
 pub trait ByteSource<'a> {
     fn take_bytes(&mut self, n: usize) -> &'a [u8];
 
@@ -192,11 +218,17 @@ pub trait ByteSource<'a> {
 
 // MARK: Byte Writer
 
-/// Write raw bytes and primitives to a slice
+/// Write raw bytes and primitives to a mutable slice.
+///
+/// Maintains an internal cursor position, exposes helpers to query
+/// `position()` and `remaining()`. All write overruns panic.
+#[allow(unused)]
 pub struct ByteWriter<'a> {
     buf: &'a mut [u8],
     pos: usize,
 }
+
+#[allow(unused)]
 impl<'a> ByteWriter<'a> {
     #[inline(always)]
     pub fn new(buf: &'a mut [u8]) -> Self {
@@ -248,11 +280,17 @@ impl fmt::Debug for ByteWriter<'_> {
 
 // MARK: Byte Reader
 
-/// Read raw bytes and primitives from a slice
+/// Read raw bytes and primitives from an immutable slice.
+///
+/// Maintains an internal cursor position, exposes helpers to query
+/// `position()` and `remaining()`. All read overruns panic.
+#[allow(unused)]
 pub struct ByteReader<'a> {
     buf: &'a [u8],
     pos: usize,
 }
+
+#[allow(unused)]
 impl<'a> ByteReader<'a> {
     #[inline(always)]
     pub fn new(buf: &'a [u8]) -> Self {

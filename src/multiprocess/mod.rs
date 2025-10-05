@@ -49,7 +49,7 @@ pub struct SessionID(String);
 
 impl SessionID {
     pub fn as_str(&self) -> &str {
-        return &self.0;
+        &self.0
     }
 }
 

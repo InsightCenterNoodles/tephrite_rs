@@ -1,8 +1,28 @@
+//! Fast, allocation-free serialization traits and helpers.
+//!
+//! The core of this module is two traits:
+//! - `FastWrite`: encode a value to a `ByteSink`.
+//! - `FastRead`: decode a value from a `ByteSource`.
+//!
+//! The design favors performance over generality and uses `unsafe` in hot
+//! paths. Implementations must be symmetric: values produced by `write_fast`
+//! must be consumable by the corresponding `read_fast`. Many encoders are
+//! defined for Bevy types and common Rust primitives.
+//!
+//! Safety and invariants
+//! - Most methods are `unsafe` because misuse can cause UB or logic errors
+//!   (e.g., reading with the wrong type, violating POD assumptions).
+//! - POD-based encodings use native endianness and raw memcpy of in-memory
+//!   layouts; both ends must be compatible.
+//! - Length-prefixed collections use `usize` for counts.
 use super::fast_io::*;
 
 pub trait FastWrite {
-    /// # Safety
-    /// Must write a valid encoding and advance the writer exactly by the number of bytes written.
+    /// Encode `self` into `w`.
+    ///
+    /// Safety
+    /// - Must write a valid encoding for the corresponding `FastRead` impl.
+    /// - Must advance the writer exactly by the number of bytes written.
     unsafe fn write_fast(&self, w: &mut impl ByteSink);
 }
 
@@ -14,11 +34,15 @@ impl<T: FastWrite> FastWrite for &T {
 
 pub trait FastRead: Sized {
     type Ret;
-    /// # Safety
-    /// Must read a valid encoding produced by `write_fast`.
+    /// Decode a value from `r`.
+    ///
+    /// Safety
+    /// - Must read a valid encoding produced by the matching `write_fast`.
+    /// - Must not read beyond the needed number of bytes.
     unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret;
 }
 
+/// Convenience wrapper to read a type implementing `FastRead<Ret = T>`.
 pub fn read_fast<'a, T: FastRead<Ret = T>, S: ByteSource<'a>>(r: &mut S) -> T {
     unsafe { T::read_fast(r) }
 }
@@ -203,6 +227,22 @@ where
     }
 }
 
+// MARK: Box<T>
+impl<T: FastWrite> FastWrite for Box<T> {
+    #[inline(always)]
+    unsafe fn write_fast(&self, w: &mut impl ByteSink) {
+        let t: &T = &self;
+        unsafe { t.write_fast(w) };
+    }
+}
+impl<T: FastRead<Ret = T>> FastRead for Box<T> {
+    type Ret = Self;
+    #[inline(always)]
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret {
+        Self::new(unsafe { T::read_fast(r) })
+    }
+}
+
 // MARK: Option<T>
 impl<T: FastWrite> FastWrite for Option<T> {
     #[inline(always)]
@@ -308,16 +348,19 @@ unsafe fn any_as_u8_slice_mut<T: Sized>(p: &mut T) -> &mut [u8] {
 }
 
 /// Dangerous function to serialize the underlying bytes of any item.
-/// MUST ONLY BE USED ON POD TYPES.
-/// BE VERY CAREFUL you are not passing in a &&T. Otherwise you write a pointer!
-/// ONLY USE [`byte_deserialize`] to recover the type!
+///
+/// MUST ONLY BE USED ON POD TYPES with identical memory layout at read time.
+/// Passing a reference-to-reference like `&&T` will serialize a pointer!
+/// Only use [`byte_deserialize`] to recover the value.
 pub unsafe fn byte_serialize<T: Sized>(v: &T, w: &mut impl ByteSink) {
     w.put_bytes(unsafe { any_as_u8_slice(v) })
 }
 
 /// Dangerous function to deserialize a type from bytes.
-/// MUST ONLY BE USED ON POD TYPES.
-/// ONLY USED WITH [`byte_serialize`]
+///
+/// MUST ONLY BE USED ON POD TYPES and only for bytes previously written by
+/// [`byte_serialize`]. The resulting value is created without running any
+/// constructors or validation.
 pub unsafe fn byte_deserialize<'a, T: Sized>(r: &mut impl ByteSource<'a>) -> T {
     let mut val = std::mem::MaybeUninit::<T>::uninit();
     unsafe {
@@ -330,6 +373,8 @@ pub unsafe fn byte_deserialize<'a, T: Sized>(r: &mut impl ByteSource<'a>) -> T {
 // MARK: Macros
 
 mod macros {
+    //! Macro helpers to implement `FastWrite`/`FastRead` for structs, enums,
+    //! newtypes, and POD wrappers.
     macro_rules! impl_fast_serialize {
         (
             $T:ty,

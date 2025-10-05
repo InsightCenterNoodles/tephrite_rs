@@ -42,9 +42,9 @@ impl SharedMemory {
         }
 
         let page_size: usize = unsafe {
-            libc::sysconf(libc::_SC_PAGESIZE).try_into().map_err(|_| {
-                std::io::Error::new(std::io::ErrorKind::Other, "Unable to determine page size")
-            })
+            libc::sysconf(libc::_SC_PAGESIZE)
+                .try_into()
+                .map_err(|_| std::io::Error::other("Unable to determine page size"))
         }?;
 
         let size = size.next_multiple_of(page_size);
@@ -114,18 +114,14 @@ impl SharedMemory {
     /// Obtain a const slice of the data exchange region
     #[inline]
     pub fn as_slice(&self) -> &[u8] {
-        unsafe {
-            std::slice::from_raw_parts(self.shmem_addr as *const u8, self.shmem_size as usize)
-        }
+        unsafe { std::slice::from_raw_parts(self.shmem_addr as *const u8, self.shmem_size) }
     }
 
     /// Obtain a mutable slice of the data exchange region
     #[allow(dead_code)]
     #[inline]
     pub fn as_slice_mut(&mut self) -> &mut [u8] {
-        unsafe {
-            std::slice::from_raw_parts_mut(self.shmem_addr as *mut u8, self.shmem_size as usize)
-        }
+        unsafe { std::slice::from_raw_parts_mut(self.shmem_addr as *mut u8, self.shmem_size) }
     }
 
     /// Obtain a raw pointer and size to the data region. These MUST NOT be stored, and are
@@ -144,7 +140,7 @@ impl Drop for SharedMemory {
             // if self.owner {
             //     pthread_barrier_destroy(self.barrier);
             // }
-            munmap(self.shmem_addr, self.shmem_size.try_into().unwrap())
+            munmap(self.shmem_addr, self.shmem_size)
         };
 
         if ret != 0 {

@@ -23,9 +23,9 @@ const SHMEM_DATA_OFFSET: usize = 8192;
 pub fn compute_shmem_allocation_size(buf_count: usize, buf_size: usize) -> usize {
     const MAX_PAGE: usize = 2u32.pow(14) as usize;
     let page_size: usize = unsafe {
-        libc::sysconf(libc::_SC_PAGESIZE).try_into().map_err(|_| {
-            std::io::Error::new(std::io::ErrorKind::Other, "Unable to determine page size")
-        })
+        libc::sysconf(libc::_SC_PAGESIZE)
+            .try_into()
+            .map_err(|_| std::io::Error::other("Unable to determine page size"))
     }
     .unwrap_or(MAX_PAGE);
 
@@ -78,7 +78,7 @@ const _: () = {
     assert!(SHMEM_DATA_OFFSET >= core::mem::size_of::<ControlBlock>());
 
     // keep buffers cacheline-aligned
-    assert!(SHMEM_DATA_OFFSET % 128 == 0);
+    assert!(SHMEM_DATA_OFFSET.is_multiple_of(128));
 };
 
 // Layout:
@@ -88,7 +88,7 @@ const _: () = {
 
 /// Helper: pointer to buffer slot `idx`
 #[inline]
-pub fn buffer_ptr(data_base: *mut u8, buf_size: usize, idx: u32) -> *mut u8 {
+fn buffer_ptr(data_base: *mut u8, buf_size: usize, idx: u32) -> *mut u8 {
     unsafe { data_base.byte_add(buf_size * (idx as usize)) }
 }
 
@@ -159,7 +159,7 @@ impl Producer {
 
         cb.publish_idx.store(0, Relaxed);
         cb.publish_gen.store(0, Relaxed);
-        for i in 0..(num_consumers as usize) {
+        for i in 0..num_consumers {
             cb.consumer_gen[i].0.store(0, Relaxed);
         }
 
@@ -179,12 +179,12 @@ impl Producer {
 
     #[inline]
     fn control_block(&self) -> &ControlBlock {
-        return unsafe { &*self.cb };
+        unsafe { &*self.cb }
     }
 
     #[inline]
     fn control_block_mut(&mut self) -> &mut ControlBlock {
-        return unsafe { &mut *self.cb };
+        unsafe { &mut *self.cb }
     }
 
     fn wait_until_ready(&mut self) {
@@ -332,8 +332,7 @@ impl Consumer {
         // This closes the race where the producer flips 'started' between our check and increment.
         {
             if cb.started.load(Acquire) != 0 {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                return Err(std::io::Error::other(
                     "late attach not allowed: producer already started",
                 ));
             }
@@ -342,8 +341,7 @@ impl Consumer {
             if cb.started.load(Acquire) != 0 {
                 // Gate closed while we were joining; undo and error out.
                 cb.ready_count.fetch_sub(1, AcqRel);
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                return Err(std::io::Error::other(
                     "late attach not allowed: producer already started",
                 ));
             }
@@ -375,12 +373,12 @@ impl Consumer {
 
     #[inline]
     fn control_block(&self) -> &ControlBlock {
-        return unsafe { &*self.cb };
+        unsafe { &*self.cb }
     }
 
     #[inline]
     fn control_block_mut(&mut self) -> &mut ControlBlock {
-        return unsafe { &mut *self.cb };
+        unsafe { &mut *self.cb }
     }
 
     /// Block (spin/backoff) until a new buffer is published. Runs given function on the provided buffer.

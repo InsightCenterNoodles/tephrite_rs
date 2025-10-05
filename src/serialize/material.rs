@@ -1,3 +1,8 @@
+//! Serialization for `bevy::pbr::StandardMaterial` and related enums.
+//!
+//! The serializer keeps the vast majority of render‑affecting fields and skips
+//! a few fields that are either redundant, unstable across versions, or not
+//! required on the receiving side (e.g. `specular_tint`).
 use bevy::pbr::{OpaqueRendererMethod, UvChannel};
 use bevy::prelude::*;
 use wgpu_types::Face;

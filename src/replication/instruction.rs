@@ -170,7 +170,7 @@ impl_fast_serialize!(ClientComponentRemoved,
 /// An instruction to replicate an asset.
 #[derive(Debug)]
 pub(crate) struct ClientReplicateAsset {
-    pub asset: AssetEnum,
+    pub asset: Box<AssetEnum>,
 }
 
 impl_fast_serialize!(ClientReplicateAsset,

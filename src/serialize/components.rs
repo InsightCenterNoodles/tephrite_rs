@@ -1,9 +1,15 @@
+//! Fast serialization adapters for common Bevy components.
+//!
+//! Focuses on components frequently replicated between processes, keeping only
+//! fields that affect rendering or spatial state and skipping fields that are
+//! computed or overwritten by Bevy at runtime.
 use bevy::prelude::*;
 
 use crate::serialize::*;
 
 // =============================================================================
 
+// Serialize only the `Transform` fields that matter for rendering and logic.
 impl_fast_serialize!(
     Transform,
     keep: {
@@ -34,6 +40,7 @@ impl_fast_serialize!(
 
 // =============================================================================
 
+// `Visibility` is treated as a raw POD value.
 impl_fast_raw_item!(Visibility);
 
 // =============================================================================
@@ -68,6 +75,7 @@ impl_fast_raw_item!(Visibility);
 
 // =============================================================================
 
+// Light components are treated as raw POD values for speed.
 impl_fast_raw_item!(PointLight);
 impl_fast_raw_item!(SpotLight);
 impl_fast_raw_item!(DirectionalLight);

@@ -1,3 +1,27 @@
+//! VRPN client integration for Bevy.
+//!
+//! This module implements a minimal VRPN (Virtual-Reality Peripheral Network)
+//! TCP client with just enough of the wire protocol to discover senders and
+//! stream tracker poses (position + quaternion). It exposes a small Bevy
+//! plugin (`VRPNPlugin`) and a component (`VRPNLink`) to bind an entity's
+//! `Transform` to a specific VRPN sender.
+//!
+//! Implementation notes
+//! - The VRPN handshake starts by sending a fixed cookie and then reading the
+//!   server's cookie to determine protocol version. Only version `7.xx` is
+//!   supported here.
+//! - VRPN messages are big-endian and aligned to 8-byte boundaries; payloads
+//!   are padded to the next multiple of 8 bytes.
+//! - For thread-safe cross-thread communication, this module uses a
+//!   `seqlock::SeqLock<ItemState>` per watched sender. Writer is the network
+//!   thread, readers are Bevy systems.
+//! - Coordinate frames differ. The conversion functions reflect the empirical
+//!   mapping from a typical VRPN server to Bevy coordinates. Adjust if your
+//!   installation uses a different convention.
+//!
+//! This module is intentionally narrow in scope: it parses only the pieces of
+//! VRPN required for tracker position/quaternion updates and ignores other
+//! message families.
 use bevy::{
     math::{DQuat, DVec3},
     platform::collections::HashMap,
@@ -15,7 +39,10 @@ use std::{
 const VRPN_ALIGN: usize = 8;
 /// VRPN magic header byte length
 const VRPN_MAGIC_LENGTH: usize = 16;
-/// The size in bytes of the VRPN header cookie (version, etc)
+/// Total size (in bytes) of the initial VRPN cookie sent during handshake.
+///
+/// The cookie comprises a 16-byte ASCII prefix plus 8 bytes of alignment,
+/// which yields 24 bytes overall.
 const VRPN_COOKIE_SIZE: usize = VRPN_MAGIC_LENGTH + VRPN_ALIGN;
 /// Default port for VRPN connections
 const VRPN_DEFAULT_PORT: u16 = 3883;
@@ -24,9 +51,13 @@ const HEADER_SIZE_BYTES: usize = size_of::<MessageHeader>();
 
 const _: () = assert!(HEADER_SIZE_BYTES == 24, "Header size does not match spec!");
 
+/// Local alias for IO results used throughout this module.
 type Result<T> = std::io::Result<T>;
 
-/// Write a header to a stream
+/// Write our local VRPN cookie to a stream.
+///
+/// This announces the client's protocol version to the server and starts the
+/// handshake. The bytes roughly correspond to: `"vrpn: ver. 07.33  0\0\xed\0\0\0"`.
 fn write_vrpn_cookie(w: &mut impl Write) -> Result<()> {
     // Magic. This roughly corresponds with
     // "vrpn: ver. 07.33  0\x00í\x00\x00\x00"
@@ -38,7 +69,10 @@ fn write_vrpn_cookie(w: &mut impl Write) -> Result<()> {
     w.write_all(&COOKIE)
 }
 
-/// Validate the header of a message, and return version info
+/// Validate a VRPN cookie and extract `(major, minor, log_level)`.
+///
+/// Returns `None` if the cookie does not start with `"vrpn: ver."` or if the
+/// version components are not parseable ASCII digits.
 fn check_vrpn_cookie(bytes: &[u8]) -> Option<(u32, u32, u32)> {
     let major = &bytes[11..13];
     let minor = &bytes[14..16];
@@ -55,7 +89,7 @@ fn check_vrpn_cookie(bytes: &[u8]) -> Option<(u32, u32, u32)> {
     Some((major, minor, log))
 }
 
-/// Read a VRPN cookie from a stream
+/// Read a VRPN cookie from a stream into a fixed-size buffer.
 fn read_vrpn_cookie(r: &mut impl Read) -> Result<[u8; VRPN_COOKIE_SIZE]> {
     let mut incoming = [0u8; VRPN_COOKIE_SIZE];
 
@@ -64,25 +98,36 @@ fn read_vrpn_cookie(r: &mut impl Read) -> Result<[u8; VRPN_COOKIE_SIZE]> {
     Ok(incoming)
 }
 
-/// Consume a double from the stream
+/// Read a single big-endian IEEE-754 `f64` from the stream.
 fn read_be_f64(r: &mut impl Read) -> std::io::Result<f64> {
     let mut b = [0u8; 8];
     r.read_exact(&mut b)?;
     Ok(f64::from_bits(u64::from_be_bytes(b)))
 }
 
-/// Consume a number of doubles from the stream
+/// Read `N` big-endian IEEE-754 `f64`s from the stream as an array.
 fn read_be_f64_n<const N: usize>(r: &mut impl Read) -> std::io::Result<[f64; N]> {
     let mut out = [0u64; N];
     r.read_exact(cast_slice_mut(&mut out))?;
     Ok(out.map(|x| f64::from_bits(u64::from_be(x))))
 }
 
-/// The header of a VRPN message
+/// The header of a VRPN message.
+///
+/// Layout (6 big-endian `i32`s):
+/// - `[0] total_len`: Packet length in bytes (header + payload + padding).
+/// - `[1] secs`: Timestamp seconds (UNIX epoch).
+/// - `[2] micros`: Timestamp microseconds.
+/// - `[3] sender`: Sender index (object ID) for this message.
+/// - `[4] ty`: Message type. Negative values are system types.
+/// - `[5] reserved`: Reserved/unused.
 #[derive(Debug, Default)]
 struct MessageHeader([i32; 6]);
 
-/// Construct a new header for a sender, type, and payload
+/// Construct a new header for `sender`, `ty`, and `payload`.
+///
+/// Fills the timestamp fields from `SystemTime::now()` and computes total
+/// packet length including padding to the next multiple of 8.
 fn make_header_for(sender: i32, ty: i32, payload: &[u8]) -> MessageHeader {
     let total_len = payload.len().next_multiple_of(8) + HEADER_SIZE_BYTES;
 
@@ -102,7 +147,9 @@ fn make_header_for(sender: i32, ty: i32, payload: &[u8]) -> MessageHeader {
     MessageHeader(ret)
 }
 
-/// Write a payload to a byte sink.
+/// Write a payload to a byte sink with a properly formatted VRPN header.
+///
+/// Ensures the payload is padded to 8-byte alignment as required by VRPN.
 fn write_message(dest: &mut impl Write, sender: i32, ty: i32, payload: &[u8]) -> Result<()> {
     let header = make_header_for(sender, ty, payload);
 
@@ -123,7 +170,7 @@ fn write_message(dest: &mut impl Write, sender: i32, ty: i32, payload: &[u8]) ->
 }
 
 impl MessageHeader {
-    /// Consume a header from a stream
+    /// Read and decode a header from a stream (big-endian fields).
     fn read(reader: &mut impl Read) -> Result<Self> {
         let mut h = MessageHeader::default();
         reader.read_exact(cast_slice_mut(&mut h.0[..]))?;
@@ -131,7 +178,7 @@ impl MessageHeader {
         Ok(h)
     }
 
-    /// Write this header to the stream
+    /// Encode and write this header to a stream (big-endian fields).
     fn write(&self, writer: &mut impl Write) -> Result<()> {
         let v = self.0.map(|f| f.to_be());
         writer.write_all(cast_slice(&v))?;
@@ -139,23 +186,23 @@ impl MessageHeader {
         Ok(())
     }
 
-    /// The length of the message package. This includes everything
+    /// The length of the entire packet (header + payload + pad bytes).
     #[inline]
     fn packet_length(&self) -> usize {
         self.0[0] as usize
     }
 
-    /// The length of just the payload for this message
+    /// The length of the payload only (excludes header, excludes pad bytes).
     fn payload_length(&self) -> usize {
         self.packet_length() - size_of::<MessageHeader>()
     }
 
-    /// The sender id of the message
+    /// The sender (object) id for this message.
     fn sender(&self) -> i32 {
         self.0[3]
     }
 
-    /// The type of the message sender
+    /// The message type. Negative values are system-reserved types.
     fn ty(&self) -> i32 {
         self.0[4]
     }
@@ -168,8 +215,10 @@ struct ConnectionInfo {
 
 // =============================================================================
 
-/// Read a message and payload to the given buffer. The header is returned.
-/// Buffer is a cached allocation that will be used as a scratch space
+/// Read a single message from `stream`, writing its (padded) payload into
+/// `buffer`, and return the decoded header.
+///
+/// The buffer is reused across calls to avoid repeated allocations.
 fn get_message(stream: &mut impl Read, buffer: &mut Vec<u8>) -> Result<MessageHeader> {
     //println!("Getting next message...");
 
@@ -207,14 +256,18 @@ fn new_shared_item_state() -> SharedItemState {
     std::sync::Arc::new(seqlock::SeqLock::new(ItemState::default()))
 }
 
-/// A connection + state to a specific VRPN server
+/// A connection plus protocol state for a specific VRPN server.
 struct VRPNClient {
     remote: TcpStream,
     message_state: MessageState,
 }
 
 impl VRPNClient {
-    /// Create a new connection with a list of items to watch
+    /// Create a new connection with a map of items to watch.
+    ///
+    /// `to_watch` maps VRPN sender names to shared state handles. The client
+    /// performs the cookie handshake and validates the server version. On
+    /// success, it is ready to `run` and process messages.
     fn new(to_watch: HashMap<String, SharedItemState>, host_string: &str) -> Result<Self> {
         let host: SocketAddr = if host_string.contains(':') {
             host_string.parse()
@@ -255,7 +308,10 @@ impl VRPNClient {
         })
     }
 
-    /// Wait for messages. Note that this function does not return until the provided bool is false.
+    /// Event loop for the network thread.
+    ///
+    /// Processes messages until `run` is cleared. Timeouts are expected and
+    /// simply cause the loop to continue.
     fn run(&mut self, run: std::sync::Arc<std::sync::atomic::AtomicBool>) {
         let mut buffer = Vec::new();
 
@@ -284,13 +340,18 @@ impl VRPNClient {
 
 // MARK: Sender List
 
-/// A list of senders (objects) and associated state
+/// A list of remote senders (objects) and associated state.
+///
+/// `to_watch` is a name → state map (configured by the app). As the server
+/// advertises senders, `install` populates the `watched` map by sender index,
+/// which allows fast routing of subsequent updates.
 struct SenderList {
     to_watch: HashMap<String, SharedItemState>,
     watched: HashMap<usize, SharedItemState>,
 }
 
-/// Limit on known components for defensive purposes
+/// Defensive limit on known components to avoid unbounded growth from a
+/// misbehaving server.
 const MAX_KNOWN_COMPONENTS: usize = 1024;
 
 impl SenderList {
@@ -336,14 +397,16 @@ impl SenderList {
 
 // MARK: Message State
 
-/// The last known state of a VRPN item
+/// The last known state of a VRPN item.
+///
+/// Values are stored as Bevy double-precision types (`DVec3`/`DQuat`).
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ItemState {
     position: DVec3,
     rotation: DQuat,
 }
 
-/// The state of the VRPN connection
+/// Per-connection protocol state used to dispatch and decode messages.
 struct MessageState {
     remote_sender_list: SenderList,
 
@@ -361,8 +424,9 @@ impl MessageState {
         }
     }
 
+    /// Decode a `vrpn_Tracker Pos_Quat` message body and update shared state.
     fn handle_pos_quat(&mut self, sender: usize, source: &mut impl Read) -> Result<()> {
-        // we need to skip a double here for the timestamp?
+        // First double is a timestamp (seconds since server start). Skip it.
         let _dummy = read_be_f64(source)?;
 
         let pos: [f64; 3] = read_be_f64_n(source)?;
@@ -386,8 +450,10 @@ impl MessageState {
         Ok(())
     }
 
-    /// Handle a message from a stream. The header should have already been decoded and the payload passed in here
-    /// Output should be a reverse stream to the server, as some messages require a reply.
+    /// Dispatch a single message using the decoded `header` and `payload`.
+    ///
+    /// Some system messages are bounced back to the server (e.g. type and
+    /// sender announcements) as part of the VRPN protocol handshake.
     fn handle_message(
         &mut self,
         header: MessageHeader,
@@ -503,13 +569,19 @@ impl MessageState {
 
 // MARK: Bevy Side
 
-/// Transform position from VRPN coordinates to our coordinate system
+/// Transform position from VRPN coordinates to Bevy coordinates.
+///
+/// Empirically, this mapping matches common VRPN tracker conventions to
+/// Bevy's `X-right, Y-up, Z-forward` coordinates:
+/// `[-x, z, y]`.
 #[inline]
 fn transform_position(p: [f64; 3]) -> DVec3 {
     DVec3::new(-p[0], p[2], p[1])
 }
 
-/// Transform rotation from VRPN coordinates to our coordinate system
+/// Transform rotation from VRPN coordinates to Bevy coordinates.
+///
+/// The mapping mirrors `transform_position` and flips the X component: `[-x, z, y, w]`.
 #[inline]
 fn transform_rotation(p: [f64; 4]) -> DQuat {
     DQuat {
@@ -520,7 +592,7 @@ fn transform_rotation(p: [f64; 4]) -> DQuat {
     }
 }
 
-/// Thread to constantly service a VRPN client
+/// Worker thread entry point that services a single VRPN client.
 fn vrpn_spinner(
     to_watch: HashMap<String, SharedItemState>,
     host_string: String,
@@ -534,7 +606,7 @@ fn vrpn_spinner(
     state.run(shutdown);
 }
 
-/// Start a VRPN client thread. host should contain the name/ip:port
+/// Start a VRPN client thread for `host_string` (`name_or_ip:port`).
 fn start_vrpn_client(
     to_watch: HashMap<String, SharedItemState>,
     host_string: &str,
@@ -551,7 +623,7 @@ fn start_vrpn_client(
     res.vrpn_threads.push(handle);
 }
 
-/// Resource holding application VRPN state
+/// Resource holding application-level VRPN state.
 #[derive(Resource)]
 pub struct VRPNResource {
     shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
@@ -560,6 +632,7 @@ pub struct VRPNResource {
 
 impl VRPNResource {
     #[allow(unused)]
+    /// Signal network threads to stop and join them.
     pub fn wait_for_shutdown(self) {
         self.shutdown
             .store(false, std::sync::atomic::Ordering::Release);
@@ -569,7 +642,11 @@ impl VRPNResource {
     }
 }
 
-/// Connect the position and rotation of this object to a provided VRPN object
+/// Connect the position and rotation of this entity to a VRPN sender.
+///
+/// Create with `VRPNLink::new(VRPNAddress { host, port, sender })`.
+/// When attached to an entity, a network thread is spawned (per endpoint) and
+/// the entity's `Transform` is updated in `FixedUpdate`.
 #[derive(Component)]
 #[component(immutable)]
 pub struct VRPNLink(crate::config::VRPNAddress);
@@ -586,7 +663,10 @@ struct VRPNLinkConnected {
     reader: SharedItemState,
 }
 
-/// Establish connections for VRPN links
+/// Observer that establishes network connections for newly added `VRPNLink`s.
+///
+/// Spawns one client thread per endpoint and associates a shared state reader
+/// with the entity via `VRPNLinkConnected`.
 fn check_for_new_vrpn(
     trigger: Trigger<OnAdd, VRPNLink>,
     mut commands: Commands,
@@ -629,7 +709,7 @@ fn check_for_new_vrpn(
     }
 }
 
-/// Update object position and rotation from VRPN
+/// System that applies the latest VRPN-derived transform to entities.
 fn service_vrpn(mut query: Query<(&VRPNLinkConnected, &mut Transform)>) {
     for (c, mut tf) in query.iter_mut() {
         let new_pos = c.reader.read();
@@ -640,7 +720,33 @@ fn service_vrpn(mut query: Query<(&VRPNLinkConnected, &mut Transform)>) {
     }
 }
 
-/// Plugin to handle VRPN connectivity
+/// Bevy plugin that wires up VRPN connectivity.
+///
+/// - Adds a `VRPNResource` to manage network threads.
+/// - Observes `VRPNLink` additions to spawn clients.
+/// - Updates linked entities' `Transform` each `FixedUpdate`.
+///
+/// Example
+/// ```ignore
+/// use bevy::prelude::*;
+/// use tephrite_rs::vrpn::{VRPNLink, VRPNPlugin};
+/// 
+/// fn main() {
+///     App::new()
+///         .add_plugins(DefaultPlugins)
+///         .add_plugins(VRPNPlugin)
+///         .add_systems(Startup, |mut commands: Commands| {
+///             // Replace with your server and sender name
+///             let addr = tephrite_rs::config::VRPNAddress {
+///                 host: "127.0.0.1".into(),
+///                 port: 3883,
+///                 sender: "Head0".into(),
+///             };
+///             commands.spawn((Transform::default(), GlobalTransform::default(), VRPNLink::new(addr)));
+///         })
+///         .run();
+/// }
+/// ```
 pub struct VRPNPlugin;
 
 impl Plugin for VRPNPlugin {
