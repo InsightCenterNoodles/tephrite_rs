@@ -281,6 +281,21 @@ impl FastWrite for Mesh {
         }
     }
 }
+
+// Only a subset of attributes is supported by this decoder. The
+// indices into this table must match `MeshVertexAttributeId` values
+// for these attributes.
+const ATTRIB_LOOKUP: [MeshVertexAttribute; 8] = [
+    Mesh::ATTRIBUTE_POSITION,
+    Mesh::ATTRIBUTE_NORMAL,
+    Mesh::ATTRIBUTE_UV_0,
+    Mesh::ATTRIBUTE_UV_1,
+    Mesh::ATTRIBUTE_TANGENT,
+    Mesh::ATTRIBUTE_COLOR,
+    Mesh::ATTRIBUTE_JOINT_WEIGHT,
+    Mesh::ATTRIBUTE_JOINT_INDEX,
+];
+
 impl FastRead for Mesh {
     type Ret = Self;
     unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret {
@@ -291,20 +306,7 @@ impl FastRead for Mesh {
 
         let attrib_count = unsafe { u8::read_fast(r) };
 
-        // Only a subset of attributes is supported by this decoder. The
-        // indices into this table must match `MeshVertexAttributeId` values
-        // for these attributes.
-        const ATTRIB_LOOKUP: [MeshVertexAttribute; 8] = [
-            Mesh::ATTRIBUTE_POSITION,
-            Mesh::ATTRIBUTE_NORMAL,
-            Mesh::ATTRIBUTE_UV_0,
-            Mesh::ATTRIBUTE_UV_1,
-            Mesh::ATTRIBUTE_TANGENT,
-            Mesh::ATTRIBUTE_COLOR,
-            Mesh::ATTRIBUTE_JOINT_WEIGHT,
-            Mesh::ATTRIBUTE_JOINT_INDEX,
-        ];
-
+        // Check tests for more intensive validation of our assertions here
         const {
             assert!(std::mem::size_of::<usize>() == std::mem::size_of::<MeshVertexAttributeId>());
         }
@@ -387,5 +389,22 @@ mod tests {
         let mut r = ByteReader::new(&buf);
         let out: MeshVertexAttribute = unsafe { MeshVertexAttribute::read_fast(&mut r) };
         assert_eq!(out.id, a.id);
+    }
+
+    #[test]
+    fn mesh_attribute_assert() {
+        for attrib in ATTRIB_LOOKUP {
+            // Safety: the attribute ID is just a wrapper around a u64
+
+            assert!(std::mem::size_of::<u64>() == std::mem::size_of::<MeshVertexAttributeId>());
+
+            let unsafe_id: u64 = unsafe { std::mem::transmute(attrib.id) };
+
+            let should_be = ATTRIB_LOOKUP.get(unsafe_id as usize).cloned().unwrap();
+
+            assert_eq!(should_be.format, attrib.format);
+            assert_eq!(should_be.id, attrib.id);
+            assert_eq!(should_be.name, attrib.name);
+        }
     }
 }

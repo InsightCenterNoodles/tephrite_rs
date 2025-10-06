@@ -298,7 +298,7 @@ impl<'a> ByteReader<'a> {
     }
 
     #[inline(always)]
-    pub fn new_with_position(buf: &'a mut [u8], pos: usize) -> Self {
+    pub fn new_with_position(buf: &'a [u8], pos: usize) -> Self {
         Self { buf, pos }
     }
 

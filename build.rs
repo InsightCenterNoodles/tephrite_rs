@@ -93,8 +93,8 @@ struct PkgMeta {
 
 fn try_pkg_config(names: &[&str]) -> Option<PkgMeta> {
     for name in names {
-        let mut cfg = pkg_config::Config::new();
-        cfg.statik(true);
+        let cfg = pkg_config::Config::new();
+        //cfg.statik(true);
         if let Ok(lib) = cfg.probe(name) {
             return Some(PkgMeta {
                 include_paths: lib.include_paths,

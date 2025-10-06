@@ -33,7 +33,7 @@ impl SharedMemory {
                 "key must be '/name'",
             ));
         }
-        if key.len() > 255 {
+        if key.len() > 31 {
             // conservative
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -169,7 +169,7 @@ const OPEN_MODES: c_uint = (S_IRUSR | S_IWUSR) as c_uint;
 fn open_shmem_handle(key: &CStr) -> Result<i32> {
     let handle = unsafe {
         //println!("SHM NAME (child): {key:?}");
-        shm_open(key.as_ptr(), O_RDWR | O_CREAT | O_CLOEXEC, OPEN_MODES)
+        shm_open(key.as_ptr(), O_RDWR | O_CLOEXEC, OPEN_MODES)
     };
 
     if handle < 0 {

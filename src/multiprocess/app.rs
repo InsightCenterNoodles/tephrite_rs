@@ -33,8 +33,6 @@ pub fn make_common_app() -> App {
         bevy::gltf::GltfPlugin::default(),
     ));
 
-    app.add_plugins(bevy::app::PanicHandlerPlugin);
-
     app.register_type::<bevy::render::primitives::Aabb>();
     app.register_type::<bevy::render::view::visibility::Visibility>();
     app.register_type::<bevy::render::view::visibility::InheritedVisibility>();
