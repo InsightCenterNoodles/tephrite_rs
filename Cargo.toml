@@ -16,7 +16,6 @@ bytemuck = "1"
 itertools = "*"
 thiserror = "*"
 libc = "0.2"
-wgpu-types = "*"
 teph_macro = {path = "./crates/teph_macro"}
 seqlock = "0.2"
 

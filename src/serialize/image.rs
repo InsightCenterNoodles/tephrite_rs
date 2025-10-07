@@ -3,19 +3,19 @@
 //! Skips fields that are compile-time or label-only metadata (e.g. `label`,
 //! `view_formats`) and focuses on the data and descriptor fields required to
 //! faithfully recreate images on the receiving side.
+use crate::serialize::*;
 use bevy::prelude::*;
+use bevy::render::render_resource::TextureDescriptor;
 use bevy::{
     image::{
         ImageAddressMode, ImageCompareFunction, ImageFilterMode, ImageSampler,
         ImageSamplerBorderColor, ImageSamplerDescriptor,
     },
-    render::render_resource::TextureViewDescriptor,
+    render::render_resource::{
+        Extent3d, TextureAspect, TextureDimension, TextureFormat, TextureUsages,
+        TextureViewDescriptor, TextureViewDimension,
+    },
 };
-use wgpu_types::{
-    Extent3d, TextureAspect, TextureDimension, TextureFormat, TextureUsages, TextureViewDimension,
-};
-
-use crate::serialize::*;
 
 // `Image` is serialized as raw pixel data plus the essential descriptors.
 impl_fast_serialize!(Image, keep: {
@@ -25,44 +25,14 @@ impl_fast_serialize!(Image, keep: {
 
 // =============================================================================
 
-type TD<'a> = wgpu_types::TextureDescriptor<Option<&'a str>, &'a [TextureFormat]>;
-
 // `TextureDescriptor` skips `label` and `view_formats`.
-impl_fast_serialize!(TD<'a>,
+impl_fast_serialize!(TextureDescriptor<'a>,
 lifetime: 'a,
 keep: {
     size, mip_level_count, sample_count, dimension, format, usage
 }, skip: {
     label, view_formats
 });
-
-// impl<'a> TSerialize for wgpu_types::TextureDescriptor<Option<&'a str>, &'a [TextureFormat]> {
-//     fn serialize(&self, w: &mut impl std::io::Write) {
-//         // skip label
-//         self.size.serialize(w);
-//         self.mip_level_count.serialize(w);
-//         self.sample_count.serialize(w);
-//         self.dimension.serialize(w);
-//         self.format.serialize(w);
-//         self.usage.serialize(w);
-//         // skip view_formats for now, can probably do a hashmap since this is a static label thing
-//     }
-// }
-
-// impl<'a> TDeserialize for wgpu_types::TextureDescriptor<Option<&'a str>, &'a [TextureFormat]> {
-//     fn deserialize(r: &mut impl std::io::Read) -> Self {
-//         Self {
-//             label: None,
-//             size: deserialize(r),
-//             mip_level_count: deserialize(r),
-//             sample_count: deserialize(r),
-//             dimension: deserialize(r),
-//             format: deserialize(r),
-//             usage: deserialize(r),
-//             view_formats: &[],
-//         }
-//     }
-// }
 
 // =============================================================================
 

@@ -5,7 +5,7 @@
 //! required on the receiving side (e.g. `specular_tint`).
 use bevy::pbr::{OpaqueRendererMethod, UvChannel};
 use bevy::prelude::*;
-use wgpu_types::Face;
+use bevy::render::render_resource::Face;
 
 use crate::serialize::*;
 

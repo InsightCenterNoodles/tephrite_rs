@@ -6,7 +6,7 @@ use bevy::{
     time::TimePlugin,
 };
 
-pub fn make_common_app() -> App {
+pub(crate) fn make_common_app() -> App {
     // build bevy application
     let mut app = App::new();
 
