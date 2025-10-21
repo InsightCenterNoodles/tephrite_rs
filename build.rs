@@ -117,11 +117,10 @@ fn emit_link_info(lib_paths: &[PathBuf], libs: &[String]) {
 
 fn find_include_dir(prefixes: &[PathBuf], header_hints: &[&str]) -> Option<PathBuf> {
     for prefix in prefixes {
-        for inc in ["include", "include/backfill"].iter() {
-            let dir = prefix.join(inc);
-            if header_hints.iter().any(|h| dir.join(h).exists()) {
-                return Some(dir);
-            }
+        // We only need to check the canonical include root; header_hints carry subpaths.
+        let dir = prefix.join("include");
+        if header_hints.iter().any(|h| dir.join(h).exists()) {
+            return Some(dir);
         }
     }
     None

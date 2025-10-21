@@ -16,7 +16,7 @@ impl Plugin for TransformPlugin {
 }
 
 fn update_tfs(
-    query: Query<(&BEntity, &Transform), (Changed<Transform>, Added<BEntity>)>,
+    query: Query<(&BEntity, &Transform), Or<(Changed<Transform>, Added<BEntity>)>>,
     session: NonSend<Session>,
 ) {
     for (be, tf) in &query {

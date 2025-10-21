@@ -180,14 +180,19 @@ fn consume_buffer(
                     }
                 };
             }
-            ClientInstruction::HChange(item) => match item.new_parent {
-                Some(parent) => {
-                    commands.entity(parent).add_child(item.child);
+            ClientInstruction::HChange(item) => {
+                // Remap foreign IDs to local before applying hierarchy changes
+                let child_local = map.map(item.child);
+                match item.new_parent {
+                    Some(parent) => {
+                        let parent_local = map.map(parent);
+                        commands.entity(parent_local).add_child(child_local);
+                    }
+                    None => {
+                        commands.entity(child_local).remove::<ChildOf>();
+                    }
                 }
-                None => {
-                    commands.entity(item.child).remove::<ChildOf>();
-                }
-            },
+            }
             ClientInstruction::EFrame(_) => {
                 return;
             }

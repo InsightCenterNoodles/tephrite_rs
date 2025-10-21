@@ -36,13 +36,16 @@ fn watch_mesh_change(
     for e in events.read() {
         match e {
             AssetEvent::Added { id } => {
-                // this should exist
-                let asset = meshes.get(*id).unwrap();
-                let converted = convert_mesh(&session.0, asset).unwrap();
-
-                cache.meshes.insert(*id, converted);
-
-                debug!("Added new mesh {id}");
+                if let Some(asset) = meshes.get(*id) {
+                    if let Some(converted) = convert_mesh(&session.0, asset) {
+                        cache.meshes.insert(*id, converted);
+                        debug!("Added new mesh {id}");
+                    } else {
+                        warn!("Mesh {id} unsupported for conversion; skipping");
+                    }
+                } else {
+                    warn!("Mesh asset {id} missing on add; skipping");
+                }
             }
             AssetEvent::Modified { id: _ } => {
                 debug!("WE DONT HANDLE THIS YET");
@@ -64,13 +67,16 @@ fn watch_material_change(
     for e in events.read() {
         match e {
             AssetEvent::Added { id } => {
-                // this should exist
-                let asset = materials.get(*id).unwrap();
-                let converted = convert_material(&session.0, asset).unwrap();
-
-                cache.materials.insert(*id, converted);
-
-                debug!("Added new material {id}");
+                if let Some(asset) = materials.get(*id) {
+                    if let Some(converted) = convert_material(&session.0, asset) {
+                        cache.materials.insert(*id, converted);
+                        debug!("Added new material {id}");
+                    } else {
+                        warn!("Material {id} failed conversion; skipping");
+                    }
+                } else {
+                    warn!("Material asset {id} missing on add; skipping");
+                }
             }
             AssetEvent::Modified { .. } => {
                 debug!("WE DONT HANDLE THIS YET");

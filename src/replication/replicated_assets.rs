@@ -6,6 +6,8 @@ use bevy::prelude::*;
 
 use crate::serialize::create_serialize_enum;
 
+// TODO: The standard mat makes the enum explode in size
+
 macro_rules! make_change_detection {
     ($app:ident, $A:tt) => {
         $app.add_systems(
