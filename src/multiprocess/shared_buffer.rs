@@ -373,11 +373,13 @@ impl Consumer {
 
     #[inline]
     fn control_block(&self) -> &ControlBlock {
+        // Safety: Self is always initialized with a valid pointer
         unsafe { &*self.cb }
     }
 
     #[inline]
     fn control_block_mut(&mut self) -> &mut ControlBlock {
+        // Safety: Self is always initialized with a valid pointer
         unsafe { &mut *self.cb }
     }
 
@@ -441,8 +443,7 @@ fn adaptive_pause(spins: &mut u32) {
     } else if *spins < 256 {
         thread::yield_now();
     } else {
-        // Tune as needed; keep tiny to preserve latency.
-        thread::sleep(Duration::from_micros(50));
+        thread::sleep(Duration::from_micros(1));
     }
 }
 

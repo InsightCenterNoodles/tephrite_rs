@@ -6,18 +6,17 @@ use bevy::prelude::Component;
 /// replicated to all children processes. At the moment, this must be manually
 /// added to your entities:
 ///
-/// ```ignore
+/// ```
+/// # use bevy::prelude::*;
+/// # use tephrite_rs::prelude::*;
+/// # fn comp(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
 /// commands.spawn((
-///     PbrBundle {
-///         mesh: meshes.add(Circle::new(4.0)),
-///         material: materials.add(Color::WHITE),
-///         transform: Transform::from_rotation(Quat::from_rotation_x(
-///             -std::f32::consts::FRAC_PI_2,
-///         )),
-///         ..default()
-///     },
+///     Mesh3d(meshes.add(Circle::new(4.0))),
+///     MeshMaterial3d(materials.add(Color::WHITE)),
+///     Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
 ///     Replicated, // <-- Add this component!
 /// ));
+/// # }
 /// ```
 #[derive(Component, Debug, Clone, Copy)]
 #[component(immutable)]

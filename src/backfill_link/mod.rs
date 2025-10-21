@@ -93,7 +93,7 @@ fn setup_session(app: &mut App) {
     debug!("Session setup");
 
     let session = {
-        let child_config = crate::config::get_child_configuration();
+        let child_config = crate::config::get_render_configuration();
 
         let config = backfill::config().unwrap();
 
@@ -102,8 +102,8 @@ fn setup_session(app: &mut App) {
         backfill::config_title(&config, &window_name);
         backfill::config_screen(
             &config,
-            child_config.resolution.x,
-            child_config.resolution.y,
+            child_config.resolution.x as i32,
+            child_config.resolution.y as i32,
         );
 
         // let plane = bffi::FScreenPlane {

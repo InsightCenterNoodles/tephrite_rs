@@ -1,11 +1,11 @@
 use bevy::prelude::*;
 
-use crate::{config::get_child_configuration, multiprocess::app::make_common_app};
+use crate::{config::get_render_configuration, multiprocess::app::make_common_app};
 
 /// Function to run a render (or child) process
 pub(crate) fn run() -> AppExit {
     // Get child config
-    let child_config = get_child_configuration();
+    let child_config = get_render_configuration();
     let rank = child_config.process_rank;
 
     info!("{rank}: Running render process {}", std::process::id());

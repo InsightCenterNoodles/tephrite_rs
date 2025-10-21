@@ -1,0 +1,105 @@
+[vrpn]
+head = "Head0@10.79.144.3:3883"
+
+# Define the six physical displays
+[[displays]]
+id = 0
+lower_left  = [-2.499, 0.915, -1.768]
+lower_right = [ 0.432, 0.915, -1.768]
+upper_right = [ 0.432, 2.468, -1.768]
+resolution = [1920, 1200]
+
+[[displays]]
+id = 1
+lower_left  = [-2.497, 0.001, -1.768]
+lower_right = [ 0.432,-0.001, -1.768]
+upper_right = [ 0.431, 1.554, -1.768]
+resolution = [1920, 1200]
+
+[[displays]]
+id = 2
+lower_left  = [-0.469, 0.913, -1.768]
+lower_right = [ 2.466, 0.911, -1.768]
+upper_right = [ 2.466, 2.466, -1.768]
+resolution = [1920, 1200]
+
+[[displays]]
+id = 3
+lower_left  = [-0.467, 0.001, -1.768]
+lower_right = [ 2.466, 0.000, -1.768]
+upper_right = [ 2.466, 1.553, -1.768]
+resolution = [1920, 1200]
+
+[[displays]]
+id = 4
+lower_left  = [-2.494, 0.000, -0.1719]
+lower_right = [ 0.436, 0.000, -0.1750]
+upper_right = [ 0.436, 0.000, -1.7680]
+resolution = [1920, 1200]
+
+[[displays]]
+id = 5
+lower_left  = [-0.467, 0.000, -0.1750]
+lower_right = [ 2.472, 0.000, -0.1750]
+upper_right = [ 2.468, 0.000, -1.7680]
+resolution = [1920, 1200]
+
+[[screens]]
+display = 0
+card_index = 4
+x_display = ":0.0"
+
+[[screens]]
+display = 0
+card_index = 4
+x_display = ":0.1"
+
+[[screens]]
+display = 1
+card_index = 5
+x_display = ":0.2"
+
+[[screens]]
+display = 1
+card_index = 5
+x_display = ":0.3"
+
+[[screens]]
+display = 2
+card_index = 2
+x_display = ":0.4"
+
+[[screens]]
+display = 2
+card_index = 2
+x_display = ":0.5"
+
+[[screens]]
+display = 3
+card_index = 3
+x_display = ":0.6"
+
+[[screens]]
+display = 3
+card_index = 3
+x_display = ":0.7"
+
+[[screens]]
+display = 4
+card_index = 1
+x_display = ":0.8"
+
+[[screens]]
+display = 4
+card_index = 1
+x_display = ":0.9"
+
+[[screens]]
+display = 5
+card_index = 0
+x_display = ":0.10"
+
+[[screens]]
+display = 5
+card_index = 0
+x_display = ":0.11"

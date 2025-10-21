@@ -67,14 +67,14 @@ fn replicates_mesh_and_material() {
     // One child (reader)
     app.add_plugins(tephrite_rs::replication::writer::ReplicationWriterPlugin::new(1));
 
-    let _ = {
+    let mut child = {
         let mut command = std::process::Command::new(std::env::current_exe().unwrap());
 
         command.env(PROCESS_KEY, "1");
 
         install_ids(&mut command, &session, 0);
 
-        command.spawn()
+        command.spawn().unwrap()
     };
 
     //std::thread::sleep(Duration::from_secs(1));
@@ -111,6 +111,8 @@ fn replicates_mesh_and_material() {
     let mesh = meshes.get(mesh_handle.id()).unwrap();
     let pos = mesh_positions(mesh).unwrap();
     assert_eq!(pos, EXPECTED_POSITIONS);
+
+    assert!(child.wait().unwrap().success());
 }
 
 fn replicates_mesh_and_material_client() {

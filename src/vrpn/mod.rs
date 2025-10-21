@@ -730,7 +730,7 @@ fn service_vrpn(mut query: Query<(&VRPNLinkConnected, &mut Transform)>) {
 /// ```ignore
 /// use bevy::prelude::*;
 /// use tephrite_rs::vrpn::{VRPNLink, VRPNPlugin};
-/// 
+///
 /// fn main() {
 ///     App::new()
 ///         .add_plugins(DefaultPlugins)

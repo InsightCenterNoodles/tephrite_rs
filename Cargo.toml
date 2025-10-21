@@ -10,14 +10,16 @@ pkg-config = "0.3"
 anyhow = "1"
 
 [dependencies]
+dirs = "6"
 bitflags = "2"
 bevy = "0.16"
 bytemuck = "1"
 itertools = "*"
 thiserror = "*"
 libc = "0.2"
-teph_macro = {path = "./crates/teph_macro"}
 seqlock = "0.2"
+serde = { version = "*", features = ["derive"] }
+toml = "0.9"
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]
@@ -27,10 +29,8 @@ opt-level = 1
 [profile.dev.package."*"]
 opt-level = 3
 
-
 [dev-dependencies]
 nix = "0.30"
-
 
 [[test]]
 name = "shmem_integration"

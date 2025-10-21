@@ -1,16 +1,111 @@
 use crate::multiprocess::child_process_id;
 use bevy::{
-    math::{DVec3, IVec2},
+    log::warn,
+    math::{DVec3, UVec2, uvec2},
     reflect::Reflect,
 };
 use std::{str::FromStr, sync::OnceLock};
 
+mod file {
+    use std::path::{Path, PathBuf};
+
+    use serde::Deserialize;
+
+    #[derive(Debug, Default, Deserialize)]
+    pub(crate) struct Config {
+        pub(crate) vrpn: Vrpn,
+        pub(crate) displays: Vec<Display>,
+        pub(crate) screens: Vec<Screen>,
+    }
+
+    #[derive(Debug, Default, Deserialize)]
+    pub(crate) struct Vrpn {
+        pub(crate) head: String,
+    }
+
+    #[derive(Debug, Default, Deserialize)]
+    pub(crate) struct Display {
+        // 3D points
+        pub(crate) lower_left: [f64; 3],
+        pub(crate) lower_right: [f64; 3],
+        pub(crate) upper_right: [f64; 3],
+        /// width x height
+        pub(crate) resolution: [u32; 2],
+    }
+
+    #[derive(Debug, Default, Deserialize)]
+    pub(crate) struct Screen {
+        // index into `displays`
+        pub(crate) display: u32,
+        pub(crate) card_index: u32,
+        pub(crate) x_display: String,
+    }
+
+    /// Try to locate the configuration file for this app.
+    ///
+    /// Search order:
+    /// 1. `$TEPH_CONFIG_PATH` environment variable
+    /// 2. `~/.teph/config.toml`
+    /// 3. `/opt/teph/config.toml`
+    /// 4. `/etc/teph/config.toml`
+    pub fn find_config_file() -> Option<PathBuf> {
+        // 1. Environment variable override
+        if let Ok(path) = std::env::var("TEPH_CONFIG_PATH") {
+            let p = PathBuf::from(path);
+            if p.exists() {
+                return Some(p);
+            }
+        }
+
+        // 2. User home (~/.teph/config.toml)
+        if let Some(home_dir) = dirs::home_dir() {
+            let candidate = home_dir.join(".teph").join("config.toml");
+            if candidate.exists() {
+                return Some(candidate);
+            }
+        }
+
+        // 3. /opt/teph/config.toml
+        let opt_path = Path::new("/opt/tephrite/config.toml");
+        if opt_path.exists() {
+            return Some(opt_path.to_path_buf());
+        }
+
+        // 4. /etc/teph/config.toml
+        let etc_path = Path::new("/etc/tephrite/config.toml");
+        if etc_path.exists() {
+            return Some(etc_path.to_path_buf());
+        }
+
+        // None found
+        None
+    }
+
+    /// Load and parse the config file into your Config struct
+    pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
+        let path = find_config_file().ok_or("Config file not found in common locations")?;
+        let text = std::fs::read_to_string(&path)?;
+        let config: Config = toml::from_str(&text)?;
+        Ok(config)
+    }
+}
+
 /// Physical location of the display, as measured in room coordinates
 #[derive(Debug, Default, Reflect, Clone)]
-pub struct ScreenPhys {
+pub struct DisplayPhysical {
     pub lower_left: DVec3,
     pub lower_right: DVec3,
     pub upper_right: DVec3,
+}
+
+impl DisplayPhysical {
+    fn make_plain() -> Self {
+        Self {
+            lower_left: [-1.0, 0.0, 0.0].into(),
+            lower_right: [1.0, 0.0, 0.0].into(),
+            upper_right: [1.0, 1.0, 0.0].into(),
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -61,7 +156,7 @@ pub struct VRPNConfig {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct Configuration {
+pub struct RenderConfiguration {
     /// The rank of the process
     pub process_rank: u32,
 
@@ -72,88 +167,118 @@ pub struct Configuration {
     pub card_index: Option<u32>,
 
     /// The physical disposition of the display
-    pub display_physical: ScreenPhys,
+    pub display_physical: DisplayPhysical,
 
     /// The pixel resolution of the display (w, h)
-    pub resolution: IVec2,
+    pub resolution: UVec2,
+}
 
+#[derive(Debug, Default, Clone)]
+pub struct LogicConfiguration {
     /// VRPN configuration information
     pub vrpn_config: VRPNConfig,
+
+    /// Child information
+    pub child_count: u32,
 }
 
-fn get_hacky_config() -> [ScreenPhys; 6] {
-    [
-        ScreenPhys {
-            lower_left: (-2.499, 0.915, -1.768).into(),
-            lower_right: (0.432, 0.915, -1.768).into(),
-            upper_right: (0.432, 2.468, -1.768).into(),
-        },
-        ScreenPhys {
-            lower_left: (-2.497, 0.001, -1.768).into(),
-            lower_right: (0.432, -0.001, -1.768).into(),
-            upper_right: (0.431, 1.554, -1.768).into(),
-        },
-        ScreenPhys {
-            lower_left: (-0.469, 0.913, -1.768).into(),
-            lower_right: (2.466, 0.911, -1.768).into(),
-            upper_right: (2.466, 2.466, -1.768).into(),
-        },
-        ScreenPhys {
-            lower_left: (-0.467, 0.001, -1.768).into(),
-            lower_right: (2.466, 0.000, -1.768).into(),
-            upper_right: (2.466, 1.553, -1.768).into(),
-        },
-        ScreenPhys {
-            lower_left: (-2.494, 0.0, -0.1719).into(),
-            lower_right: (0.436, 0.0, -0.175).into(),
-            upper_right: (0.436, 0.0, -1.768).into(),
-        },
-        ScreenPhys {
-            lower_left: (-0.467, 0.0, -0.175).into(),
-            lower_right: (2.472, 0.0, -0.175).into(),
-            upper_right: (2.468, 0.0, -1.768).into(),
-        },
-    ]
-}
+static HOST_CONFIG: OnceLock<LogicConfiguration> = OnceLock::new();
+static CHILD_CONFIG: OnceLock<RenderConfiguration> = OnceLock::new();
 
-static CONFIG: OnceLock<Configuration> = OnceLock::new();
+fn build_child_config() -> RenderConfiguration {
+    let file::Config {
+        vrpn: _,
+        displays,
+        screens,
+    } = file::load_config()
+        .inspect_err(|x| warn!("Unable to load configuration file: {x}"))
+        .unwrap_or_default();
 
-/// Build a dummy config till we can figure out how to work with files
-fn build_child_config() -> Configuration {
-    let process_rank = child_process_id();
+    let this_screen = screens.into_iter().nth(child_process_id() as usize);
+    let this_display = this_screen
+        .as_ref()
+        .and_then(|x| displays.into_iter().nth(x.display as usize));
 
-    let physical_id = match process_rank {
-        0 | 1 => 0,
-        2 | 3 => 1,
-        4 | 5 => 2,
-        6 | 7 => 3,
-        8 | 9 => 4,
-        10 | 11 => 5,
-        _ => panic!("Does not yet support this screen configuration"),
-    };
+    let resolution: UVec2 = this_display
+        .as_ref()
+        .map(|x| x.resolution.into())
+        .unwrap_or_else(|| uvec2(1920, 1200));
 
-    let card_index = match process_rank {
-        0 | 1 => 4,
-        2 | 3 => 5,
-        4 | 5 => 2,
-        6 | 7 => 3,
-        8 | 9 => 1,
-        10 | 11 => 0,
-        _ => panic!("Unknown display index"),
-    };
-
-    Configuration {
-        process_rank,
-        card_index: Some(card_index),
-        display_name: Some(format!(":0.{process_rank}")),
-        display_physical: get_hacky_config()[physical_id as usize].clone(),
-        resolution: (1920, 1200).into(),
-        vrpn_config: VRPNConfig {
-            head: "Head0@10.79.144.3:3883".parse().unwrap(),
-        },
+    RenderConfiguration {
+        process_rank: child_process_id(),
+        card_index: this_screen.as_ref().map(|x| x.card_index),
+        display_name: this_screen.map(|x| x.x_display),
+        display_physical: this_display
+            .map(|x| DisplayPhysical {
+                lower_left: x.lower_left.into(),
+                lower_right: x.lower_right.into(),
+                upper_right: x.upper_right.into(),
+            })
+            .unwrap_or_else(DisplayPhysical::make_plain),
+        resolution,
     }
 }
 
-pub fn get_child_configuration() -> &'static Configuration {
-    CONFIG.get_or_init(build_child_config)
+pub fn get_render_configuration() -> &'static RenderConfiguration {
+    CHILD_CONFIG.get_or_init(build_child_config)
+}
+
+pub fn get_logic_configuration() -> &'static LogicConfiguration {
+    fn build() -> Option<LogicConfiguration> {
+        let file::Config {
+            vrpn,
+            displays: _,
+            screens,
+        } = file::load_config()
+            .inspect_err(|x| warn!("Unable to load configuration file: {x}"))
+            .ok()?;
+
+        Some(LogicConfiguration {
+            vrpn_config: VRPNConfig {
+                head: vrpn.head.parse().ok()?,
+            },
+            child_count: screens.len().try_into().unwrap(),
+        })
+    }
+    HOST_CONFIG.get_or_init(|| build().unwrap_or_default())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::math::UVec2;
+    use std::path::Path;
+
+    #[test]
+    fn loads_example_asset_and_builds_configs() {
+        // Point the config loader to the example asset
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let example_path = Path::new(manifest_dir)
+            .join("assets")
+            .join("config_example.toml");
+
+        assert!(
+            example_path.exists(),
+            "Example config not found at {:?}",
+            example_path
+        );
+
+        // Ensure the config file is discovered
+        unsafe { std::env::set_var("TEPH_CONFIG_PATH", &example_path) };
+
+        // Validate logic configuration derived from the example
+        let logic = get_logic_configuration();
+        assert_eq!(logic.child_count, 12);
+        assert_eq!(logic.vrpn_config.head.sender, "Head0");
+        assert_eq!(logic.vrpn_config.head.host, "10.79.144.3");
+        assert_eq!(logic.vrpn_config.head.port, 3883);
+
+        // Prepare render context for child 0 and validate render configuration
+        unsafe { std::env::set_var("TEPHRITE_CHILD_PROCESS", "0") };
+        let render = get_render_configuration();
+        assert_eq!(render.process_rank, 0);
+        assert_eq!(render.card_index, Some(4));
+        assert_eq!(render.display_name.as_deref(), Some(":0.0"));
+        assert_eq!(render.resolution, UVec2::new(1920, 1200));
+    }
 }
