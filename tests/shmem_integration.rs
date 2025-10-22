@@ -49,7 +49,7 @@ fn test_create_and_basic_rw() -> Result<()> {
     let buf = owner.as_slice_mut();
 
     // We might allocate more than requested to align to pages
-    assert!(buf.len() > size as usize);
+    assert!(buf.len() >= size as usize);
 
     // Write a pattern and read it back via the same mapping
     for (i, b) in buf.iter_mut().enumerate() {

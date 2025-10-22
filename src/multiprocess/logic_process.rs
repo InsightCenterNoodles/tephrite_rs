@@ -6,13 +6,20 @@ use crate::{
 };
 
 pub(crate) fn setup() -> App {
+    // session
+    let session_id = crate::multiprocess::generate_session_id();
+
+    crate::multiprocess::install_session_id(&session_id);
+
+    // build bevy application
+    let mut app = make_common_app();
+
+    // only now are logs enabled!
+
     // set up MP state. In the future, this will be pulled from the config. but that is not finalized yet.
     //let child_count = 1;
     //let child_count = 12;
     let child_count = get_logic_configuration().child_count;
-
-    // build bevy application
-    let mut app = make_common_app();
 
     app.add_plugins(crate::vrpn::VRPNPlugin);
 
@@ -28,8 +35,9 @@ pub(crate) fn setup() -> App {
         .expect("determine current executable")
         .to_owned();
 
-    // session
-    let session_id = crate::multiprocess::generate_session_id();
+    debug!("Using session id as {session_id:?}");
+
+    info!("Launching {child_count} render processes");
 
     let _child_list: Vec<_> = (0..child_count)
         .map(|i| {

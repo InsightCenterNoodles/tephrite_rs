@@ -9,6 +9,7 @@ use std::{str::FromStr, sync::OnceLock};
 mod file {
     use std::path::{Path, PathBuf};
 
+    use bevy::log::debug;
     use serde::Deserialize;
 
     #[derive(Debug, Default, Deserialize)]
@@ -53,6 +54,7 @@ mod file {
         if let Ok(path) = std::env::var("TEPH_CONFIG_PATH") {
             let p = PathBuf::from(path);
             if p.exists() {
+                debug!("Using config env var");
                 return Some(p);
             }
         }
@@ -61,19 +63,22 @@ mod file {
         if let Some(home_dir) = dirs::home_dir() {
             let candidate = home_dir.join(".teph").join("config.toml");
             if candidate.exists() {
+                debug!("Using user-local config");
                 return Some(candidate);
             }
         }
 
         // 3. /opt/teph/config.toml
-        let opt_path = Path::new("/opt/tephrite/config.toml");
+        let opt_path = Path::new("/opt/teph/config.toml");
         if opt_path.exists() {
+            debug!("Using /opt config");
             return Some(opt_path.to_path_buf());
         }
 
         // 4. /etc/teph/config.toml
-        let etc_path = Path::new("/etc/tephrite/config.toml");
+        let etc_path = Path::new("/etc/teph/config.toml");
         if etc_path.exists() {
+            debug!("Using /etc config");
             return Some(etc_path.to_path_buf());
         }
 

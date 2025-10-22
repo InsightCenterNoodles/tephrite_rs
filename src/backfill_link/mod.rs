@@ -8,6 +8,8 @@ pub(crate) mod transform;
 
 use bevy::prelude::*;
 
+use crate::common::Head;
+
 use super::backfill;
 use super::backfill::ffi as bffi;
 
@@ -121,13 +123,16 @@ fn setup_session(app: &mut App) {
         unsafe {
             bffi::fconfig_set_log_debug(config.as_ptr(), 1);
             bffi::fconfig_set_offaxis_plane(config.as_ptr(), &plane);
+            bffi::fconfig_set_fullscreen(config.as_ptr(), 1);
         };
 
         if let Some(d) = &child_config.display_name {
+            debug!("Setting display to {d}");
             backfill::config_display(&config, d);
         }
 
         if let Some(index) = &child_config.card_index {
+            debug!("Setting card index to {index}");
             unsafe { bffi::fconfig_set_device(config.as_ptr(), (*index) as i32) };
         }
 
@@ -168,10 +173,19 @@ fn run_frame(
     session: NonSend<resources::Session>,
     mut writer: EventWriter<AppExit>,
     query: Query<Entity, With<components::BEntity>>,
+    head_ent: Query<&Transform, With<Head>>,
     mut cache: NonSendMut<mesh_mat_bind::AssetCache>,
     mut commands: Commands,
 ) {
+    // update head
+
+    if let Ok(x) = head_ent.single() {
+        backfill::update_head(&session.0, x.translation, x.rotation);
+    }
+
     let should_exit = backfill::frame(&session.0);
+
+    //println!("{} FRAME", std::process::id());
 
     if !should_exit {
         info!("Exiting...");

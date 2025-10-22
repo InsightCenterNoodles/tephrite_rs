@@ -4,13 +4,13 @@ use crate::{config::get_render_configuration, multiprocess::app::make_common_app
 
 /// Function to run a render (or child) process
 pub(crate) fn run() -> AppExit {
+    let mut app = make_common_app();
+
     // Get child config
     let child_config = get_render_configuration();
     let rank = child_config.process_rank;
 
     info!("{rank}: Running render process {}", std::process::id());
-
-    let mut app = make_common_app();
 
     app.add_plugins(crate::backfill_link::BackfillPlugin);
 

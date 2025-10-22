@@ -77,6 +77,8 @@ fn main() -> anyhow::Result<()> {
         for rp in ["$ORIGIN", "$ORIGIN/../lib", "$ORIGIN/lib"] {
             println!("cargo:rustc-link-arg=-Wl,-rpath,{}", rp);
         }
+
+        println!("cargo:rustc-link-arg=-Wl,-rpath,{}", lib_dir.display());
     }
 
     // 6) Generate bindings from the wrapper we create (or skip with feature)
