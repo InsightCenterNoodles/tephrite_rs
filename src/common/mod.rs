@@ -2,7 +2,7 @@ use crate::serialize;
 
 /// Marker for the entity that represents the user's head
 #[derive(bevy::prelude::Component, Debug)]
-pub(crate) struct Head;
+pub struct Head;
 
 impl serialize::FastWrite for Head {
     unsafe fn write_fast(&self, _w: &mut impl serialize::ByteSink) {

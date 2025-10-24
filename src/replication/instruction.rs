@@ -83,9 +83,9 @@ pub(crate) struct HierarchyChange {
 }
 impl_fast_raw_item!(HierarchyChange);
 
-/// An instruction to stop parsing instructions.
+/// An instruction to stop parsing instructions for this frame.
 ///
-/// THIS MUST BE THE FINAL INSTRUCTION. Failure to have this one means you
+/// THIS MUST BE THE FINAL INSTRUCTION FOR A FRAME. Failure to have this one means you
 /// will be reading off into uninitialized memory in the transcript!
 #[derive(Debug)]
 pub struct EndFrame;
@@ -95,6 +95,22 @@ impl FastWrite for EndFrame {
     unsafe fn write_fast(&self, _w: &mut impl ByteSink) {}
 }
 impl FastRead for EndFrame {
+    type Ret = Self;
+    #[inline(always)]
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(_r: &mut S) -> Self {
+        Self
+    }
+}
+
+/// An instruction to halt and shutdown.
+#[derive(Debug)]
+pub struct Halt;
+
+impl FastWrite for Halt {
+    #[inline(always)]
+    unsafe fn write_fast(&self, _w: &mut impl ByteSink) {}
+}
+impl FastRead for Halt {
     type Ret = Self;
     #[inline(always)]
     unsafe fn read_fast<'a, S: ByteSource<'a>>(_r: &mut S) -> Self {
@@ -116,6 +132,7 @@ create_serialize_enum_write_only!(
         (5, CDropAsset, DropAsset),
         (6, HChange, HierarchyChange),
         (7, EFrame, EndFrame),
+        (8, Halt, Halt),
     }
 );
 
@@ -194,5 +211,6 @@ create_serialize_enum!(
         (5, CDropAsset, DropAsset),
         (6, HChange, HierarchyChange),
         (7, EFrame, EndFrame),
+        (8, Halt, Halt),
     }
 );

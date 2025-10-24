@@ -38,8 +38,11 @@ mod file {
     pub(crate) struct Screen {
         // index into `displays`
         pub(crate) display: u32,
-        pub(crate) card_index: u32,
-        pub(crate) x_display: String,
+        pub(crate) card_index: Option<u32>,
+        pub(crate) x_display: Option<String>,
+
+        #[serde(default)]
+        pub(crate) fullscreen: bool,
     }
 
     /// Try to locate the configuration file for this app.
@@ -47,8 +50,9 @@ mod file {
     /// Search order:
     /// 1. `$TEPH_CONFIG_PATH` environment variable
     /// 2. `~/.teph/config.toml`
-    /// 3. `/opt/teph/config.toml`
-    /// 4. `/etc/teph/config.toml`
+    /// 3. `~/.config/teph.toml`
+    /// 4. `/opt/teph/config.toml`
+    /// 5. `/etc/teph/config.toml`
     pub fn find_config_file() -> Option<PathBuf> {
         // 1. Environment variable override
         if let Ok(path) = std::env::var("TEPH_CONFIG_PATH") {
@@ -68,14 +72,23 @@ mod file {
             }
         }
 
-        // 3. /opt/teph/config.toml
+        // 3. User home (~/.config/teph.toml)
+        if let Some(home_dir) = dirs::home_dir() {
+            let candidate = home_dir.join(".config").join("teph.toml");
+            if candidate.exists() {
+                debug!("Using user-local config");
+                return Some(candidate);
+            }
+        }
+
+        // 4. /opt/teph/config.toml
         let opt_path = Path::new("/opt/teph/config.toml");
         if opt_path.exists() {
             debug!("Using /opt config");
             return Some(opt_path.to_path_buf());
         }
 
-        // 4. /etc/teph/config.toml
+        // 5. /etc/teph/config.toml
         let etc_path = Path::new("/etc/teph/config.toml");
         if etc_path.exists() {
             debug!("Using /etc config");
@@ -176,6 +189,8 @@ pub struct RenderConfiguration {
 
     /// The pixel resolution of the display (w, h)
     pub resolution: UVec2,
+
+    pub fullscreen: bool,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -211,8 +226,12 @@ fn build_child_config() -> RenderConfiguration {
 
     RenderConfiguration {
         process_rank: child_process_id(),
-        card_index: this_screen.as_ref().map(|x| x.card_index),
-        display_name: this_screen.map(|x| x.x_display),
+        card_index: this_screen.as_ref().and_then(|x| x.card_index),
+        fullscreen: this_screen
+            .as_ref()
+            .map(|x| x.fullscreen)
+            .unwrap_or_default(),
+        display_name: this_screen.and_then(|x| x.x_display),
         display_physical: this_display
             .map(|x| DisplayPhysical {
                 lower_left: x.lower_left.into(),

@@ -11,15 +11,15 @@ use bevy::app::Plugin;
 
 pub mod prelude {
     pub use super::run;
+    pub use crate::common::Head;
     pub use crate::replication::components::Replicated;
 }
 
 /// Primary entry point for your application
 ///
 /// As this is a multiprocess application, we may need to steal control from
-/// your main process. This function takes care of this for you; pass in a
-/// function that acts like a main. See examples for demonstrations of this
-/// approach.
+/// your main process. This function takes care of this for you; pass in a plugin that defines your application.
+/// See examples for demonstrations of this approach.
 ///
 pub fn run(user_plugin: impl Plugin) -> bevy::app::AppExit {
     if multiprocess::is_child_process() {
@@ -29,6 +29,10 @@ pub fn run(user_plugin: impl Plugin) -> bevy::app::AppExit {
 
         app.add_plugins(user_plugin);
 
-        app.run()
+        let result = app.run();
+
+        multiprocess::logic_process::cleanup(app);
+
+        result
     }
 }

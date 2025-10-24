@@ -1,6 +1,7 @@
 pub(crate) mod breplicate;
 pub(crate) mod components;
 pub(crate) mod convert;
+pub(crate) mod lighting;
 pub(crate) mod mesh_mat_bind;
 pub(crate) mod resources;
 pub(crate) mod sets;
@@ -23,6 +24,7 @@ impl Plugin for BackfillPlugin {
         app.add_plugins(breplicate::ReplicationPlugin);
         app.add_plugins(mesh_mat_bind::RenderableBindingPlugin);
         app.add_plugins(transform::TransformPlugin);
+        app.add_plugins(lighting::LightBindingPlugin);
 
         app.add_systems(Last, run_frame);
     }
@@ -123,7 +125,10 @@ fn setup_session(app: &mut App) {
         unsafe {
             bffi::fconfig_set_log_debug(config.as_ptr(), 1);
             bffi::fconfig_set_offaxis_plane(config.as_ptr(), &plane);
-            bffi::fconfig_set_fullscreen(config.as_ptr(), 1);
+
+            if child_config.fullscreen {
+                bffi::fconfig_set_fullscreen(config.as_ptr(), 1);
+            }
         };
 
         if let Some(d) = &child_config.display_name {

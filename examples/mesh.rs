@@ -1,10 +1,12 @@
 use bevy::prelude::*;
+use tephrite_rs::prelude::{Head, Replicated};
 
-struct MyPluygin;
+struct MyPlugin;
 
-impl Plugin for MyPluygin {
+impl Plugin for MyPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup);
+        app.add_systems(Update, reset_head);
     }
 }
 
@@ -19,20 +21,23 @@ fn setup(
         Mesh3d(meshes.add(Circle::new(4.0))),
         MeshMaterial3d(materials.add(Color::WHITE)),
         Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+        Replicated,
     ));
     // cube
     commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+        Mesh3d(meshes.add(Cuboid::new(0.1, 0.1, 0.1))),
         MeshMaterial3d(materials.add(Color::srgb_u8(124, 144, 255))),
         Transform::from_xyz(0.0, 0.5, 0.0),
+        Replicated,
     ));
     // light
     commands.spawn((
-        PointLight {
+        DirectionalLight {
             shadows_enabled: true,
             ..default()
         },
-        Transform::from_xyz(4.0, 8.0, 4.0),
+        Transform::from_xyz(4.0, 8.0, 4.0).looking_at((0.3, -1.0, -0.4).into(), Dir3::Y),
+        Replicated,
     ));
     // camera
     commands.spawn((
@@ -41,6 +46,23 @@ fn setup(
     ));
 }
 
+fn reset_head(
+    mut query: Query<&mut Transform, With<Head>>,
+    time: Res<Time>,
+    mut local: Local<f32>,
+) {
+    *local += 0.5 * time.delta_secs();
+
+    let new_head_x = (local).sin() * 2.0 - 1.0;
+
+    let head_pos = vec3(new_head_x, 1.5, 2.0);
+    let head_rot = Quat::default();
+
+    for mut q in query.iter_mut() {
+        q.translation = head_pos;
+    }
+}
+
 fn main() {
-    tephrite_rs::run(MyPluygin);
+    tephrite_rs::run(MyPlugin);
 }

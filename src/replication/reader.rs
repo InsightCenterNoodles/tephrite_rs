@@ -2,6 +2,7 @@ use bevy::ecs::entity::EntityHashMap;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 
+use crate::backfill_link::components::BReplicate;
 use crate::serialize::transcript_reader::TranscriptReaderResource;
 
 use super::instruction::*;
@@ -57,14 +58,21 @@ impl<T: Asset> RemoteAssetMap<T> {
     /// Store a new remote asset
     fn insert(&mut self, asset_store: &mut Assets<T>, remote_id: AssetId<T>, asset: T) {
         let new = asset_store.add(asset);
-        //println!("Remapping remote id {remote_id} to {}", new.id());
+        println!(
+            "{}: Remapping remote id {remote_id} to {}",
+            std::any::type_name::<T>(),
+            new.id()
+        );
 
         self.0.insert(remote_id, new);
     }
 
     /// Drop an asset from the store
     fn remove(&mut self, asset_store: &mut Assets<T>, remote_id: AssetId<T>) {
-        //println!("Unmapping remote {remote_id}");
+        println!(
+            "{}: Unmapping remote {remote_id}",
+            std::any::type_name::<T>(),
+        );
         if let Some(local) = self.0.remove(&remote_id) {
             asset_store.remove(local.id());
         }
@@ -72,7 +80,10 @@ impl<T: Asset> RemoteAssetMap<T> {
 
     /// Remap a remote handle to a local asset
     fn fixup(&self, remote_id: AssetId<T>) -> Handle<T> {
-        //println!("Fixing up handle {remote_id}");
+        println!(
+            "{}, Fixing up handle {remote_id}",
+            std::any::type_name::<T>(),
+        );
         self.0.get(&remote_id).expect("missing asset!").clone()
     }
 }
@@ -90,10 +101,11 @@ fn child_system(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut mesh_map: ResMut<RemoteAssetMap<Mesh>>,
     mut material_map: ResMut<RemoteAssetMap<StandardMaterial>>,
+    mut exit_event: EventWriter<AppExit>,
 ) {
     // wait for transcript to be finished
     transcript.consume_next(|_, _, slice| {
-        consume_buffer(
+        let result = consume_buffer(
             slice,
             &mut map,
             &mut commands,
@@ -102,9 +114,19 @@ fn child_system(
             &mut mesh_map,
             &mut material_map,
         );
+
+        if let ConsumeResult::Halt = result {
+            exit_event.write(AppExit::Success);
+        }
     });
 }
 
+enum ConsumeResult {
+    Continue,
+    Halt,
+}
+
+#[must_use]
 #[inline(always)]
 fn consume_buffer(
     bytes: &[u8],
@@ -114,7 +136,7 @@ fn consume_buffer(
     materials: &mut Assets<StandardMaterial>,
     mesh_map: &mut RemoteAssetMap<Mesh>,
     material_map: &mut RemoteAssetMap<StandardMaterial>,
-) {
+) -> ConsumeResult {
     use crate::serialize::*;
     let mut bytes = ByteReader::new(bytes);
 
@@ -125,7 +147,7 @@ fn consume_buffer(
 
         match instruction {
             ClientInstruction::EAdd(entity) => {
-                let local = commands.spawn_empty();
+                let local = commands.spawn(BReplicate);
 
                 map.0.insert(entity, local.id());
                 //println!("Mapping entity {:?} {:?}", entity, local.id());
@@ -140,10 +162,14 @@ fn consume_buffer(
                 use crate::replication::replicated_components::ReplicatedComponent;
 
                 let component = match item.component {
-                    ReplicatedComponent::Mesh3d(mesh3d) => ReplicatedComponent::Mesh3d(
-                        bevy::prelude::Mesh3d(mesh_map.fixup(mesh3d.id())),
-                    ),
+                    ReplicatedComponent::Mesh3d(mesh3d) => {
+                        dbg!(&mesh3d);
+                        ReplicatedComponent::Mesh3d(bevy::prelude::Mesh3d(
+                            mesh_map.fixup(mesh3d.id()),
+                        ))
+                    }
                     ReplicatedComponent::StandardMatComponent(mesh_material3d) => {
+                        dbg!(&mesh_material3d);
                         ReplicatedComponent::StandardMatComponent(
                             MeshMaterial3d::<StandardMaterial>(
                                 material_map.fixup(mesh_material3d.id()),
@@ -194,7 +220,10 @@ fn consume_buffer(
                 }
             }
             ClientInstruction::EFrame(_) => {
-                return;
+                return ConsumeResult::Continue;
+            }
+            ClientInstruction::Halt(_) => {
+                return ConsumeResult::Halt;
             }
         }
     }

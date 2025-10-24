@@ -136,6 +136,8 @@ fn replicates_mesh_and_material_client() {
     let meshes = app.world().resource::<Assets<Mesh>>();
     let materials = app.world().resource::<Assets<StandardMaterial>>();
 
+    // the way we order frames we should never ref an asset that has not been created
+
     let mesh = meshes
         .get(mesh_handle.id())
         .expect("replicated mesh should exist");

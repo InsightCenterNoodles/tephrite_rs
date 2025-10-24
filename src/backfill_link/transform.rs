@@ -20,6 +20,7 @@ fn update_tfs(
     session: NonSend<Session>,
 ) {
     for (be, tf) in &query {
+        //debug!("Setting TF on {:?} {:?}", be.0, tf);
         crate::backfill::set_transform(&session.0, be.0, &tf.compute_matrix());
     }
 }

@@ -500,6 +500,17 @@ impl From<bevy::math::Vec4> for ffi::FColor {
         }
     }
 }
+impl From<bevy::color::Color> for ffi::FColor {
+    fn from(value: bevy::color::Color) -> Self {
+        let v = value.to_linear();
+        ffi::FColor {
+            r: v.red,
+            g: v.green,
+            b: v.blue,
+            a: v.alpha,
+        }
+    }
+}
 
 /* ---------------------------- Mat4 -------------------------------- */
 // Your C mat4 is column-major with fields a,b,c,d = columns.
