@@ -10,7 +10,7 @@ use crate::{
 pub(crate) fn run() -> AppExit {
     let mut app = make_common_app();
 
-    app.add_plugins(TerminalCtrlCHandlerPlugin);
+    //app.add_plugins(TerminalCtrlCHandlerPlugin);
 
     // Get child config
     let child_config = get_render_configuration();

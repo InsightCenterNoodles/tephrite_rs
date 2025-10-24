@@ -27,7 +27,7 @@ pub(crate) fn setup() -> App {
     // build bevy application
     let mut app = make_common_app();
 
-    app.add_plugins(TerminalCtrlCHandlerPlugin);
+    //app.add_plugins(TerminalCtrlCHandlerPlugin);
 
     // only now are logs enabled!
 
