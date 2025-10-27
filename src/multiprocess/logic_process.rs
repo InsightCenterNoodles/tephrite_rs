@@ -1,21 +1,10 @@
 use std::process::Child;
 
-use bevy::{
-    app::{App, TerminalCtrlCHandlerPlugin},
-    prelude::*,
-};
+use bevy::{app::App, prelude::*};
 
 use crate::{
-    common::Head,
-    config::get_logic_configuration,
-    multiprocess::app::make_common_app,
-    prelude::Replicated,
-    replication::instruction::{Halt, ServerInstruction},
-    serialize::{
-        FastWrite,
-        transcript_writer::{TranscriptWriteStateResource, TranscriptWriterResource},
-    },
-    vrpn::VRPNLink,
+    common::Head, config::get_logic_configuration, multiprocess::app::make_common_app,
+    prelude::Replicated, vrpn::VRPNLink,
 };
 
 pub(crate) fn setup() -> App {
@@ -26,8 +15,6 @@ pub(crate) fn setup() -> App {
 
     // build bevy application
     let mut app = make_common_app();
-
-    //app.add_plugins(TerminalCtrlCHandlerPlugin);
 
     // only now are logs enabled!
 
@@ -83,22 +70,6 @@ fn setup_tracked_head(mut commands: Commands) {
     let h = get_logic_configuration().vrpn_config.head.clone();
 
     commands.spawn((Replicated, Transform::default(), Head, VRPNLink::new(h)));
-}
-
-fn send_stop(app: &mut App) -> Option<()> {
-    let mut state = app
-        .world_mut()
-        .remove_non_send_resource::<TranscriptWriteStateResource>()?;
-
-    unsafe { ServerInstruction::Halt(Halt).write_fast(&mut state) };
-
-    let mut res = app
-        .world_mut()
-        .remove_non_send_resource::<TranscriptWriterResource>()?;
-
-    res.commit(state);
-
-    Some(())
 }
 
 fn destroy_child_process(mut child: Child) {

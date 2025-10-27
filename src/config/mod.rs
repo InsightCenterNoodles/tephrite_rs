@@ -43,6 +43,9 @@ mod file {
 
         #[serde(default)]
         pub(crate) fullscreen: bool,
+
+        #[serde(default)]
+        pub(crate) is_right: bool,
     }
 
     /// Try to locate the configuration file for this app.
@@ -191,6 +194,8 @@ pub struct RenderConfiguration {
     pub resolution: UVec2,
 
     pub fullscreen: bool,
+
+    pub is_right: bool,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -231,6 +236,7 @@ fn build_child_config() -> RenderConfiguration {
             .as_ref()
             .map(|x| x.fullscreen)
             .unwrap_or_default(),
+        is_right: this_screen.as_ref().map(|x| x.is_right).unwrap_or_default(),
         display_name: this_screen.and_then(|x| x.x_display),
         display_physical: this_display
             .map(|x| DisplayPhysical {
