@@ -194,6 +194,7 @@ fn run_frame(
 
     if let Ok(x) = head_ent.single() {
         backfill::update_head(&session.0, x.translation, x.rotation);
+        //println!("{} HEAD {}", std::process::id(), x.translation);
     }
 
     let should_exit = backfill::frame(&session.0);

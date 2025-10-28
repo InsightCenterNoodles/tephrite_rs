@@ -58,21 +58,21 @@ impl<T: Asset> RemoteAssetMap<T> {
     /// Store a new remote asset
     fn insert(&mut self, asset_store: &mut Assets<T>, remote_id: AssetId<T>, asset: T) {
         let new = asset_store.add(asset);
-        println!(
-            "{}: Remapping remote id {remote_id} to {}",
-            std::any::type_name::<T>(),
-            new.id()
-        );
+        // println!(
+        //     "{}: Remapping remote id {remote_id} to {}",
+        //     std::any::type_name::<T>(),
+        //     new.id()
+        // );
 
         self.0.insert(remote_id, new);
     }
 
     /// Drop an asset from the store
     fn remove(&mut self, asset_store: &mut Assets<T>, remote_id: AssetId<T>) {
-        println!(
-            "{}: Unmapping remote {remote_id}",
-            std::any::type_name::<T>(),
-        );
+        // println!(
+        //     "{}: Unmapping remote {remote_id}",
+        //     std::any::type_name::<T>(),
+        // );
         if let Some(local) = self.0.remove(&remote_id) {
             asset_store.remove(local.id());
         }
@@ -80,10 +80,10 @@ impl<T: Asset> RemoteAssetMap<T> {
 
     /// Remap a remote handle to a local asset
     fn fixup(&self, remote_id: AssetId<T>) -> Handle<T> {
-        println!(
-            "{}, Fixing up handle {remote_id}",
-            std::any::type_name::<T>(),
-        );
+        // println!(
+        //     "{}, Fixing up handle {remote_id}",
+        //     std::any::type_name::<T>(),
+        // );
         self.0.get(&remote_id).expect("missing asset!").clone()
     }
 }
@@ -163,7 +163,7 @@ fn consume_buffer(
 
                 let component = match item.component {
                     ReplicatedComponent::Mesh3d(mesh3d) => {
-                        dbg!(&mesh3d);
+                        //dbg!(&mesh3d);
                         ReplicatedComponent::Mesh3d(bevy::prelude::Mesh3d(
                             mesh_map.fixup(mesh3d.id()),
                         ))

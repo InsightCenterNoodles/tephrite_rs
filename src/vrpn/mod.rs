@@ -716,7 +716,7 @@ fn service_vrpn(mut query: Query<(&VRPNLinkConnected, &mut Transform)>) {
 
         // TODO: rotation. need to check mappings
         tf.translation = new_pos.position.as_vec3();
-        tf.rotation = new_pos.rotation.as_quat();
+        //tf.rotation = new_pos.rotation.as_quat();
     }
 }
 
