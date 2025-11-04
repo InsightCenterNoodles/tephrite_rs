@@ -26,6 +26,7 @@ impl Plugin for BackfillPlugin {
         app.add_plugins(transform::TransformPlugin);
         app.add_plugins(lighting::LightBindingPlugin);
 
+        //app.add_systems(FixedLast, run_frame);
         app.add_systems(Last, run_frame);
     }
 }

@@ -6,7 +6,7 @@ struct MyPlugin;
 impl Plugin for MyPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup);
-        app.add_systems(Update, reset_head);
+        //app.add_systems(Update, reset_head);
     }
 }
 
@@ -23,13 +23,36 @@ fn setup(
         Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
         Replicated,
     ));
-    // cube
+    // cubes
+
+    let mesh = meshes.add(Cuboid::new(0.1, 0.1, 0.1));
+
+    //let e = commands.spawn(Transform::from_xyz(0.0, 0.5, 0.0)).id();
+
     commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(0.1, 0.1, 0.1))),
-        MeshMaterial3d(materials.add(Color::srgb_u8(124, 144, 255))),
-        Transform::from_xyz(0.0, 0.5, 0.0),
+        Mesh3d(mesh.clone()),
+        MeshMaterial3d(materials.add(Color::srgb_u8(255, 0, 0))),
+        Transform::from_xyz(0.2, 0.5, 0.0),
+        //ChildOf(e),
         Replicated,
     ));
+
+    commands.spawn((
+        Mesh3d(mesh.clone()),
+        MeshMaterial3d(materials.add(Color::srgb_u8(0, 255, 0))),
+        Transform::from_xyz(0.0, 0.7, 0.0),
+        //ChildOf(e),
+        Replicated,
+    ));
+
+    commands.spawn((
+        Mesh3d(mesh),
+        MeshMaterial3d(materials.add(Color::srgb_u8(0, 0, 255))),
+        Transform::from_xyz(0.0, 0.5, 0.2),
+        //ChildOf(e),
+        Replicated,
+    ));
+
     // light
     commands.spawn((
         DirectionalLight {
