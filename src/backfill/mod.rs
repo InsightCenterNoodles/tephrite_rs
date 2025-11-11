@@ -132,6 +132,13 @@ opaque!(
     fenv_light_release
 );
 opaque_cloneable!(FMesh, FMeshHandle, fmesh_acquire, fmesh_release);
+
+opaque!(
+    FMaterialConfig,
+    FMaterialConfigHandle,
+    fmaterialconfig_destroy
+);
+
 opaque_cloneable!(
     FMaterial,
     FMaterialHandle,
@@ -272,24 +279,85 @@ pub fn mesh_from_refs(
         .ok_or(BackfillError::EmptyPointer)
 }
 
-//
+// MARK: Material Configuration
 
-bitflags::bitflags! {
-    pub struct MatConfigFlags: u32 {
-        const UNLIT = ffi::MatConfigFlags_MC_UNLIT;
+#[derive(Debug, Clone, Copy)]
+pub struct BSampler {
+    sampler: ffi::Sampler,
+}
+
+impl BSampler {
+    pub fn new() -> Self {
+        let mut x = std::mem::MaybeUninit::<ffi::Sampler>::zeroed();
+
+        unsafe { ffi::fsamp_init(x.as_mut_ptr()) };
+
+        Self {
+            sampler: unsafe { x.assume_init() },
+        }
+    }
+
+    pub fn set_mag(&mut self, filter: ffi::FMagFilter) {
+        unsafe { ffi::fsamp_set_mag(&raw mut self.sampler, filter) };
+    }
+
+    pub fn set_min(&mut self, filter: ffi::FMinFilter) {
+        unsafe { ffi::fsamp_set_min(&raw mut self.sampler, filter) };
+    }
+
+    pub fn set_wrap(&mut self, wrap: ffi::FWrapMode, axis: ffi::FTexAxis) {
+        unsafe { ffi::fsamp_set_wrap(&raw mut self.sampler, wrap, axis) };
+    }
+
+    pub fn set_aniso(&mut self, levels: u8) {
+        unsafe { ffi::fsamp_set_aniso(&raw mut self.sampler, levels) };
     }
 }
 
+pub fn material_config() -> BackfillResult<FMaterialConfigHandle> {
+    let ptr = unsafe { ffi::fmaterialconfig_init() };
+    NonNull::new(ptr)
+        .map(|p| unsafe { Handle::from_nonnull(p) })
+        .ok_or(BackfillError::EmptyPointer)
+}
+
+impl FMaterialConfigHandle {
+    pub fn set_option(&self, option: ffi::FMatTexOption, b: bool) {
+        unsafe { ffi::fmc_set_option(self.as_ptr(), option, b as u8) };
+    }
+
+    pub fn set_texture(
+        &self,
+        semantic: ffi::FMatTexSemantic,
+        slot: ffi::FMatTexUVSlot,
+        tex: &FTextureHandle,
+        mut sampler: BSampler,
+    ) {
+        unsafe {
+            ffi::fmc_set_texture(
+                self.as_ptr(),
+                semantic,
+                slot,
+                tex.as_ptr(),
+                &raw mut sampler.sampler,
+            );
+        }
+    }
+
+    pub fn set_blend(&self, ty: ffi::FMatBlendType) {
+        unsafe {
+            ffi::fmc_set_blend(self.as_ptr(), ty);
+        }
+    }
+}
+
+// MARK: Material
+
 pub fn material(
     sess: &FSessionHandle,
-    mask: MatConfigFlags,
-    instance_count: u32,
+    config: &FMaterialConfigHandle,
 ) -> Result<FMaterialHandle, ()> {
-    let mut cfg = ffi::FMaterialConfig {
-        mask: mask.bits(),
-        instance_count,
-    };
-    let ptr = unsafe { ffi::fmaterial_init(sess.as_ptr(), &mut cfg as *mut _) };
+    let ptr = unsafe { ffi::fmaterial_init(sess.as_ptr(), config.as_ptr()) };
     NonNull::new(ptr)
         .map(|p| unsafe { Handle::from_nonnull(p) })
         .ok_or(())
@@ -301,10 +369,6 @@ pub fn material_set_base_color(mat: &FMaterialHandle, c: ffi::FColor) {
 
 pub fn material_set_rm(mat: &FMaterialHandle, roughness: f32, metallic: f32) {
     unsafe { ffi::fmaterial_set_roughness_metallic(mat.as_ptr(), roughness, metallic) }
-}
-
-pub fn material_set_instances(mat: &FMaterialHandle, data: &[ffi::mat4]) {
-    unsafe { ffi::fmaterial_set_instances(mat.as_ptr(), data.as_ptr(), data.len() as ffi::u64_) }
 }
 
 /* ------------------------------ Lights ------------------------------- */

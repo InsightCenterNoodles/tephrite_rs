@@ -155,11 +155,53 @@ pub fn convert_mesh(
     .ok()
 }
 
+pub fn convert_texture(
+    session: &backfill::FSessionHandle,
+    texture: &Image,
+) -> Option<backfill::FTextureHandle> {
+    todo!()
+}
+
 pub fn convert_material(
     session: &backfill::FSessionHandle,
     material: &StandardMaterial,
+    map: &super::mesh_mat_bind::TextureMap,
 ) -> Option<backfill::FMaterialHandle> {
-    let bmat = backfill::material(session, backfill::MatConfigFlags::empty(), 0).unwrap();
+    let mut config = backfill::material_config().ok()?;
+
+    config.set_option(backfill::ffi::FMatTexOption_CLEARCOAT, true);
+    config.set_option(backfill::ffi::FMatTexOption_IOR, true);
+    config.set_option(backfill::ffi::FMatTexOption_TRANSMISSION, true);
+
+    match material.alpha_mode {
+        AlphaMode::Opaque => config.set_blend(backfill::ffi::FMatBlendType_OPAQUE),
+        AlphaMode::Mask(_) => config.set_blend(backfill::ffi::FMatBlendType_MASK),
+        AlphaMode::Blend => config.set_blend(backfill::ffi::FMatBlendType_BLEND),
+        _ => {}
+    }
+
+    set_texture(
+        &mut config,
+        &material.base_color_texture,
+        &material.base_color_channel,
+        map,
+    );
+
+    set_texture(
+        &mut config,
+        &material.normal_map_texture,
+        &material.normal_map_channel,
+        map,
+    );
+
+    set_texture(
+        &mut config,
+        &material.metallic_roughness_texture,
+        &material.metallic_roughness_channel,
+        map,
+    );
+
+    let bmat = backfill::material(session, &config).unwrap();
 
     let color = material.base_color.to_linear();
 
@@ -176,4 +218,80 @@ pub fn convert_material(
     backfill::material_set_rm(&bmat, material.perceptual_roughness, material.metallic);
 
     Some(bmat)
+}
+
+fn set_wrap(
+    s: &mut backfill::BSampler,
+    src_mode: bevy::image::ImageAddressMode,
+    dst_mode: bffi::FTexAxis,
+) {
+    match src_mode {
+        bevy::image::ImageAddressMode::ClampToEdge => {
+            s.set_wrap(bffi::FWrapMode_WRAP_CLAMP, dst_mode)
+        }
+        bevy::image::ImageAddressMode::Repeat => s.set_wrap(bffi::FWrapMode_WRAP_REPEAT, dst_mode),
+        bevy::image::ImageAddressMode::MirrorRepeat => {
+            s.set_wrap(bffi::FWrapMode_WRAP_MIRROR_REPEAT, dst_mode)
+        }
+        bevy::image::ImageAddressMode::ClampToBorder => {
+            s.set_wrap(bffi::FWrapMode_WRAP_CLAMP, dst_mode)
+        }
+    }
+}
+
+fn set_texture(
+    config: &mut backfill::FMaterialConfigHandle,
+    handle: &Option<Handle<Image>>,
+    channel: &bevy::pbr::UvChannel,
+    map: &super::mesh_mat_bind::TextureMap,
+) {
+    if let Some((tex, sampler)) = handle.as_ref().and_then(|x| map.get(&x.id())) {
+        let slot = match channel {
+            bevy::pbr::UvChannel::Uv0 => backfill::ffi::FMatTexUVSlot_UV0,
+            bevy::pbr::UvChannel::Uv1 => backfill::ffi::FMatTexUVSlot_UV1,
+        };
+
+        let sampler = {
+            let mut s = backfill::BSampler::new();
+
+            let sampler = match sampler {
+                bevy::image::ImageSampler::Default => &Default::default(),
+                bevy::image::ImageSampler::Descriptor(image_sampler_descriptor) => {
+                    image_sampler_descriptor
+                }
+            };
+
+            s.set_aniso(sampler.anisotropy_clamp.clamp(0, u8::MAX as u16) as u8);
+
+            match (sampler.min_filter, sampler.mipmap_filter) {
+                (bevy::image::ImageFilterMode::Nearest, bevy::image::ImageFilterMode::Nearest) => {
+                    s.set_min(bffi::FMinFilter_MIN_FILTER_NEAREST);
+                }
+                (bevy::image::ImageFilterMode::Linear, bevy::image::ImageFilterMode::Nearest) => {
+                    s.set_min(bffi::FMinFilter_MIN_FILTER_LINEAR);
+                }
+                _ => {
+                    s.set_min(bffi::FMinFilter_MIN_FILTER_LINEAR_MIPMAP_LINEAR);
+                }
+            }
+
+            s.set_mag(match sampler.mag_filter {
+                bevy::image::ImageFilterMode::Nearest => bffi::FMagFilter_MAG_FILTER_NEAREST,
+                bevy::image::ImageFilterMode::Linear => bffi::FMagFilter_MAG_FILTER_LINEAR,
+            });
+
+            set_wrap(&mut s, sampler.address_mode_u, bffi::FTexAxis_AXIS_U);
+            set_wrap(&mut s, sampler.address_mode_v, bffi::FTexAxis_AXIS_V);
+            set_wrap(&mut s, sampler.address_mode_w, bffi::FTexAxis_AXIS_W);
+
+            s
+        };
+
+        config.set_texture(
+            backfill::ffi::FMatTexSemantic_BASE_COLOR_TEX,
+            slot,
+            tex,
+            sampler,
+        );
+    }
 }

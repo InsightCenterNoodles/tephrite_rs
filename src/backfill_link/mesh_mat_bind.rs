@@ -1,3 +1,4 @@
+use bevy::image::ImageSampler;
 use bevy::prelude::*;
 
 use super::components::*;
@@ -10,14 +11,16 @@ use crate::backfill;
 /// Cannot send
 type AssetMap<A, H> = std::collections::HashMap<AssetId<A>, H>;
 
-type MeshMap = AssetMap<Mesh, backfill::FMeshHandle>;
-type MaterialMap = AssetMap<StandardMaterial, backfill::FMaterialHandle>;
+pub(crate) type MeshMap = AssetMap<Mesh, backfill::FMeshHandle>;
+pub(crate) type MaterialMap = AssetMap<StandardMaterial, backfill::FMaterialHandle>;
+pub(crate) type TextureMap = AssetMap<Image, (backfill::FTextureHandle, ImageSampler)>;
 
 // Non send.
 #[derive(Default)]
 pub(crate) struct AssetCache {
     meshes: MeshMap,
     materials: MaterialMap,
+    textures: TextureMap,
 }
 
 impl AssetCache {
@@ -68,7 +71,7 @@ fn watch_material_change(
         match e {
             AssetEvent::Added { id } => {
                 if let Some(asset) = materials.get(*id) {
-                    if let Some(converted) = convert_material(&session.0, asset) {
+                    if let Some(converted) = convert_material(&session.0, asset, &cache.textures) {
                         cache.materials.insert(*id, converted);
                         debug!("Added new material {id}");
                     } else {
