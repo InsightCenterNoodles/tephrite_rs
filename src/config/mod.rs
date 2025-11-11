@@ -14,9 +14,15 @@ mod file {
 
     #[derive(Debug, Default, Deserialize)]
     pub(crate) struct Config {
+        pub(crate) render: Option<Render>,
         pub(crate) vrpn: Vrpn,
         pub(crate) displays: Vec<Display>,
         pub(crate) screens: Vec<Screen>,
+    }
+
+    #[derive(Debug, Default, Deserialize)]
+    pub(crate) struct Render {
+        pub(crate) api: String,
     }
 
     #[derive(Debug, Default, Deserialize)]
@@ -181,6 +187,9 @@ pub struct RenderConfiguration {
     /// The rank of the process
     pub process_rank: u32,
 
+    /// The render API to force
+    pub render_api: Option<String>,
+
     /// The display to use
     pub display_name: Option<String>,
 
@@ -212,6 +221,7 @@ static CHILD_CONFIG: OnceLock<RenderConfiguration> = OnceLock::new();
 
 fn build_child_config() -> RenderConfiguration {
     let file::Config {
+        render,
         vrpn: _,
         displays,
         screens,
@@ -231,6 +241,7 @@ fn build_child_config() -> RenderConfiguration {
 
     RenderConfiguration {
         process_rank: child_process_id(),
+        render_api: render.map(|x| x.api),
         card_index: this_screen.as_ref().and_then(|x| x.card_index),
         fullscreen: this_screen
             .as_ref()
@@ -256,6 +267,7 @@ pub fn get_render_configuration() -> &'static RenderConfiguration {
 pub fn get_logic_configuration() -> &'static LogicConfiguration {
     fn build() -> Option<LogicConfiguration> {
         let file::Config {
+            render: _,
             vrpn,
             displays: _,
             screens,

@@ -29,18 +29,28 @@ fn setup(
 
     //let e = commands.spawn(Transform::from_xyz(0.0, 0.5, 0.0)).id();
 
+    //let zcenter = -0.5f32;
+    let zcenter = -1.0f32;
+
     commands.spawn((
         Mesh3d(mesh.clone()),
         MeshMaterial3d(materials.add(Color::srgb_u8(255, 0, 0))),
-        Transform::from_xyz(0.2, 0.5, 0.0),
+        Transform::from_xyz(0.2, 1.0, zcenter),
         //ChildOf(e),
         Replicated,
     ));
 
+    let shiny = materials.add(StandardMaterial {
+        base_color: Color::srgb_u8(0, 255, 0),
+        metallic: 1.0,
+        perceptual_roughness: 0.1,
+        ..Default::default()
+    });
+
     commands.spawn((
         Mesh3d(mesh.clone()),
-        MeshMaterial3d(materials.add(Color::srgb_u8(0, 255, 0))),
-        Transform::from_xyz(0.0, 0.7, 0.0),
+        MeshMaterial3d(shiny),
+        Transform::from_xyz(0.0, 1.2, zcenter),
         //ChildOf(e),
         Replicated,
     ));
@@ -48,7 +58,7 @@ fn setup(
     commands.spawn((
         Mesh3d(mesh),
         MeshMaterial3d(materials.add(Color::srgb_u8(0, 0, 255))),
-        Transform::from_xyz(0.0, 0.5, 0.2),
+        Transform::from_xyz(0.0, 1.0, zcenter + 0.2),
         //ChildOf(e),
         Replicated,
     ));
@@ -59,7 +69,7 @@ fn setup(
             shadows_enabled: true,
             ..default()
         },
-        Transform::from_xyz(4.0, 8.0, 4.0).looking_at((0.3, -1.0, -0.4).into(), Dir3::Y),
+        Transform::from_xyz(0.0, 5.0, 3.0).looking_at((0.0, 0.0, 0.0).into(), Dir3::Y),
         Replicated,
     ));
     // camera

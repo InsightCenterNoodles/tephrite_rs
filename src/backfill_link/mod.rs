@@ -140,6 +140,16 @@ fn setup_session(app: &mut App) {
             }
         };
 
+        if let Some(api) = &child_config.render_api {
+            let api = match api.as_str() {
+                "opengl" => bffi::FRenderer_R_OPENGL,
+                "metal" => bffi::FRenderer_R_METAL,
+                "vulkan" => bffi::FRenderer_R_VULKAN,
+                x => panic!("Unknown graphics API {x}"),
+            };
+            unsafe { bffi::fconfig_set_renderer(config.as_ptr(), api) };
+        }
+
         if let Some(d) = &child_config.display_name {
             debug!("Setting display to {d}");
             backfill::config_display(&config, d);
