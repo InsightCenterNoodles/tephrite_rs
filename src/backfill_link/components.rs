@@ -6,6 +6,7 @@ use crate::backfill;
 #[component(immutable)]
 pub struct BReplicate;
 
+/// The Backfill entity for this entity
 #[derive(Component)]
 #[component(immutable)]
 pub(crate) struct BEntity(pub(crate) backfill::EntityId);

@@ -18,6 +18,7 @@ use bevy::prelude::Component;
 /// ));
 /// # }
 /// ```
+/// TODO: move to HierarchyPropagatePlugin
 #[derive(Component, Debug, Clone, Copy)]
 #[component(immutable)]
 pub struct Replicated;

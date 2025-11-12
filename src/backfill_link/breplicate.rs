@@ -4,6 +4,7 @@ use super::components::*;
 use crate::backfill;
 
 // --- plugin to register systems ---
+// TODO: Move to HierarchyPropagatePlugin
 pub struct ReplicationPlugin;
 
 impl Plugin for ReplicationPlugin {
