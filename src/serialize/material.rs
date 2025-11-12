@@ -3,7 +3,10 @@
 //! The serializer keeps the vast majority of render‑affecting fields and skips
 //! a few fields that are either redundant, unstable across versions, or not
 //! required on the receiving side (e.g. `specular_tint`).
+use std::sync::{LazyLock, RwLock};
+
 use bevy::pbr::{OpaqueRendererMethod, UvChannel};
+use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::render::render_resource::Face;
 
@@ -65,6 +68,22 @@ impl_fast_raw_item!(Face);
 impl_fast_raw_item!(AlphaMode);
 impl_fast_raw_item!(ParallaxMappingMethod);
 impl_fast_raw_item!(OpaqueRendererMethod);
+
+// =============================================================================
+
+static MAP: LazyLock<RwLock<HashMap<AssetId<StandardMaterial>, Handle<StandardMaterial>>>> =
+    LazyLock::new(|| Default::default());
+
+impl RemappableAsset for StandardMaterial {
+    #[inline]
+    fn with_remapper<F: FnOnce(&HashMap<AssetId<Self>, Handle<Self>>)>(func: F) {
+        func(&MAP.read().unwrap());
+    }
+    #[inline]
+    fn with_remapper_mut<F: FnMut(&mut HashMap<AssetId<Self>, Handle<Self>>)>(mut func: F) {
+        func(&mut MAP.write().unwrap());
+    }
+}
 
 // =============================================================================
 

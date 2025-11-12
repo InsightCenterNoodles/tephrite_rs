@@ -1,5 +1,5 @@
+use bevy::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
 use bevy::prelude::*;
-use bevy::render::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
 
 use crate::backfill;
 use crate::backfill::ffi as bffi;
@@ -41,7 +41,7 @@ pub fn convert_mesh(
     session: &backfill::FSessionHandle,
     mesh: &Mesh,
 ) -> Option<backfill::FMeshHandle> {
-    use bevy::render::mesh::VertexAttributeValues::*;
+    use bevy::mesh::VertexAttributeValues::*;
 
     if !matches!(mesh.primitive_topology(), PrimitiveTopology::TriangleList) {
         debug!("Mesh is not triangles");

@@ -8,7 +8,7 @@ pub struct BReplicate;
 
 #[derive(Component)]
 #[component(immutable)]
-pub struct BEntity(pub(crate) backfill::EntityId);
+pub(crate) struct BEntity(pub(crate) backfill::EntityId);
 
 /// Component to indicate that we have set the renderable bindings for this entity
 #[derive(Component, Debug)]

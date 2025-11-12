@@ -12,7 +12,7 @@ macro_rules! make_change_detection {
     ($app:ident, $A:tt) => {
         $app.add_systems(
             Last,
-            (|mut ev_asset: EventReader<AssetEvent<$A>>,
+            (|mut ev_asset: MessageReader<AssetEvent<$A>>,
               assets: Res<Assets<$A>>,
               mut writer: NonSendMut<TranscriptWriteStateResource>| {
                 //println!("Checking for deltas to {}", stringify!($A));
@@ -186,4 +186,4 @@ macro_rules! generate_asset_systems {
     };
 }
 
-generate_asset_systems!((0, Mesh), (1, StandardMaterial),);
+generate_asset_systems!((0, Mesh), (1, StandardMaterial), (2, Image));

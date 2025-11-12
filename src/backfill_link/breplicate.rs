@@ -23,12 +23,14 @@ impl Plugin for ReplicationPlugin {
 }
 
 fn on_remove(
-    trigger: Trigger<OnRemove, BEntity>,
+    trigger: On<Remove, BEntity>,
     query: Query<&BEntity>,
     session: NonSend<super::resources::Session>,
 ) {
     // this hook runs before removal. so this access is documented to be ok.
-    let q = query.get(trigger.target()).expect("Missing a component?");
+    let q = query
+        .get(trigger.event().entity)
+        .expect("Missing a component?");
 
     debug!("Destroying entity: {:?}", q.0);
 

@@ -668,12 +668,13 @@ struct VRPNLinkConnected {
 /// Spawns one client thread per endpoint and associates a shared state reader
 /// with the entity via `VRPNLinkConnected`.
 fn check_for_new_vrpn(
-    trigger: Trigger<OnAdd, VRPNLink>,
+    trigger: On<Add, VRPNLink>,
     mut commands: Commands,
     query: Query<&VRPNLink, Without<VRPNLinkConnected>>,
     mut res: ResMut<VRPNResource>,
 ) {
-    let entity = trigger.target();
+    let event = trigger.event();
+    let entity = event.entity;
 
     let Ok(link) = query.get(entity) else {
         // Somehow this got added to something WITH a link already? we dont handle this yet.

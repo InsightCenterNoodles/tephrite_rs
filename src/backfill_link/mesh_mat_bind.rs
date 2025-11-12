@@ -31,7 +31,7 @@ impl AssetCache {
 }
 
 fn watch_mesh_change(
-    mut events: EventReader<AssetEvent<Mesh>>,
+    mut events: MessageReader<AssetEvent<Mesh>>,
     meshes: Res<Assets<Mesh>>,
     mut cache: NonSendMut<AssetCache>,
     session: NonSend<Session>,
@@ -62,7 +62,7 @@ fn watch_mesh_change(
 }
 
 fn watch_material_change(
-    mut events: EventReader<AssetEvent<StandardMaterial>>,
+    mut events: MessageReader<AssetEvent<StandardMaterial>>,
     materials: Res<Assets<StandardMaterial>>,
     mut cache: NonSendMut<AssetCache>,
     session: NonSend<Session>,
@@ -168,8 +168,8 @@ fn sync_binding_on_renderability_and_asset_changes(
     mut commands: Commands,
 
     // Detect asset *data* changes via events
-    mut mesh_events: EventReader<AssetEvent<Mesh>>,
-    mut material_events: EventReader<AssetEvent<StandardMaterial>>,
+    mut mesh_events: MessageReader<AssetEvent<Mesh>>,
+    mut material_events: MessageReader<AssetEvent<StandardMaterial>>,
 
     // Detect when the *handles* change or are added
     q_renderables: Query<(

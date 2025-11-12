@@ -3,7 +3,10 @@
 //! Skips fields that are compile-time or label-only metadata (e.g. `label`,
 //! `view_formats`) and focuses on the data and descriptor fields required to
 //! faithfully recreate images on the receiving side.
+use std::sync::{LazyLock, RwLock};
+
 use crate::serialize::*;
+use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::render::render_resource::TextureDescriptor;
 use bevy::{
@@ -21,7 +24,22 @@ use bevy::{
 impl_fast_serialize!(Image, keep: {
     data, texture_descriptor, sampler, texture_view_descriptor, asset_usage
 }, skip: {
+    data_order, copy_on_resize
 });
+
+static MAP: LazyLock<RwLock<HashMap<AssetId<Image>, Handle<Image>>>> =
+    LazyLock::new(|| Default::default());
+
+impl RemappableAsset for Image {
+    #[inline]
+    fn with_remapper<F: FnOnce(&HashMap<AssetId<Self>, Handle<Self>>)>(func: F) {
+        func(&MAP.read().unwrap());
+    }
+    #[inline]
+    fn with_remapper_mut<F: FnMut(&mut HashMap<AssetId<Self>, Handle<Self>>)>(mut func: F) {
+        func(&mut MAP.write().unwrap());
+    }
+}
 
 // =============================================================================
 

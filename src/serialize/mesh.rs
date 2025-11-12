@@ -5,9 +5,14 @@
 //!   decoding; others will cause a panic. This matches the needs of the
 //!   replication pipeline and avoids string lookups.
 //! - Morph targets are not yet supported.
-use bevy::render::mesh::{Indices, MeshVertexAttribute, PrimitiveTopology, VertexAttributeValues};
-use bevy::render::render_asset::RenderAssetUsages;
-use bevy::{prelude::*, render::mesh::MeshVertexAttributeId};
+use std::sync::{LazyLock, RwLock};
+
+use bevy::asset::RenderAssetUsages;
+use bevy::mesh::{
+    Indices, MeshVertexAttribute, MeshVertexAttributeId, PrimitiveTopology, VertexAttributeValues,
+};
+use bevy::platform::collections::HashMap;
+use bevy::prelude::*;
 
 use crate::serialize::*;
 
@@ -327,6 +332,20 @@ impl FastRead for Mesh {
         }
 
         ret
+    }
+}
+
+static MAP: LazyLock<RwLock<HashMap<AssetId<Mesh>, Handle<Mesh>>>> =
+    LazyLock::new(|| Default::default());
+
+impl RemappableAsset for Mesh {
+    #[inline]
+    fn with_remapper<F: FnOnce(&HashMap<AssetId<Self>, Handle<Self>>)>(func: F) {
+        func(&MAP.read().unwrap());
+    }
+    #[inline]
+    fn with_remapper_mut<F: FnMut(&mut HashMap<AssetId<Self>, Handle<Self>>)>(mut func: F) {
+        func(&mut MAP.write().unwrap());
     }
 }
 

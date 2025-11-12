@@ -5,10 +5,10 @@
 use std::time::Duration;
 
 use bevy::app::ScheduleRunnerPlugin;
+use bevy::asset::RenderAssetUsages;
+use bevy::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
 use bevy::pbr::{MaterialPlugin, MeshMaterial3d, StandardMaterial};
 use bevy::prelude::*;
-use bevy::render::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
-use bevy::render::render_asset::RenderAssetUsages;
 use bevy::time::TimePlugin;
 
 use tephrite_rs::multiprocess::{generate_session_id, install_ids, install_session_id};
@@ -25,8 +25,8 @@ fn build_headless_app() -> App {
             TimePlugin,
             TransformPlugin,
             AssetPlugin::default(),
-            bevy::render::mesh::MeshPlugin,
-            bevy::render::texture::ImagePlugin::default(),
+            bevy::mesh::MeshPlugin,
+            bevy::image::ImagePlugin::default(),
             MaterialPlugin::<StandardMaterial>::default(),
         ));
     app

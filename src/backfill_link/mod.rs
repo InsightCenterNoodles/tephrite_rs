@@ -195,7 +195,7 @@ fn setup_session(app: &mut App) {
 
 fn run_frame(
     session: NonSend<resources::Session>,
-    mut writer: EventWriter<AppExit>,
+    mut writer: MessageWriter<AppExit>,
     query: Query<Entity, With<components::BEntity>>,
     head_ent: Query<&Transform, With<Head>>,
     mut cache: NonSendMut<mesh_mat_bind::AssetCache>,

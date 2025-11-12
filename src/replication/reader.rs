@@ -1,5 +1,4 @@
 use bevy::ecs::entity::EntityHashMap;
-use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 
 use crate::backfill_link::components::BReplicate;
@@ -19,8 +18,6 @@ impl Plugin for ReplicationReaderPlugin {
 
         app.insert_non_send_resource(transcript);
         app.init_resource::<EntityMap>();
-        app.init_resource::<RemoteAssetMap<Mesh>>();
-        app.init_resource::<RemoteAssetMap<StandardMaterial>>();
 
         app.add_systems(Update, child_system);
     }
@@ -44,52 +41,6 @@ impl EntityMap {
 
 // =============================================================================
 
-/// A map of remote assetids to local asset handles
-#[derive(Resource)]
-struct RemoteAssetMap<T: Asset>(HashMap<AssetId<T>, Handle<T>>);
-
-impl<T: Asset> Default for RemoteAssetMap<T> {
-    fn default() -> Self {
-        Self(Default::default())
-    }
-}
-
-impl<T: Asset> RemoteAssetMap<T> {
-    /// Store a new remote asset
-    fn insert(&mut self, asset_store: &mut Assets<T>, remote_id: AssetId<T>, asset: T) {
-        let new = asset_store.add(asset);
-        // println!(
-        //     "{}: Remapping remote id {remote_id} to {}",
-        //     std::any::type_name::<T>(),
-        //     new.id()
-        // );
-
-        self.0.insert(remote_id, new);
-    }
-
-    /// Drop an asset from the store
-    fn remove(&mut self, asset_store: &mut Assets<T>, remote_id: AssetId<T>) {
-        // println!(
-        //     "{}: Unmapping remote {remote_id}",
-        //     std::any::type_name::<T>(),
-        // );
-        if let Some(local) = self.0.remove(&remote_id) {
-            asset_store.remove(local.id());
-        }
-    }
-
-    /// Remap a remote handle to a local asset
-    fn fixup(&self, remote_id: AssetId<T>) -> Handle<T> {
-        // println!(
-        //     "{}, Fixing up handle {remote_id}",
-        //     std::any::type_name::<T>(),
-        // );
-        self.0.get(&remote_id).expect("missing asset!").clone()
-    }
-}
-
-// =============================================================================
-
 /// Primary child system to be run every update to obtain new records from the
 /// transcript
 ///
@@ -99,9 +50,8 @@ fn child_system(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut mesh_map: ResMut<RemoteAssetMap<Mesh>>,
-    mut material_map: ResMut<RemoteAssetMap<StandardMaterial>>,
-    mut exit_event: EventWriter<AppExit>,
+    mut images: ResMut<Assets<Image>>,
+    mut exit_event: MessageWriter<AppExit>,
 ) {
     // wait for transcript to be finished
     transcript.consume_next(|_, _, slice| {
@@ -111,8 +61,7 @@ fn child_system(
             &mut commands,
             &mut meshes,
             &mut materials,
-            &mut mesh_map,
-            &mut material_map,
+            &mut images,
         );
 
         if let ConsumeResult::Halt = result {
@@ -134,8 +83,7 @@ fn consume_buffer(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
-    mesh_map: &mut RemoteAssetMap<Mesh>,
-    material_map: &mut RemoteAssetMap<StandardMaterial>,
+    images: &mut Assets<Image>,
 ) -> ConsumeResult {
     use crate::serialize::*;
     let mut bytes = ByteReader::new(bytes);
@@ -159,27 +107,7 @@ fn consume_buffer(
             ClientInstruction::CAdd(item) => {
                 let local = map.map(item.entity);
 
-                use crate::replication::replicated_components::ReplicatedComponent;
-
-                let component = match item.component {
-                    ReplicatedComponent::Mesh3d(mesh3d) => {
-                        //dbg!(&mesh3d);
-                        ReplicatedComponent::Mesh3d(bevy::prelude::Mesh3d(
-                            mesh_map.fixup(mesh3d.id()),
-                        ))
-                    }
-                    ReplicatedComponent::StandardMatComponent(mesh_material3d) => {
-                        dbg!(&mesh_material3d);
-                        ReplicatedComponent::StandardMatComponent(
-                            MeshMaterial3d::<StandardMaterial>(
-                                material_map.fixup(mesh_material3d.id()),
-                            ),
-                        )
-                    }
-                    x => x,
-                };
-
-                component.add_component(local, commands);
+                item.component.add_component(local, commands);
             }
             ClientInstruction::CRemove(item) => {
                 let local = map.map(item.entity);
@@ -190,20 +118,22 @@ fn consume_buffer(
                 use crate::replication::replicated_assets::AssetEnum;
 
                 match *item.asset {
-                    AssetEnum::Mesh(mesh) => mesh_map.insert(meshes, mesh.id, mesh.data),
-                    AssetEnum::StandardMaterial(standard_material) => {
-                        material_map.insert(materials, standard_material.id, standard_material.data)
+                    AssetEnum::Mesh(x) => Mesh::install_mapping(x.id, x.data, meshes),
+                    AssetEnum::StandardMaterial(x) => {
+                        StandardMaterial::install_mapping(x.id, x.data, materials);
                     }
+                    AssetEnum::Image(x) => Image::install_mapping(x.id, x.data, images),
                 }
             }
             ClientInstruction::CDropAsset(drop_asset) => {
                 use crate::replication::replicated_assets::ReplicatedAssetID;
 
                 match drop_asset.id {
-                    ReplicatedAssetID::Mesh(asset_id) => mesh_map.remove(meshes, asset_id),
-                    ReplicatedAssetID::StandardMaterial(asset_id) => {
-                        material_map.remove(materials, asset_id)
+                    ReplicatedAssetID::Mesh(id) => Mesh::clear_mapping(id, meshes),
+                    ReplicatedAssetID::StandardMaterial(id) => {
+                        StandardMaterial::clear_mapping(id, materials);
                     }
+                    ReplicatedAssetID::Image(id) => Image::clear_mapping(id, images),
                 };
             }
             ClientInstruction::HChange(item) => {

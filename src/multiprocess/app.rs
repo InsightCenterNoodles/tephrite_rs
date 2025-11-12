@@ -27,17 +27,17 @@ pub(crate) fn make_common_app() -> App {
         AssetPlugin::default(),
         AnimationPlugin,
         bevy::scene::ScenePlugin,
-        bevy::render::mesh::MeshPlugin,
-        bevy::render::texture::ImagePlugin::default(),
+        bevy::mesh::MeshPlugin,
+        bevy::image::ImagePlugin::default(),
         bevy::pbr::MaterialPlugin::<StandardMaterial>::default(),
         bevy::gltf::GltfPlugin::default(),
     ));
 
-    app.register_type::<bevy::render::primitives::Aabb>();
-    app.register_type::<bevy::render::view::visibility::Visibility>();
-    app.register_type::<bevy::render::view::visibility::InheritedVisibility>();
-    app.register_type::<bevy::render::view::visibility::ViewVisibility>();
-    app.register_type::<bevy::render::view::visibility::VisibilityClass>();
+    app.register_type::<bevy::camera::primitives::Aabb>();
+    app.register_type::<bevy::camera::visibility::Visibility>();
+    app.register_type::<bevy::camera::visibility::InheritedVisibility>();
+    app.register_type::<bevy::camera::visibility::ViewVisibility>();
+    app.register_type::<bevy::camera::visibility::VisibilityClass>();
 
     app
 }

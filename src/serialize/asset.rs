@@ -3,7 +3,7 @@
 //! `AssetId<A>` is serialized by raw bytes as POD. `Handle<A>` is serialized as
 //! its `AssetId`, and is reconstructed as a `Weak` handle on read to avoid
 //! implicit asset loads in the receiving process.
-use bevy::prelude::*;
+use bevy::{platform::collections::HashMap, prelude::*};
 
 use crate::serialize::*;
 
@@ -27,14 +27,61 @@ impl<A: Asset> FastRead for AssetId<A> {
 impl<A: Asset> FastWrite for Handle<A> {
     /// Encode a `Handle` by its `AssetId`. Recreated as `Weak`.
     unsafe fn write_fast(&self, w: &mut impl ByteSink) {
-        unsafe { self.id().write_fast(w) };
+        // being explicit here to make sure we dont have unintended conversion
+        let id: AssetId<A> = self.id();
+        unsafe { id.write_fast(w) };
     }
 }
-impl<A: Asset> FastRead for Handle<A> {
+
+pub trait RemappableAsset {
+    fn with_remapper<F: FnOnce(&HashMap<AssetId<Self>, Handle<Self>>)>(func: F);
+    fn with_remapper_mut<F: FnMut(&mut HashMap<AssetId<Self>, Handle<Self>>)>(func: F);
+
+    fn install_mapping(id: AssetId<Self>, asset: Self, assets: &mut Assets<Self>)
+    where
+        Self: bevy::prelude::Asset,
+        Self: Sized,
+    {
+        let handle = assets.add(asset);
+
+        Self::with_remapper_mut(|map| {
+            map.insert(id, handle.clone());
+        });
+    }
+
+    fn remap_to_local(id: AssetId<Self>) -> Option<Handle<Self>>
+    where
+        Self: bevy::prelude::Asset,
+        Self: Sized,
+    {
+        let mut ret = None;
+
+        Self::with_remapper(|map| {
+            ret = map.get(&id).cloned();
+        });
+
+        ret
+    }
+
+    fn clear_mapping(id: AssetId<Self>, assets: &mut Assets<Self>)
+    where
+        Self: bevy::prelude::Asset,
+        Self: Sized,
+    {
+        assets.remove(id);
+        Self::with_remapper_mut(|map| {
+            map.remove(&id);
+        });
+    }
+}
+
+impl<A: Asset + RemappableAsset> FastRead for Handle<A> {
     type Ret = Self;
     /// Decode a `Handle` from an `AssetId`, returning a `Weak` handle.
     unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret {
-        Self::Weak(unsafe { AssetId::<A>::read_fast(r) })
+        let id = unsafe { AssetId::<A>::read_fast(r) };
+        A::remap_to_local(id)
+            .expect("Unable to remap asset. This means an ordering problem has occurred.")
     }
 }
 
@@ -69,7 +116,7 @@ mod tests {
 
         test_serialization(a, |x, y| x == y);
 
-        let h = Handle::<Mesh>::Weak(a);
+        let h = a.clone();
 
         test_serialization(h, |x, y| x == y);
     }
