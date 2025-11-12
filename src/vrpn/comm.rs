@@ -101,6 +101,13 @@ fn read_vrpn_cookie(r: &mut impl Read) -> Result<[u8; VRPN_COOKIE_SIZE]> {
     Ok(incoming)
 }
 
+/// Read a single big-endian `u64` from the stream.
+fn read_be_u64(r: &mut impl Read) -> std::io::Result<u64> {
+    let mut b = [0u8; 8];
+    r.read_exact(&mut b)?;
+    Ok(u64::from_be_bytes(b))
+}
+
 /// Read a single big-endian IEEE-754 `f64` from the stream.
 fn read_be_f64(r: &mut impl Read) -> std::io::Result<f64> {
     let mut b = [0u8; 8];
@@ -113,6 +120,19 @@ fn read_be_f64_n<const N: usize>(r: &mut impl Read) -> std::io::Result<[f64; N]>
     let mut out = [0u64; N];
     r.read_exact(cast_slice_mut(&mut out))?;
     Ok(out.map(|x| f64::from_bits(u64::from_be(x))))
+}
+
+/// Read `count` big-endian IEEE-754 `f64`s from the stream into an array.
+fn read_be_f64_dyn(r: &mut impl Read, count: u64, dest: &mut Vec<f64>) -> std::io::Result<()> {
+    dest.resize(count as usize, 0.0);
+    r.read_exact(cast_slice_mut(dest.as_mut_slice()))?;
+
+    for x in dest {
+        // Safety: we are just casting from a BE float, to bits of a U64 (same size), and then casting to a LE f64.
+        *x = f64::from_bits(unsafe { std::mem::transmute::<f64, u64>(*x) });
+    }
+
+    Ok(())
 }
 
 /// Transform position from VRPN coordinates to Bevy coordinates.
@@ -452,10 +472,37 @@ impl MessageState {
 
         match self.remote_sender_list.lookup(sender) {
             Ok(item) => {
-                (*item.lock_write()) = ItemState {
-                    position: transform_position(pos),
-                    rotation: transform_rotation(quat),
-                };
+                let mut lock = item.write().unwrap();
+                lock.position = transform_position(pos);
+                lock.rotation = transform_rotation(quat);
+            }
+            Err(_) => {
+                // now this can happen if a server is sending us an update for something we didn't ask for.
+                // this isn't an error, its just mean. Bail.
+            }
+        }
+
+        Ok(())
+    }
+
+    fn handle_analog(&mut self, sender: usize, source: &mut impl Read) -> Result<()> {
+        // First is a 64 bit float(!!) which is the num of channels
+        let channel_count = read_be_f64(source)?;
+
+        let channel_count: u64 = channel_count.round() as u64;
+
+        // 128 is listed as the channel max in the source
+        if channel_count > 128 {
+            return Err(std::io::Error::other("Bad analog channel count"));
+        }
+
+        // read those into a vector
+
+        match self.remote_sender_list.lookup(sender) {
+            Ok(item) => {
+                let mut lock = item.write().unwrap();
+
+                read_be_f64_dyn(source, channel_count, &mut lock.analog_state);
             }
             Err(_) => {
                 // now this can happen if a server is sending us an update for something we didn't ask for.
@@ -651,14 +698,14 @@ mod test {
         output.clear();
 
         assert!(
-            head_state.read().position.distance(dvec3(
+            head_state.read().unwrap().position.distance(dvec3(
                 0.12531011353529492,
                 0.8024732135411116,
                 0.867021419799275,
             )) < 0.0001
         );
 
-        let head_rot: DVec4 = head_state.read().rotation.into();
+        let head_rot: DVec4 = head_state.read().unwrap().rotation.into();
 
         //dbg!(head_rot);
 
@@ -672,14 +719,14 @@ mod test {
         );
 
         assert!(
-            joy_state.read().position.distance(dvec3(
+            joy_state.read().unwrap().position.distance(dvec3(
                 -0.4458300779842322,
                 0.8178812792378916,
                 2.1620918226860906,
             )) < 0.0001
         );
 
-        let joy_rot: DVec4 = joy_state.read().rotation.into();
+        let joy_rot: DVec4 = joy_state.read().unwrap().rotation.into();
 
         //dbg!(joy_rot);
 

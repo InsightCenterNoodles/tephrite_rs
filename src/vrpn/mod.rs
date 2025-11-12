@@ -125,9 +125,8 @@ fn check_for_new_vrpn(
 /// System that applies the latest VRPN-derived transform to entities.
 fn service_vrpn(mut query: Query<(&VRPNLinkConnected, &mut Transform)>) {
     for (c, mut tf) in query.iter_mut() {
-        let new_pos = c.reader.read();
+        let new_pos = c.reader.read().unwrap();
 
-        // TODO: rotation. need to check mappings
         tf.translation = new_pos.position.as_vec3();
         tf.rotation = new_pos.rotation.as_quat().normalize();
     }
