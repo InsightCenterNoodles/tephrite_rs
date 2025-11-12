@@ -12,7 +12,7 @@ anyhow = "1"
 [dependencies]
 dirs = "6"
 bitflags = "2"
-bevy = "0.17"
+bevy = "0.17.1"
 bytemuck = "1"
 itertools = "*"
 thiserror = "*"

@@ -4,7 +4,7 @@ use bevy::{app::App, prelude::*};
 
 use crate::{
     common::Head, config::get_logic_configuration, multiprocess::app::make_common_app,
-    prelude::Replicated, vrpn::VRPNLink,
+    prelude::Replicated, vrpn::VRPNObject,
 };
 
 pub(crate) fn setup() -> App {
@@ -69,7 +69,7 @@ fn setup_tracked_head(mut commands: Commands) {
 
     let h = get_logic_configuration().vrpn_config.head.clone();
 
-    commands.spawn((Replicated, Transform::default(), Head, VRPNLink::new(h)));
+    commands.spawn((Replicated, Transform::default(), Head, VRPNObject(h)));
 }
 
 fn destroy_child_process(mut child: Child) {
