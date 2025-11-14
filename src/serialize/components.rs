@@ -5,7 +5,7 @@
 //! computed or overwritten by Bevy at runtime.
 use bevy::prelude::*;
 
-use crate::serialize::*;
+use crate::{common::Head, serialize::*};
 
 // =============================================================================
 
@@ -19,6 +19,22 @@ impl_fast_serialize!(
 
     }
 );
+
+// =============================================================================
+
+impl FastWrite for Head {
+    unsafe fn write_fast(&self, _w: &mut impl ByteSink) {
+        // nothing to do.
+    }
+}
+
+impl FastRead for Head {
+    type Ret = Self;
+
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(_r: &mut S) -> Self::Ret {
+        Self
+    }
+}
 
 // =============================================================================
 

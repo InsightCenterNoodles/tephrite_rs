@@ -8,7 +8,10 @@ mod common;
 
 use bevy::{platform::collections::HashMap, prelude::*};
 
-use crate::vrpn::common::SharedItemState;
+use crate::{
+    input::{ButtonEvent, ButtonEventKind},
+    vrpn::common::SharedItemState,
+};
 
 /// Worker thread entry point that services a single VRPN client.
 fn vrpn_spinner(
@@ -123,12 +126,49 @@ fn check_for_new_vrpn(
 }
 
 /// System that applies the latest VRPN-derived transform to entities.
-fn service_vrpn(mut query: Query<(&VRPNLinkConnected, &mut Transform)>) {
-    for (c, mut tf) in query.iter_mut() {
-        let new_pos = c.reader.read().unwrap();
+fn service_vrpn(
+    mut query: Query<(Entity, &VRPNLinkConnected, &mut Transform)>,
+    mut writer: MessageWriter<ButtonEvent>,
+) {
+    for (e, c, mut tf) in query.iter_mut() {
+        // some funky optimization here. we dont want to always hold a write lock
 
-        tf.translation = new_pos.position.as_vec3();
-        tf.rotation = new_pos.rotation.as_quat().normalize();
+        let need_write = {
+            let new_pos = c.reader.read().unwrap();
+
+            tf.translation = new_pos.position.as_vec3();
+            tf.rotation = new_pos.rotation.as_quat().normalize();
+
+            writer.write_batch(new_pos.analog_state.iter().enumerate().filter_map(|x| {
+                // We restrict analog IDs to <= u8
+
+                // TODO: sensitivity config
+                if x.1.abs() > 0.00001 {
+                    Some(ButtonEvent {
+                        from: e,
+                        kind: ButtonEventKind::AnalogActive(x.0 as u8, (*x.1) as f32),
+                    })
+                } else {
+                    None
+                }
+            }));
+
+            new_pos.button_changes.len() > 0
+        };
+
+        if need_write {
+            let mut lock = c.reader.write().unwrap();
+
+            writer.write_batch(lock.button_changes.drain(..).map(|x| {
+                let kind = if x.1 > 0 {
+                    ButtonEventKind::ButtonPressed(x.0)
+                } else {
+                    ButtonEventKind::ButtonReleased(x.0)
+                };
+
+                ButtonEvent { from: e, kind }
+            }));
+        }
     }
 }
 

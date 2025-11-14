@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use bevy::math::{DQuat, DVec3};
 
 pub(crate) type SharedItemState = std::sync::Arc<std::sync::RwLock<ItemState>>;
@@ -17,6 +19,5 @@ pub(crate) struct ItemState {
     // state per channel
     pub(crate) analog_state: Vec<f64>,
 
-    pub(crate) button_state: Vec<u8>,
-    pub(crate) prev_button_state: Vec<u8>,
+    pub(crate) button_changes: VecDeque<(u8, u8)>,
 }

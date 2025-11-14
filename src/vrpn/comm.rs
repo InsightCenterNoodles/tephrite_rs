@@ -32,7 +32,7 @@ use std::{
     time::Duration,
 };
 
-use crate::vrpn::common::{ItemState, SharedItemState};
+use crate::vrpn::common::SharedItemState;
 
 /// All VRPN messages are aligned to doubles
 const VRPN_ALIGN: usize = 8;
@@ -50,9 +50,9 @@ const HEADER_SIZE_BYTES: usize = size_of::<MessageHeader>();
 
 const _: () = assert!(HEADER_SIZE_BYTES == 24, "Header size does not match spec!");
 
-const SUBTYPE_UNKNOWN: i32 = -10000;
 const SUBTYPE_TRACKER_POS_QUAT: &str = "vrpn_Tracker Pos_Quat";
 const SUBTYPE_ANALOG_CHANNEL: &str = "vrpn_Analog Channel";
+const SUBTYPE_BUTTON_CHANGE: &str = "vrpn_Button Change";
 
 /// Local alias for IO results used throughout this module.
 type Result<T> = std::io::Result<T>;
@@ -101,11 +101,11 @@ fn read_vrpn_cookie(r: &mut impl Read) -> Result<[u8; VRPN_COOKIE_SIZE]> {
     Ok(incoming)
 }
 
-/// Read a single big-endian `u64` from the stream.
-fn read_be_u64(r: &mut impl Read) -> std::io::Result<u64> {
-    let mut b = [0u8; 8];
+/// Read a single big-endian `i32` from the stream.
+fn read_be_i32(r: &mut impl Read) -> std::io::Result<i32> {
+    let mut b = [0u8; 4];
     r.read_exact(&mut b)?;
-    Ok(u64::from_be_bytes(b))
+    Ok(i32::from_be_bytes(b))
 }
 
 /// Read a single big-endian IEEE-754 `f64` from the stream.
@@ -128,8 +128,7 @@ fn read_be_f64_dyn(r: &mut impl Read, count: u64, dest: &mut Vec<f64>) -> std::i
     r.read_exact(cast_slice_mut(dest.as_mut_slice()))?;
 
     for x in dest {
-        // Safety: we are just casting from a BE float, to bits of a U64 (same size), and then casting to a LE f64.
-        *x = f64::from_bits(unsafe { std::mem::transmute::<f64, u64>(*x) });
+        *x = f64::from_bits(u64::from_be(x.to_bits()));
     }
 
     Ok(())
@@ -440,13 +439,13 @@ impl SenderList {
 
 // MARK: Message State
 
+type Handler = fn(&mut MessageState, usize, &mut Cursor<&[u8]>) -> Result<()>;
+
 /// Per-connection protocol state used to dispatch and decode messages.
 struct MessageState {
     remote_sender_list: SenderList,
 
-    /// The index of the position/rotation message type
-    tracker_pos_quat_message_idx: i32,
-    analog_channel_message_idx: i32,
+    message_type_handlers: Vec<Option<Handler>>,
 }
 
 impl MessageState {
@@ -455,13 +454,24 @@ impl MessageState {
 
         Self {
             remote_sender_list,
-            tracker_pos_quat_message_idx: SUBTYPE_UNKNOWN, // set this to something we could never see
-            analog_channel_message_idx: SUBTYPE_UNKNOWN,
+            message_type_handlers: Vec::with_capacity(64),
         }
     }
 
+    fn alloc_handler(&mut self, index: i32, func: Handler) {
+        let Ok(index) = index.try_into() else {
+            return;
+        };
+
+        if self.message_type_handlers.len() <= index {
+            self.message_type_handlers.resize(index + 10, None);
+        }
+
+        self.message_type_handlers[index] = Some(func);
+    }
+
     /// Decode a `vrpn_Tracker Pos_Quat` message body and update shared state.
-    fn handle_pos_quat(&mut self, sender: usize, source: &mut impl Read) -> Result<()> {
+    fn handle_pos_quat(&mut self, sender: usize, source: &mut Cursor<&[u8]>) -> Result<()> {
         // First double is a timestamp (seconds since server start). Skip it.
         let _dummy = read_be_f64(source)?;
 
@@ -470,26 +480,21 @@ impl MessageState {
 
         //dbg!(pos, quat);
 
-        match self.remote_sender_list.lookup(sender) {
-            Ok(item) => {
-                let mut lock = item.write().unwrap();
-                lock.position = transform_position(pos);
-                lock.rotation = transform_rotation(quat);
-            }
-            Err(_) => {
-                // now this can happen if a server is sending us an update for something we didn't ask for.
-                // this isn't an error, its just mean. Bail.
-            }
+        if let Ok(item) = self.remote_sender_list.lookup(sender) {
+            let mut lock = item.write().unwrap();
+            lock.position = transform_position(pos);
+            lock.rotation = transform_rotation(quat);
         }
 
         Ok(())
     }
 
-    fn handle_analog(&mut self, sender: usize, source: &mut impl Read) -> Result<()> {
-        // First is a 64 bit float(!!) which is the num of channels
+    fn handle_analog(&mut self, sender: usize, source: &mut Cursor<&[u8]>) -> Result<()> {
+        // First is a 64 bit float(!!) which is the num of channels.
+        // This is in the spec, dont blame me
         let channel_count = read_be_f64(source)?;
 
-        let channel_count: u64 = channel_count.round() as u64;
+        let channel_count: u64 = channel_count.floor() as u64;
 
         // 128 is listed as the channel max in the source
         if channel_count > 128 {
@@ -498,20 +503,56 @@ impl MessageState {
 
         // read those into a vector
 
-        match self.remote_sender_list.lookup(sender) {
-            Ok(item) => {
-                let mut lock = item.write().unwrap();
+        if let Ok(item) = self.remote_sender_list.lookup(sender) {
+            let mut lock = item.write().unwrap();
 
-                read_be_f64_dyn(source, channel_count, &mut lock.analog_state);
-            }
-            Err(_) => {
-                // now this can happen if a server is sending us an update for something we didn't ask for.
-                // this isn't an error, its just mean. Bail.
-            }
+            read_be_f64_dyn(source, channel_count, &mut lock.analog_state)?;
         }
 
         Ok(())
     }
+
+    fn handle_button_change(&mut self, sender: usize, source: &mut Cursor<&[u8]>) -> Result<()> {
+        // Should be a pair of i32, button, then state
+        let button: u8 = read_be_i32(source)?
+            .try_into()
+            .map_err(|_| std::io::Error::other("invalid button index"))?;
+        let state: u8 = read_be_i32(source)?
+            .try_into()
+            .map_err(|_| std::io::Error::other("invalid button state"))?;
+
+        if let Ok(item) = self.remote_sender_list.lookup(sender) {
+            let mut lock = item.write().unwrap();
+
+            // by the source, the max button index fits in a u8
+
+            if lock.button_changes.len() > 256 {
+                // uh oh, we dont want to overflow here.
+                warn!("Button change queue overflow!");
+                lock.button_changes.pop_front();
+            }
+
+            lock.button_changes.push_back((button, state));
+        }
+
+        Ok(())
+    }
+
+    // fn handle_button_change(&mut self, sender: usize, source: &mut impl Read) -> Result<()> {
+    //     // Should be a pair of i32, button, then state
+    //     let button = read_be_i32(source)?;
+    //     let state = read_be_i32(source)?;
+
+    //     if let Ok(item) = self.remote_sender_list.lookup(sender) {
+    //         let mut lock = item.write().unwrap();
+
+    //         if let Some(x) = lock.button_state.get_mut(button as usize) {
+    //             *x = state as u8;
+    //         }
+    //     }
+
+    //     Ok(())
+    // }
 
     /// Dispatch a single message using the decoded `header` and `payload`.
     ///
@@ -572,8 +613,12 @@ impl MessageState {
         }
 
         match header.ty() {
-            v if v == self.tracker_pos_quat_message_idx => {
-                self.handle_pos_quat(header.sender() as usize, &mut cursor)
+            v if v >= 0 => {
+                if let Some(Some(x)) = self.message_type_handlers.get(v as usize) {
+                    x(self, header.sender() as usize, &mut cursor)
+                } else {
+                    Ok(())
+                }
             }
             TYPE_SENDER => {
                 let sender_id = header.sender();
@@ -599,10 +644,13 @@ impl MessageState {
 
                 match type_name.as_str() {
                     SUBTYPE_TRACKER_POS_QUAT => {
-                        self.tracker_pos_quat_message_idx = type_id;
+                        self.alloc_handler(type_id, Self::handle_pos_quat);
                     }
                     SUBTYPE_ANALOG_CHANNEL => {
-                        self.analog_channel_message_idx = type_id;
+                        self.alloc_handler(type_id, Self::handle_analog);
+                    }
+                    SUBTYPE_BUTTON_CHANGE => {
+                        self.alloc_handler(type_id, Self::handle_button_change);
                     }
                     _ => {
                         trace!("Unrecognised name '{}'", type_name.as_str())
@@ -642,6 +690,39 @@ mod test {
     use crate::vrpn::common::new_shared_item_state;
 
     use super::{MessageState, check_vrpn_cookie, get_message};
+
+    #[test]
+    fn basic_decode() {
+        let mut bytes: &[u8] = &[0x40, 0x25, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00];
+
+        assert_eq!(10.75, super::read_be_f64(&mut bytes).unwrap());
+
+        let mut data: &[u8] = &[
+            0x40, 0x24, 0xe6, 0x66, 0x66, 0x66, 0x66, 0x66, //
+            0x40, 0xb9, 0x34, 0x4b, 0x1c, 0x43, 0x2c, 0xa5, //
+            0x40, 0x3c, 0x05, 0x1e, 0xb8, 0x51, 0xeb, 0x85, //
+            0xc0, 0x94, 0x34, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
+
+        let arr: [_; 4] = super::read_be_f64_n(&mut data).unwrap();
+
+        let truth = [10.45, 6452.2934, 28.02, -1293.0];
+
+        assert_eq!(arr, truth);
+
+        let mut vec = vec![];
+
+        let mut data: &[u8] = &[
+            0x40, 0x24, 0xe6, 0x66, 0x66, 0x66, 0x66, 0x66, //
+            0x40, 0xb9, 0x34, 0x4b, 0x1c, 0x43, 0x2c, 0xa5, //
+            0x40, 0x3c, 0x05, 0x1e, 0xb8, 0x51, 0xeb, 0x85, //
+            0xc0, 0x94, 0x34, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
+
+        super::read_be_f64_dyn(&mut data, 4, &mut vec).unwrap();
+
+        itertools::assert_equal(truth.iter(), vec.iter());
+    }
 
     #[test]
     fn check_cookie() {
