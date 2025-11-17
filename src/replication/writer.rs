@@ -7,6 +7,7 @@ use bevy::prelude::*;
 use super::instruction::*;
 
 // ============================================================================
+// We HAVE to use systems here, as triggers cannot order against asset messages!
 
 /// Check for any added replicated entities. We use a marker to see who we should replicate
 fn added_rep_check(
@@ -116,6 +117,7 @@ fn hierarchy_change_listener(
     mut transcript: NonSendMut<TranscriptWriteStateResource>,
 ) {
     for (child, parent) in h_event.iter() {
+        debug!("HCHANGE {child} -> {}", parent.0);
         let dest: &mut TranscriptWriteStateResource = &mut transcript;
         unsafe {
             ServerInstruction::HChange(HierarchyChange {
@@ -186,17 +188,14 @@ fn root_system(world: &mut World) {
     // Commit all changes
 
     let Some(mut res) = world.get_non_send_resource_mut::<TranscriptWriterResource>() else {
-        debug!("SKIPPPING HERE");
         return;
     };
 
     if res.commit(state).is_err() {
-        debug!("COMMIT FAIL");
         return;
     }
 
     let Ok(res) = res.prepare() else {
-        debug!("PREP FAIL");
         return;
     };
 
