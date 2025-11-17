@@ -31,6 +31,10 @@ pub(crate) fn setup() -> App {
 
     app.add_systems(Startup, setup_tracked_head);
 
+    if get_logic_configuration().vrpn_config.debug_head {
+        app.add_systems(Update, debug_head);
+    }
+
     // set up children
 
     let current_exe = std::env::current_exe()
@@ -67,8 +71,28 @@ struct ChildProcessResource {
 fn setup_tracked_head(mut commands: Commands) {
     debug!("Setup tracked head");
 
-    if let Some(h) = get_logic_configuration().vrpn_config.head.clone() {
+    let config = get_logic_configuration();
+
+    if let Some(h) = config.vrpn_config.head.clone() {
         commands.spawn((Replicated, Transform::default(), Head, VRPNObject(h)));
+    } else if config.vrpn_config.debug_head {
+        commands.spawn((Replicated, Transform::default(), Head));
+    }
+}
+
+fn debug_head(
+    mut query: Query<&mut Transform, With<Head>>,
+    time: Res<Time>,
+    mut local: Local<f32>,
+) {
+    *local += 0.5 * time.delta_secs();
+
+    let new_head_x = (local).sin() * 2.0 - 1.0;
+
+    let head_pos = vec3(new_head_x, 1.5, 2.0);
+
+    for mut q in query.iter_mut() {
+        q.translation = head_pos;
     }
 }
 

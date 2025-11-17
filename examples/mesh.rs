@@ -1,12 +1,11 @@
 use bevy::prelude::*;
-use tephrite_rs::prelude::{Head, Replicated};
+use tephrite_rs::prelude::Replicated;
 
 struct MyPlugin;
 
 impl Plugin for MyPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup);
-        //app.add_systems(Update, reset_head);
     }
 }
 
@@ -27,16 +26,13 @@ fn setup(
 
     let mesh = meshes.add(Cuboid::new(0.1, 0.1, 0.1));
 
-    //let e = commands.spawn(Transform::from_xyz(0.0, 0.5, 0.0)).id();
-
-    //let zcenter = -0.5f32;
-    let zcenter = -1.0f32;
+    let e = commands.spawn(Transform::from_xyz(0.0, 0.0, -1.0)).id();
 
     commands.spawn((
         Mesh3d(mesh.clone()),
         MeshMaterial3d(materials.add(Color::srgb_u8(255, 0, 0))),
-        Transform::from_xyz(0.2, 1.0, zcenter),
-        //ChildOf(e),
+        Transform::from_xyz(0.2, 1.0, 0.0),
+        ChildOf(e),
         Replicated,
     ));
 
@@ -50,16 +46,16 @@ fn setup(
     commands.spawn((
         Mesh3d(mesh.clone()),
         MeshMaterial3d(shiny),
-        Transform::from_xyz(0.0, 1.2, zcenter),
-        //ChildOf(e),
+        Transform::from_xyz(0.0, 1.2, 0.0),
+        ChildOf(e),
         Replicated,
     ));
 
     commands.spawn((
         Mesh3d(mesh),
         MeshMaterial3d(materials.add(Color::srgb_u8(0, 0, 255))),
-        Transform::from_xyz(0.0, 1.0, zcenter + 0.2),
-        //ChildOf(e),
+        Transform::from_xyz(0.0, 1.0, 0.2),
+        ChildOf(e),
         Replicated,
     ));
 
@@ -77,23 +73,6 @@ fn setup(
         Camera3d::default(),
         Transform::from_xyz(-2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
-}
-
-fn reset_head(
-    mut query: Query<&mut Transform, With<Head>>,
-    time: Res<Time>,
-    mut local: Local<f32>,
-) {
-    *local += 0.5 * time.delta_secs();
-
-    let new_head_x = (local).sin() * 2.0 - 1.0;
-
-    let head_pos = vec3(new_head_x, 1.5, 2.0);
-    let head_rot = Quat::default();
-
-    for mut q in query.iter_mut() {
-        q.translation = head_pos;
-    }
 }
 
 fn main() {

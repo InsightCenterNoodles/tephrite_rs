@@ -182,6 +182,7 @@ impl FromStr for VRPNAddress {
 #[derive(Debug, Default, Clone)]
 pub struct VRPNConfig {
     pub head: Option<VRPNAddress>,
+    pub debug_head: bool,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -288,6 +289,7 @@ pub fn get_logic_configuration() -> &'static LogicConfiguration {
             use_offaxis: use_offaxis.unwrap_or_default(),
             vrpn_config: VRPNConfig {
                 head: vrpn.head.and_then(|x| x.parse().ok()),
+                debug_head: vrpn.debug_head.unwrap_or_default(),
             },
             child_count: screens.len().try_into().unwrap(),
         })
