@@ -169,9 +169,9 @@ pub fn convert_material(
 ) -> Option<backfill::FMaterialHandle> {
     let mut config = backfill::material_config().ok()?;
 
-    config.set_option(backfill::ffi::FMatTexOption_CLEARCOAT, true);
-    config.set_option(backfill::ffi::FMatTexOption_IOR, true);
-    config.set_option(backfill::ffi::FMatTexOption_TRANSMISSION, true);
+    config.set_option(backfill::ffi::FMatOption_CLEARCOAT, true);
+    config.set_option(backfill::ffi::FMatOption_IOR, true);
+    config.set_option(backfill::ffi::FMatOption_TRANSMISSION, true);
 
     match material.alpha_mode {
         AlphaMode::Opaque => config.set_blend(backfill::ffi::FMatBlendType_OPAQUE),

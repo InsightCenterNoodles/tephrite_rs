@@ -203,6 +203,7 @@ pub struct VRPNPlugin;
 
 impl Plugin for VRPNPlugin {
     fn build(&self, app: &mut App) {
+        app.add_message::<ButtonEvent>();
         app.insert_resource(VRPNResource {
             shutdown: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
             vrpn_threads: vec![],

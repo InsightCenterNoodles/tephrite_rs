@@ -148,7 +148,8 @@ mod unix_only {
             prod.publish_frame_strict(|gen_id, slot, buf| {
                 // Write header + payload using your helper
                 write_frame_pattern(buf.as_mut_ptr(), buf.len(), gen_id, slot);
-            });
+            })
+            .unwrap();
         }
         println!("[producer] done");
     }
@@ -162,7 +163,8 @@ mod unix_only {
             cons.consume_next(|gen_id, slot, slice| {
                 // validate content
                 verify_frame_pattern(slice, buf_size, gen_id, slot);
-            });
+            })
+            .unwrap();
             seen += 1;
         }
         println!("[consumer#{}] done after {}", id, seen);

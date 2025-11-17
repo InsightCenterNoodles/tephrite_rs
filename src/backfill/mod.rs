@@ -183,18 +183,18 @@ pub fn blobref_whole(blob: &FBlobHandle) -> ffi::FBlobRef {
 
 // MARK: Image
 
-pub fn image_from_exr(blobref: BlobReference) -> BackfillResult<FImageHandle> {
-    let ptr = unsafe { ffi::fimg_init_exr(blobref.internal()) };
-    NonNull::new(ptr)
-        .map(|p| unsafe { Handle::from_nonnull(p) })
-        .ok_or(BackfillError::EmptyPointer)
-}
+// pub fn image_from_exr(blobref: BlobReference) -> BackfillResult<FImageHandle> {
+//     let ptr = unsafe { ffi::fimg_init_exr(blobref.internal()) };
+//     NonNull::new(ptr)
+//         .map(|p| unsafe { Handle::from_nonnull(p) })
+//         .ok_or(BackfillError::EmptyPointer)
+// }
 
 // MARK: Texture
 
 pub fn tex_config_from_image(
     img: &FImageHandle,
-    fmt: ffi::TextureFormat,
+    fmt: ffi::FTextureFormat,
 ) -> BackfillResult<FTextureConfigHandle> {
     let ptr = unsafe { ffi::ftex_config_init(img.as_ptr(), fmt) };
     NonNull::new(ptr)

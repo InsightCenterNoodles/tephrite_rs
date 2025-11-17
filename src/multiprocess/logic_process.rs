@@ -29,6 +29,8 @@ pub(crate) fn setup() -> App {
         child_count,
     ));
 
+    app.add_plugins(crate::multiprocess::app::control_c_watcher);
+
     app.add_systems(Startup, setup_tracked_head);
 
     // set up children
@@ -87,7 +89,7 @@ fn destroy_child_process(mut child: Child) {
                 // still running
                 let duration = now - std::time::Instant::now();
 
-                if duration.as_secs_f32() > 1.0 {
+                if duration.as_secs_f32() > 10.0 {
                     warn!("Child process {} timeout, killing", child.id());
                     let _ = child.kill();
                     return;
@@ -108,11 +110,6 @@ fn destroy_child_process(mut child: Child) {
 
 pub(crate) fn cleanup(mut app: App) -> Option<()> {
     debug!("Cleaning up");
-
-    // send stop
-    // if let None = send_stop(&mut app) {
-    //     warn!("Unable to send shutdown signal to child processes");
-    // }
 
     let res = app.world_mut().remove_resource::<ChildProcessResource>()?;
 

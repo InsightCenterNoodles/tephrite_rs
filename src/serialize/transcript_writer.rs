@@ -6,7 +6,7 @@
 use crate::{
     multiprocess::{
         self,
-        shared_buffer::{PartialWriteState, Producer},
+        shared_buffer::{PartialWriteState, Producer, RunResult},
     },
     serialize::ByteSink,
 };
@@ -33,17 +33,22 @@ impl TranscriptWriterResource {
         }
     }
 
+    pub fn shutdown(&mut self) {
+        self.multiprocess_comm.shutdown();
+    }
+
     /// Start a new frame and obtain a writer for it.
-    pub fn prepare(&mut self) -> TranscriptWriteStateResource {
-        TranscriptWriteStateResource {
-            state: self.multiprocess_comm.prepare(),
+    pub fn prepare(&mut self) -> RunResult<TranscriptWriteStateResource> {
+        Ok(TranscriptWriteStateResource {
+            state: self.multiprocess_comm.prepare()?,
             pos: 0,
-        }
+        })
     }
 
     /// Commit a previously prepared frame; it becomes visible to readers.
-    pub fn commit(&mut self, state: TranscriptWriteStateResource) {
-        self.multiprocess_comm.commit(state.state);
+    pub fn commit(&mut self, state: TranscriptWriteStateResource) -> RunResult<()> {
+        self.multiprocess_comm.commit(state.state)?;
+        Ok(())
     }
 }
 

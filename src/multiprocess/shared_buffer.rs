@@ -12,6 +12,8 @@ use std::io::Result;
 use std::time::Duration;
 use std::{ptr, thread};
 
+use bevy::log::{debug, warn};
+
 use crate::multiprocess::shared_mem::SharedMemory;
 
 const MAX_CONSUMERS: usize = 16; // This should be enough...
@@ -48,6 +50,10 @@ struct ControlBlock {
     // Rendezvous
     ready_count: AtomicU32, // number of consumers that joined
     started: AtomicU32,     // 0 = not started, 1 = started
+
+    // 64 bit boundary
+    shutdown: AtomicU32, // if set, begin shutdown
+    _pad0: u32,
 
     // Publication side:
     publish_gen: AtomicU64, // monotonically increasing frame number (starts at 0)
@@ -112,6 +118,7 @@ pub struct Producer {
     pub data_base: *mut u8,
     buf_size: usize,
     last_published: u64,
+    start_shutdown: bool,
 }
 
 impl Producer {
@@ -174,6 +181,7 @@ impl Producer {
             data_base: data_ptr,
             buf_size: cb.buf_size as usize,
             last_published: cb.publish_gen.load(Relaxed),
+            start_shutdown: false,
         })
     }
 
@@ -187,17 +195,26 @@ impl Producer {
         unsafe { &mut *self.cb }
     }
 
-    fn wait_until_ready(&mut self) {
-        if self.cached_ready {
-            return;
+    fn wait_until_ready(&mut self) -> RunResult<()> {
+        if self.start_shutdown {
+            self.control_block_mut()
+                .shutdown
+                .store(1, std::sync::atomic::Ordering::Relaxed);
+            warn!("(wait ready) Caught interrupt!");
+            return Err(RunResultError::Interrupt);
         }
-        //println!("PRODUCER WAITING");
+
+        if self.cached_ready {
+            return Ok(());
+        }
+        println!("PRODUCER WAITING");
         let need = self.control_block().num_consumers;
         let mut spins = 0;
         loop {
             if self.control_block().ready_count.load(Acquire) == need {
                 break;
             }
+
             adaptive_pause(&mut spins);
         }
 
@@ -205,6 +222,7 @@ impl Producer {
         self.cached_ready = true;
 
         //println!("PRODUCER READY");
+        Ok(())
     }
 
     /// Choose a reusable buffer slot by tracking which generations are safe to reclaim.
@@ -217,17 +235,22 @@ impl Producer {
         (gen_next as u32) % self.control_block().buf_count
     }
 
+    pub fn shutdown(&mut self) {
+        debug!("Sending shutdown to CB");
+        self.start_shutdown = true;
+    }
+
     /// Write into the chosen slot using `write_fn`, then publish it as the next generation
     /// and wait for all consumers to ack (strict lockstep).
     pub fn publish_frame_strict<F: FnOnce(u64, u32, &mut [u8])>(
         &mut self,
         write_fn: F,
-    ) -> (u64, u32) {
+    ) -> RunResult<(u64, u32)> {
         let gen_next = self.last_published + 1;
         let slot = self.choose_slot_rr(gen_next);
         let ptr = buffer_ptr(self.data_base, self.buf_size, slot);
 
-        self.wait_until_ready();
+        self.wait_until_ready()?;
 
         //println!("PUBLISH {gen_next} {slot} {ptr:?}");
 
@@ -242,34 +265,34 @@ impl Producer {
             .store(gen_next, Release);
 
         // 3) Strict lockstep: wait for all consumers to ack this generation.
-        wait_until_min_acked(self.control_block(), gen_next);
+        wait_until_min_acked(self.control_block(), gen_next)?;
 
         //println!("COMMIT");
 
         self.last_published = gen_next;
-        (gen_next, slot)
+        Ok((gen_next, slot))
     }
 
     /// Split Interface
-    pub fn prepare(&mut self) -> PartialWriteState {
+    pub fn prepare(&mut self) -> RunResult<PartialWriteState> {
         let gen_next = self.last_published + 1;
         let slot = self.choose_slot_rr(gen_next);
         let ptr = buffer_ptr(self.data_base, self.buf_size, slot);
 
-        self.wait_until_ready();
+        self.wait_until_ready()?;
 
         //println!("PREPARE {gen_next} {slot} {ptr:?}");
 
         // Producer has exclusive write: fill buffer content.
-        PartialWriteState {
+        Ok(PartialWriteState {
             gen_next,
             slot,
             ptr,
             size: self.buf_size,
-        }
+        })
     }
 
-    pub fn commit(&mut self, state: PartialWriteState) -> (u64, u32) {
+    pub fn commit(&mut self, state: PartialWriteState) -> RunResult<(u64, u32)> {
         // Make data visible: publish idx then bump gen with Release ordering.
         self.control_block_mut()
             .publish_idx
@@ -279,12 +302,12 @@ impl Producer {
             .store(state.gen_next, Release);
 
         // Strict lockstep: wait for all consumers to ack this generation.
-        wait_until_min_acked(self.control_block(), state.gen_next);
+        wait_until_min_acked(self.control_block(), state.gen_next)?;
 
         //println!("COMMIT");
 
         self.last_published = state.gen_next;
-        (state.gen_next, state.slot)
+        Ok((state.gen_next, state.slot))
     }
 }
 
@@ -384,11 +407,11 @@ impl Consumer {
     }
 
     /// Block (spin/backoff) until a new buffer is published. Runs given function on the provided buffer.
-    pub fn consume_next<F>(&mut self, mut f: F)
+    pub fn consume_next<F>(&mut self, mut f: F) -> RunResult<()>
     where
         F: FnMut(u64, u32, &[u8]),
     {
-        let (gen_id, slot, ptr) = self.wait_for_next();
+        let (gen_id, slot, ptr) = self.wait_for_next()?;
 
         //println!("CHILD WAIT {gen_id} {slot} {ptr:?}");
 
@@ -400,12 +423,27 @@ impl Consumer {
         });
 
         self.ack(gen_id);
+
+        Ok(())
     }
 
     /// Block (spin/backoff) until a new generation is published, then return (gen, slot, ptr).
-    fn wait_for_next(&mut self) -> (u64, u32, *const u8) {
+    fn wait_for_next(&mut self) -> RunResult<(u64, u32, *const u8)> {
         let mut spins = 0u32;
         loop {
+            // We spin a lot so eventually we should see this
+            let shutdown_state = self
+                .control_block()
+                .shutdown
+                .load(std::sync::atomic::Ordering::Acquire);
+
+            //debug!("SS {shutdown_state}");
+
+            if shutdown_state > 0 {
+                warn!("(wait next) Caught interrupt!");
+                return Err(RunResultError::Interrupt);
+            }
+
             let g1 = self.control_block().publish_gen.load(Acquire);
             if g1 == self.last_seen {
                 adaptive_pause(&mut spins);
@@ -417,7 +455,7 @@ impl Consumer {
             let g2 = self.control_block().publish_gen.load(Acquire);
             if g1 == g2 {
                 let ptr = buffer_ptr(self.data_base, self.buf_size, slot) as *const u8;
-                return (g1, slot, ptr);
+                return Ok((g1, slot, ptr));
             }
             // Lost a race with a newer publish; try again.
         }
@@ -434,6 +472,14 @@ impl Consumer {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum RunResultError {
+    #[error("the shared buffer has been interrupted")]
+    Interrupt,
+}
+
+pub type RunResult<T> = std::result::Result<T, RunResultError>;
+
 /// Spin/backoff helper: fast spins, then yield, then short sleeps.
 #[inline]
 fn adaptive_pause(spins: &mut u32) {
@@ -448,13 +494,24 @@ fn adaptive_pause(spins: &mut u32) {
 }
 
 /// Producer-side wait: strict lockstep requires all consumers to ack `target`.
-fn wait_until_min_acked(cb: &ControlBlock, target: u64) {
+#[inline]
+#[must_use]
+fn wait_until_min_acked(cb: &ControlBlock, target: u64) -> RunResult<()> {
     let n = cb.num_consumers as usize;
     let mut spins = 0u32;
     loop {
         if cb.min_acked(n) >= target {
             break;
         }
+
         adaptive_pause(&mut spins);
+
+        // We spin a lot so eventually we should see this
+        if cb.shutdown.load(std::sync::atomic::Ordering::Relaxed) > 0 {
+            warn!("(min ack) Caught interrupt!");
+            return Err(RunResultError::Interrupt);
+        }
     }
+
+    Ok(())
 }

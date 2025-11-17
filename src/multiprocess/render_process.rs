@@ -14,6 +14,8 @@ pub(crate) fn run() -> AppExit {
 
     app.add_plugins(crate::backfill_link::BackfillPlugin);
 
+    app.add_plugins(crate::multiprocess::app::control_c_catch);
+
     // Add in replication components
     app.add_plugins(crate::replication::reader::ReplicationReaderPlugin);
 

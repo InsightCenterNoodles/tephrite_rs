@@ -27,7 +27,7 @@ impl Plugin for BackfillPlugin {
         app.add_plugins(lighting::LightBindingPlugin);
 
         //app.add_systems(FixedLast, run_frame);
-        app.add_systems(Last, run_frame);
+        app.add_systems(Last, (run_frame, teardown).chain());
     }
 }
 
@@ -196,10 +196,7 @@ fn setup_session(app: &mut App) {
 fn run_frame(
     session: NonSend<resources::Session>,
     mut writer: MessageWriter<AppExit>,
-    query: Query<Entity, With<components::BEntity>>,
     head_ent: Query<&Transform, With<Head>>,
-    mut cache: NonSendMut<mesh_mat_bind::AssetCache>,
-    mut commands: Commands,
 ) {
     // update head
 
@@ -215,6 +212,17 @@ fn run_frame(
     if !should_exit {
         info!("Exiting...");
         writer.write(AppExit::Success);
+    }
+}
+
+fn teardown(
+    reader: MessageReader<AppExit>,
+    query: Query<Entity, With<components::BEntity>>,
+    mut cache: NonSendMut<mesh_mat_bind::AssetCache>,
+    mut commands: Commands,
+) {
+    if reader.len() > 0 {
+        info!("Exiting...");
 
         info!("Clearing replicated entities");
         for e in &query {

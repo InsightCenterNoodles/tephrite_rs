@@ -54,7 +54,7 @@ fn child_system(
     mut exit_event: MessageWriter<AppExit>,
 ) {
     // wait for transcript to be finished
-    transcript.consume_next(|_, _, slice| {
+    let result = transcript.consume_next(|_, _, slice| {
         let result = consume_buffer(
             slice,
             &mut map,
@@ -68,6 +68,11 @@ fn child_system(
             exit_event.write(AppExit::Success);
         }
     });
+
+    if result.is_err() {
+        debug!("Logic is requesting terminate...");
+        exit_event.write(AppExit::Success);
+    }
 }
 
 enum ConsumeResult {

@@ -4,7 +4,10 @@
 //! consumed by render workers. This resource wraps the low-level
 //! `multiprocess::shared_buffer::Consumer` and exposes a callback-based API to
 //! consume frames without allocations.
-use crate::multiprocess::{child_process_id, get_shared_mem_block_name, shared_buffer::Consumer};
+use crate::multiprocess::{
+    child_process_id, get_shared_mem_block_name,
+    shared_buffer::{Consumer, RunResult},
+};
 
 /// Resource that pulls serialized frames from shared memory.
 pub struct TranscriptReaderResource {
@@ -26,10 +29,10 @@ impl TranscriptReaderResource {
     ///
     /// The callback receives `(timestamp, channel_id, bytes)` for each item
     /// within the frame.
-    pub fn consume_next<F>(&mut self, f: F)
+    pub fn consume_next<F>(&mut self, f: F) -> RunResult<()>
     where
         F: FnMut(u64, u32, &[u8]),
     {
-        self.multiprocess_comm.consume_next(f);
+        self.multiprocess_comm.consume_next(f)
     }
 }

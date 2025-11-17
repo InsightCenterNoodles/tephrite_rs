@@ -100,6 +100,8 @@ impl Plugin for ReplicationWriterPlugin {
 
         app.add_systems(Startup, setup_shmem);
 
+        app.add_systems(Update, watch_for_exit);
+
         app.add_systems(
             Last,
             (implicit_replication_check, added_rep_check)
@@ -167,16 +169,23 @@ fn hierarchy_remove_listener(
 struct FinalSyncPhase;
 
 fn setup_shmem(world: &mut World) {
+    debug!("Starting up shared memory");
     let mut transcript = world.non_send_resource_mut::<TranscriptWriterResource>();
 
-    let session = transcript.prepare();
+    let session = transcript.prepare().expect("should not fail at start");
 
     world.insert_non_send_resource(session);
 }
 
+fn watch_for_exit(mut res: NonSendMut<TranscriptWriterResource>, reader: MessageReader<AppExit>) {
+    if reader.len() > 0 {
+        info!("Exit triggered");
+        res.shutdown();
+    }
+}
+
 /// Core replication system. Handles obtaining a fresh transcript
 fn root_system(world: &mut World) {
-    //println!("PRODUCER END FRAME");
     let state = {
         let mut dest = world
             .remove_non_send_resource::<TranscriptWriteStateResource>()
@@ -190,17 +199,34 @@ fn root_system(world: &mut World) {
 
     // Commit all changes
 
-    if let Some(n) = world
-        .get_non_send_resource_mut::<TranscriptWriterResource>()
-        .map(|mut core| {
-            core.commit(state);
+    let Some(mut res) = world.get_non_send_resource_mut::<TranscriptWriterResource>() else {
+        debug!("SKIPPPING HERE");
+        return;
+    };
 
-            // now get the next state
-            core.prepare()
-        })
-    {
-        world.insert_non_send_resource(n);
+    if res.commit(state).is_err() {
+        debug!("COMMIT FAIL");
+        return;
     }
+
+    let Ok(res) = res.prepare() else {
+        debug!("PREP FAIL");
+        return;
+    };
+
+    world.insert_non_send_resource(res);
+
+    // if let Some(n) = world
+    //     .get_non_send_resource_mut::<TranscriptWriterResource>()
+    //     .map(|mut core| {
+    //         core.commit(state);
+
+    //         // now get the next state
+    //         core.prepare()
+    //     })
+    // {
+    //     world.insert_non_send_resource(n);
+    // }
 
     //println!("PRODUCER END FRAME COMPLETE");
 }
