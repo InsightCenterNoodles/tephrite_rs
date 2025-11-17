@@ -26,7 +26,9 @@ fn setup(
 
     let mesh = meshes.add(Cuboid::new(0.1, 0.1, 0.1));
 
-    let e = commands.spawn(Transform::from_xyz(0.0, 0.0, -1.0)).id();
+    let e = commands
+        .spawn((Transform::from_xyz(0.0, 0.0, -1.0), Replicated))
+        .id();
 
     commands.spawn((
         Mesh3d(mesh.clone()),

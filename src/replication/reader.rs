@@ -31,11 +31,11 @@ struct EntityMap(EntityHashMap<Entity>);
 
 impl EntityMap {
     fn map(&self, foreign: Entity) -> Entity {
-        *self.0.get(&foreign).unwrap()
+        *self.0.get(&foreign).expect("unknown entity")
     }
 
     fn map_remove(&mut self, foreign: Entity) -> Entity {
-        self.0.remove(&foreign).unwrap()
+        self.0.remove(&foreign).expect("unknown entity")
     }
 }
 
@@ -103,11 +103,12 @@ fn consume_buffer(
                 let local = commands.spawn(BReplicate);
 
                 map.0.insert(entity, local.id());
-                //println!("Mapping entity {:?} {:?}", entity, local.id());
+                debug!("Mapping entity {:?} -> {:?}", entity, local.id());
             }
             ClientInstruction::ERemove(entity) => {
                 let local = map.map_remove(entity);
                 commands.entity(local).despawn();
+                debug!("Removing entity {:?} -> {:?}", entity, local);
             }
             ClientInstruction::CAdd(item) => {
                 let local = map.map(item.entity);
@@ -142,6 +143,7 @@ fn consume_buffer(
                 };
             }
             ClientInstruction::HChange(item) => {
+                debug!("Heirarchy change {item:?}");
                 // Remap foreign IDs to local before applying hierarchy changes
                 let child_local = map.map(item.child);
                 match item.new_parent {
