@@ -13,6 +13,7 @@ use bevy::app::Plugin;
 pub mod prelude {
     pub use super::run;
     pub use crate::common::Head;
+    pub use crate::replication::components::PropagateReplication;
     pub use crate::replication::components::Replicated;
 }
 

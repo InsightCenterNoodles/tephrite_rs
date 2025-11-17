@@ -1,4 +1,4 @@
-use bevy::prelude::Component;
+use bevy::{app::Propagate, ecs::bundle::Bundle, prelude::Component};
 
 /// A component indicating that the entity should be replicated.
 ///
@@ -19,6 +19,20 @@ use bevy::prelude::Component;
 /// # }
 /// ```
 /// TODO: move to HierarchyPropagatePlugin
-#[derive(Component, Debug, Clone, Copy)]
+#[derive(Component, Debug, Clone, Copy, PartialEq)]
 #[component(immutable)]
 pub struct Replicated;
+
+//pub type PropagateReplication = Propagate(Replicated);
+#[derive(Bundle)]
+pub struct PropagateReplication {
+    replication: Propagate<Replicated>,
+}
+
+impl Default for PropagateReplication {
+    fn default() -> Self {
+        Self {
+            replication: Propagate(Replicated),
+        }
+    }
+}

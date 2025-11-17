@@ -233,7 +233,9 @@ fn teardown(
 
         info!("Clearing replicated entities");
         for e in &query {
-            commands.entity(e).despawn();
+            if let Ok(mut x) = commands.get_entity(e) {
+                x.despawn();
+            }
         }
 
         info!("Clearing replicated resources");

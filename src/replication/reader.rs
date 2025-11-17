@@ -100,14 +100,16 @@ fn consume_buffer(
 
         match instruction {
             ClientInstruction::EAdd(entity) => {
-                let local = commands.spawn(BReplicate);
+                let local = commands.spawn((BReplicate, Transform::default()));
 
                 map.0.insert(entity, local.id());
                 debug!("Mapping entity {:?} -> {:?}", entity, local.id());
             }
             ClientInstruction::ERemove(entity) => {
                 let local = map.map_remove(entity);
-                commands.entity(local).despawn();
+                if let Ok(mut x) = commands.get_entity(local) {
+                    x.despawn();
+                }
                 debug!("Removing entity {:?} -> {:?}", entity, local);
             }
             ClientInstruction::CAdd(item) => {

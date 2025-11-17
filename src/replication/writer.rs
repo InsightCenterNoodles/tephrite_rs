@@ -1,28 +1,12 @@
 use crate::replication::components::Replicated;
 use crate::serialize::transcript_writer::*;
 use crate::serialize::*;
+use bevy::app::HierarchyPropagatePlugin;
 use bevy::prelude::*;
 
 use super::instruction::*;
 
 // ============================================================================
-
-fn implicit_replication_check(
-    query: Query<
-        Entity,
-        (
-            Added<Mesh3d>,
-            Added<MeshMaterial3d<StandardMaterial>>,
-            Without<Replicated>,
-        ),
-    >,
-    mut commands: Commands,
-) {
-    for e in query.iter() {
-        println!("Adding replication to meshmat {e:?}");
-        commands.entity(e).insert(Replicated);
-    }
-}
 
 /// Check for any added replicated entities. We use a marker to see who we should replicate
 fn added_rep_check(
@@ -102,12 +86,9 @@ impl Plugin for ReplicationWriterPlugin {
 
         app.add_systems(Update, watch_for_exit);
 
-        app.add_systems(
-            Last,
-            (implicit_replication_check, added_rep_check)
-                .chain()
-                .in_set(EntityStartDeltaPhase),
-        );
+        app.add_plugins(HierarchyPropagatePlugin::<Replicated>::new(PostUpdate));
+
+        app.add_systems(Last, added_rep_check.in_set(EntityStartDeltaPhase));
         app.add_systems(
             Last,
             (hierarchy_change_listener, hierarchy_remove_listener)
@@ -131,7 +112,7 @@ impl Plugin for ReplicationWriterPlugin {
 /// Watch for changes to parent-child relationships and write them to the
 /// transcript
 fn hierarchy_change_listener(
-    h_event: Query<(Entity, &ChildOf), Changed<ChildOf>>,
+    h_event: Query<(Entity, &ChildOf), (Changed<ChildOf>, With<Replicated>)>,
     mut transcript: NonSendMut<TranscriptWriteStateResource>,
 ) {
     for (child, parent) in h_event.iter() {
@@ -148,9 +129,14 @@ fn hierarchy_change_listener(
 
 fn hierarchy_remove_listener(
     mut h_event: RemovedComponents<ChildOf>,
+    has_replicate: Query<&Replicated>,
     mut transcript: NonSendMut<TranscriptWriteStateResource>,
 ) {
     for child in h_event.read() {
+        if !has_replicate.contains(child) {
+            continue;
+        }
+
         let dest: &mut TranscriptWriteStateResource = &mut transcript;
         unsafe {
             ServerInstruction::HChange(HierarchyChange {

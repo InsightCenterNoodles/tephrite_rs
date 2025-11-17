@@ -6,6 +6,7 @@ struct MyPlugin;
 impl Plugin for MyPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup);
+        app.add_systems(Update, animate);
     }
 }
 
@@ -30,6 +31,7 @@ fn setup(
         .spawn((
             Transform::from_xyz(0.0, 0.0, -1.0),
             PropagateReplication::default(),
+            ToAnimate,
         ))
         .id();
 
@@ -75,6 +77,17 @@ fn setup(
         Camera3d::default(),
         Transform::from_xyz(-2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
+}
+
+#[derive(Component, Clone, Copy)]
+struct ToAnimate;
+
+fn animate(time: Res<Time>, query: Query<&mut Transform, With<ToAnimate>>) {
+    let rate = time.delta_secs().to_radians() * 15.0;
+
+    for mut tf in query {
+        tf.rotate_y(rate);
+    }
 }
 
 fn main() {
