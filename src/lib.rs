@@ -18,8 +18,8 @@ pub mod prelude {
 
 /// Primary entry point for your application
 ///
-/// As this is a multiprocess application, we may need to steal control from
-/// your main process. This function takes care of this for you; pass in a plugin that defines your application.
+/// As this is a multiprocess application, we need to steal control from normal execution paths.
+/// This function takes care of this for you; pass in a plugin that defines your application.
 /// See examples for demonstrations of this approach.
 ///
 pub fn run(user_plugin: impl Plugin) -> bevy::app::AppExit {

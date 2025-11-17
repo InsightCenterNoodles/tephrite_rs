@@ -125,16 +125,23 @@ fn setup_session(app: &mut App) {
 
         unsafe {
             bffi::fconfig_set_log_debug(config.as_ptr(), 1);
-            bffi::fconfig_set_offaxis_plane(config.as_ptr(), &plane);
-            bffi::fconfig_set_stereo_eye(
-                config.as_ptr(),
-                if child_config.is_right {
-                    bffi::FEye_EYE_RIGHT
-                } else {
-                    bffi::FEye_EYE_LEFT
-                },
-            );
+        }
 
+        if child_config.use_offaxis {
+            unsafe {
+                bffi::fconfig_set_offaxis_plane(config.as_ptr(), &plane);
+                bffi::fconfig_set_stereo_eye(
+                    config.as_ptr(),
+                    if child_config.is_right {
+                        bffi::FEye_EYE_RIGHT
+                    } else {
+                        bffi::FEye_EYE_LEFT
+                    },
+                );
+            }
+        }
+
+        unsafe {
             if child_config.fullscreen {
                 bffi::fconfig_set_fullscreen(config.as_ptr(), 1);
             }

@@ -14,6 +14,7 @@ mod file {
 
     #[derive(Debug, Default, Deserialize)]
     pub(crate) struct Config {
+        pub(crate) use_offaxis: Option<bool>,
         pub(crate) render: Option<Render>,
         pub(crate) vrpn: Vrpn,
         pub(crate) displays: Vec<Display>,
@@ -27,7 +28,8 @@ mod file {
 
     #[derive(Debug, Default, Deserialize)]
     pub(crate) struct Vrpn {
-        pub(crate) head: String,
+        pub(crate) head: Option<String>,
+        pub(crate) debug_head: Option<bool>,
     }
 
     #[derive(Debug, Default, Deserialize)]
@@ -179,11 +181,13 @@ impl FromStr for VRPNAddress {
 /// Configure VRPN connectivity
 #[derive(Debug, Default, Clone)]
 pub struct VRPNConfig {
-    pub head: VRPNAddress,
+    pub head: Option<VRPNAddress>,
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct RenderConfiguration {
+    pub use_offaxis: bool,
+
     /// The rank of the process
     pub process_rank: u32,
 
@@ -209,6 +213,8 @@ pub struct RenderConfiguration {
 
 #[derive(Debug, Default, Clone)]
 pub struct LogicConfiguration {
+    pub use_offaxis: bool,
+
     /// VRPN configuration information
     pub vrpn_config: VRPNConfig,
 
@@ -221,6 +227,7 @@ static CHILD_CONFIG: OnceLock<RenderConfiguration> = OnceLock::new();
 
 fn build_child_config() -> RenderConfiguration {
     let file::Config {
+        use_offaxis,
         render,
         vrpn: _,
         displays,
@@ -240,6 +247,7 @@ fn build_child_config() -> RenderConfiguration {
         .unwrap_or_else(|| uvec2(1920, 1200));
 
     RenderConfiguration {
+        use_offaxis: use_offaxis.unwrap_or_default(),
         process_rank: child_process_id(),
         render_api: render.map(|x| x.api),
         card_index: this_screen.as_ref().and_then(|x| x.card_index),
@@ -267,6 +275,7 @@ pub fn get_render_configuration() -> &'static RenderConfiguration {
 pub fn get_logic_configuration() -> &'static LogicConfiguration {
     fn build() -> Option<LogicConfiguration> {
         let file::Config {
+            use_offaxis,
             render: _,
             vrpn,
             displays: _,
@@ -276,8 +285,9 @@ pub fn get_logic_configuration() -> &'static LogicConfiguration {
             .ok()?;
 
         Some(LogicConfiguration {
+            use_offaxis: use_offaxis.unwrap_or_default(),
             vrpn_config: VRPNConfig {
-                head: vrpn.head.parse().ok()?,
+                head: vrpn.head.and_then(|x| x.parse().ok()),
             },
             child_count: screens.len().try_into().unwrap(),
         })
@@ -310,10 +320,11 @@ mod tests {
 
         // Validate logic configuration derived from the example
         let logic = get_logic_configuration();
+        let head = logic.vrpn_config.head.as_ref().unwrap();
         assert_eq!(logic.child_count, 12);
-        assert_eq!(logic.vrpn_config.head.sender, "Head0");
-        assert_eq!(logic.vrpn_config.head.host, "10.79.144.3");
-        assert_eq!(logic.vrpn_config.head.port, 3883);
+        assert_eq!(head.sender, "Head0");
+        assert_eq!(head.host, "10.79.144.3");
+        assert_eq!(head.port, 3883);
 
         // Prepare render context for child 0 and validate render configuration
         unsafe { std::env::set_var("TEPHRITE_CHILD_PROCESS", "0") };

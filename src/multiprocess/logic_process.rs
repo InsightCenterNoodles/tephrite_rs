@@ -18,10 +18,8 @@ pub(crate) fn setup() -> App {
 
     // only now are logs enabled!
 
-    // set up MP state. In the future, this will be pulled from the config. but that is not finalized yet.
-    //let child_count = 1;
-    //let child_count = 12;
-    let child_count = get_logic_configuration().child_count;
+    // Having zero children makes no sense
+    let child_count = get_logic_configuration().child_count.max(1);
 
     app.add_plugins(crate::vrpn::VRPNPlugin);
 
@@ -69,9 +67,9 @@ struct ChildProcessResource {
 fn setup_tracked_head(mut commands: Commands) {
     debug!("Setup tracked head");
 
-    let h = get_logic_configuration().vrpn_config.head.clone();
-
-    commands.spawn((Replicated, Transform::default(), Head, VRPNObject(h)));
+    if let Some(h) = get_logic_configuration().vrpn_config.head.clone() {
+        commands.spawn((Replicated, Transform::default(), Head, VRPNObject(h)));
+    }
 }
 
 fn destroy_child_process(mut child: Child) {
