@@ -155,11 +155,130 @@ pub fn convert_mesh(
     .ok()
 }
 
+pub fn is_image_float(texture: &Image) -> Option<bool> {
+    use bevy::render::render_resource::TextureFormat;
+    match texture.texture_descriptor.format {
+        TextureFormat::R16Float
+        | TextureFormat::R32Float
+        | TextureFormat::Rg16Float
+        | TextureFormat::Rgb9e5Ufloat
+        | TextureFormat::Rg11b10Ufloat
+        | TextureFormat::Rg32Float
+        | TextureFormat::Rgba16Float
+        | TextureFormat::Rgba32Float => Some(true),
+
+        TextureFormat::R8Unorm
+        | TextureFormat::R8Snorm
+        | TextureFormat::R8Uint
+        | TextureFormat::R8Sint
+        | TextureFormat::R16Uint
+        | TextureFormat::R16Sint
+        | TextureFormat::R16Unorm
+        | TextureFormat::R16Snorm
+        | TextureFormat::Rg8Unorm
+        | TextureFormat::Rg8Snorm
+        | TextureFormat::Rg8Uint
+        | TextureFormat::Rg8Sint
+        | TextureFormat::R32Uint
+        | TextureFormat::R32Sint
+        | TextureFormat::Rg16Uint
+        | TextureFormat::Rg16Sint
+        | TextureFormat::Rg16Unorm
+        | TextureFormat::Rg16Snorm
+        | TextureFormat::Rgba8Unorm
+        | TextureFormat::Rgba8UnormSrgb
+        | TextureFormat::Rgba8Snorm => todo!(),
+        TextureFormat::Rgba8Uint => todo!(),
+        TextureFormat::Rgba8Sint => todo!(),
+        TextureFormat::Bgra8Unorm => todo!(),
+        TextureFormat::Bgra8UnormSrgb => todo!(),
+        TextureFormat::Rgb10a2Uint => todo!(),
+        TextureFormat::Rgb10a2Unorm => todo!(),
+        TextureFormat::R64Uint => todo!(),
+        TextureFormat::Rg32Uint => todo!(),
+        TextureFormat::Rg32Sint => todo!(),
+        TextureFormat::Rgba16Uint => todo!(),
+        TextureFormat::Rgba16Sint => todo!(),
+        TextureFormat::Rgba16Unorm => todo!(),
+        TextureFormat::Rgba16Snorm => todo!(),
+        TextureFormat::Rgba32Uint => todo!(),
+        TextureFormat::Rgba32Sint => todo!(),
+
+        TextureFormat::Stencil8 => todo!(),
+        TextureFormat::Depth16Unorm => todo!(),
+        TextureFormat::Depth24Plus => todo!(),
+        TextureFormat::Depth24PlusStencil8 => todo!(),
+        TextureFormat::Depth32Float => todo!(),
+        TextureFormat::Depth32FloatStencil8 => todo!(),
+        TextureFormat::NV12 => todo!(),
+        TextureFormat::Bc1RgbaUnorm => todo!(),
+        TextureFormat::Bc1RgbaUnormSrgb => todo!(),
+        TextureFormat::Bc2RgbaUnorm => todo!(),
+        TextureFormat::Bc2RgbaUnormSrgb => todo!(),
+        TextureFormat::Bc3RgbaUnorm => todo!(),
+        TextureFormat::Bc3RgbaUnormSrgb => todo!(),
+        TextureFormat::Bc4RUnorm => todo!(),
+        TextureFormat::Bc4RSnorm => todo!(),
+        TextureFormat::Bc5RgUnorm => todo!(),
+        TextureFormat::Bc5RgSnorm => todo!(),
+        TextureFormat::Bc6hRgbUfloat => todo!(),
+        TextureFormat::Bc6hRgbFloat => todo!(),
+        TextureFormat::Bc7RgbaUnorm => todo!(),
+        TextureFormat::Bc7RgbaUnormSrgb => todo!(),
+        TextureFormat::Etc2Rgb8Unorm => todo!(),
+        TextureFormat::Etc2Rgb8UnormSrgb => todo!(),
+        TextureFormat::Etc2Rgb8A1Unorm => todo!(),
+        TextureFormat::Etc2Rgb8A1UnormSrgb => todo!(),
+        TextureFormat::Etc2Rgba8Unorm => todo!(),
+        TextureFormat::Etc2Rgba8UnormSrgb => todo!(),
+        TextureFormat::EacR11Unorm => todo!(),
+        TextureFormat::EacR11Snorm => todo!(),
+        TextureFormat::EacRg11Unorm => todo!(),
+        TextureFormat::EacRg11Snorm => todo!(),
+        TextureFormat::Astc { block, channel } => todo!(),
+    }
+}
+
+pub fn convert_image(
+    session: &backfill::FSessionHandle,
+    texture: &Image,
+) -> Option<backfill::FImageHandle> {
+    todo!();
+
+    // texture.texture_descriptor.
+
+    // let desc = bffi::FImageRawDesc {
+    //     width: texture.width(),
+    //     height: texture.height(),
+    //     n_channels: texture
+    //         .texture_descriptor
+    //         .size
+    //         .depth_or_array_layers
+    //         .try_into()
+    //         .ok()?,
+    //     byte_size: texture.data?.len().try_into().ok()?,
+    //     type_: match texture.texture_descriptor.format.is_srgb() {
+
+    //     },
+    //     colorspace: todo!(),
+    // };
+
+    // ffi::fimg_init_raw(blobref, arg2)
+}
+
 pub fn convert_texture(
     session: &backfill::FSessionHandle,
     texture: &Image,
 ) -> Option<backfill::FTextureHandle> {
+    let mut blob = backfill::blob_from_slice(texture.data.as_deref()?).ok()?;
+
+    let reference = backfill::blobref_whole(&blob);
+
+    //backfill::fi
+
     todo!()
+
+    //texture.texture_descriptor.format
 }
 
 pub fn convert_material(

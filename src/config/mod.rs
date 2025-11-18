@@ -214,8 +214,6 @@ pub struct RenderConfiguration {
 
 #[derive(Debug, Default, Clone)]
 pub struct LogicConfiguration {
-    pub use_offaxis: bool,
-
     /// VRPN configuration information
     pub vrpn_config: VRPNConfig,
 
@@ -276,7 +274,7 @@ pub fn get_render_configuration() -> &'static RenderConfiguration {
 pub fn get_logic_configuration() -> &'static LogicConfiguration {
     fn build() -> Option<LogicConfiguration> {
         let file::Config {
-            use_offaxis,
+            use_offaxis: _,
             render: _,
             vrpn,
             displays: _,
@@ -286,7 +284,6 @@ pub fn get_logic_configuration() -> &'static LogicConfiguration {
             .ok()?;
 
         Some(LogicConfiguration {
-            use_offaxis: use_offaxis.unwrap_or_default(),
             vrpn_config: VRPNConfig {
                 head: vrpn.head.and_then(|x| x.parse().ok()),
                 debug_head: vrpn.debug_head.unwrap_or_default(),

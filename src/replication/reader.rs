@@ -55,7 +55,7 @@ fn child_system(
 ) {
     // wait for transcript to be finished
     let result = transcript.consume_next(|_, _, slice| {
-        let result = consume_buffer(
+        consume_buffer(
             slice,
             &mut map,
             &mut commands,
@@ -63,10 +63,6 @@ fn child_system(
             &mut materials,
             &mut images,
         );
-
-        if let ConsumeResult::Halt = result {
-            exit_event.write(AppExit::Success);
-        }
     });
 
     if result.is_err() {
@@ -75,12 +71,6 @@ fn child_system(
     }
 }
 
-enum ConsumeResult {
-    Continue,
-    Halt,
-}
-
-#[must_use]
 #[inline(always)]
 fn consume_buffer(
     bytes: &[u8],
@@ -89,7 +79,7 @@ fn consume_buffer(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     images: &mut Assets<Image>,
-) -> ConsumeResult {
+) {
     use crate::serialize::*;
     let mut bytes = ByteReader::new(bytes);
 
@@ -159,10 +149,7 @@ fn consume_buffer(
                 }
             }
             ClientInstruction::EFrame(_) => {
-                return ConsumeResult::Continue;
-            }
-            ClientInstruction::Halt(_) => {
-                return ConsumeResult::Halt;
+                return;
             }
         }
     }

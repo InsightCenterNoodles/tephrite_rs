@@ -132,7 +132,6 @@ create_serialize_enum_write_only!(
         (5, CDropAsset, DropAsset),
         (6, HChange, HierarchyChange),
         (7, EFrame, EndFrame),
-        (8, Halt, Halt),
     }
 );
 
@@ -211,6 +210,5 @@ create_serialize_enum!(
         (5, CDropAsset, DropAsset),
         (6, HChange, HierarchyChange),
         (7, EFrame, EndFrame),
-        (8, Halt, Halt),
     }
 );
