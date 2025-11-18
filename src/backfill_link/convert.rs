@@ -1,8 +1,13 @@
+use std::ptr::NonNull;
+
 use bevy::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
 use bevy::prelude::*;
 
-use crate::backfill;
-use crate::backfill::ffi as bffi;
+use crate::backfill::ffi::{
+    self as bffi, FColorSpace_CS_LINEAR, FColorSpace_CS_SRGB, FPixelType_PIXEL_FLOAT32,
+    FPixelType_PIXEL_UBYTE, FTextureFormat_FMT_AUTO_LINEAR_DATA,
+};
+use crate::backfill::{self, ffi};
 
 fn iter_or_value<'a, T>(
     slice: Option<&'a [T]>,
@@ -187,55 +192,58 @@ pub fn is_image_float(texture: &Image) -> Option<bool> {
         | TextureFormat::Rg16Snorm
         | TextureFormat::Rgba8Unorm
         | TextureFormat::Rgba8UnormSrgb
-        | TextureFormat::Rgba8Snorm => todo!(),
-        TextureFormat::Rgba8Uint => todo!(),
-        TextureFormat::Rgba8Sint => todo!(),
-        TextureFormat::Bgra8Unorm => todo!(),
-        TextureFormat::Bgra8UnormSrgb => todo!(),
-        TextureFormat::Rgb10a2Uint => todo!(),
-        TextureFormat::Rgb10a2Unorm => todo!(),
-        TextureFormat::R64Uint => todo!(),
-        TextureFormat::Rg32Uint => todo!(),
-        TextureFormat::Rg32Sint => todo!(),
-        TextureFormat::Rgba16Uint => todo!(),
-        TextureFormat::Rgba16Sint => todo!(),
-        TextureFormat::Rgba16Unorm => todo!(),
-        TextureFormat::Rgba16Snorm => todo!(),
-        TextureFormat::Rgba32Uint => todo!(),
-        TextureFormat::Rgba32Sint => todo!(),
+        | TextureFormat::Rgba8Snorm
+        | TextureFormat::Rgba8Uint
+        | TextureFormat::Rgba8Sint
+        | TextureFormat::Bgra8Unorm
+        | TextureFormat::Bgra8UnormSrgb
+        | TextureFormat::Rgb10a2Uint
+        | TextureFormat::Rgb10a2Unorm
+        | TextureFormat::R64Uint
+        | TextureFormat::Rg32Uint
+        | TextureFormat::Rg32Sint
+        | TextureFormat::Rgba16Uint
+        | TextureFormat::Rgba16Sint
+        | TextureFormat::Rgba16Unorm
+        | TextureFormat::Rgba16Snorm
+        | TextureFormat::Rgba32Uint
+        | TextureFormat::Rgba32Sint => Some(false),
 
-        TextureFormat::Stencil8 => todo!(),
-        TextureFormat::Depth16Unorm => todo!(),
-        TextureFormat::Depth24Plus => todo!(),
-        TextureFormat::Depth24PlusStencil8 => todo!(),
-        TextureFormat::Depth32Float => todo!(),
-        TextureFormat::Depth32FloatStencil8 => todo!(),
-        TextureFormat::NV12 => todo!(),
-        TextureFormat::Bc1RgbaUnorm => todo!(),
-        TextureFormat::Bc1RgbaUnormSrgb => todo!(),
-        TextureFormat::Bc2RgbaUnorm => todo!(),
-        TextureFormat::Bc2RgbaUnormSrgb => todo!(),
-        TextureFormat::Bc3RgbaUnorm => todo!(),
-        TextureFormat::Bc3RgbaUnormSrgb => todo!(),
-        TextureFormat::Bc4RUnorm => todo!(),
-        TextureFormat::Bc4RSnorm => todo!(),
-        TextureFormat::Bc5RgUnorm => todo!(),
-        TextureFormat::Bc5RgSnorm => todo!(),
-        TextureFormat::Bc6hRgbUfloat => todo!(),
-        TextureFormat::Bc6hRgbFloat => todo!(),
-        TextureFormat::Bc7RgbaUnorm => todo!(),
-        TextureFormat::Bc7RgbaUnormSrgb => todo!(),
-        TextureFormat::Etc2Rgb8Unorm => todo!(),
-        TextureFormat::Etc2Rgb8UnormSrgb => todo!(),
-        TextureFormat::Etc2Rgb8A1Unorm => todo!(),
-        TextureFormat::Etc2Rgb8A1UnormSrgb => todo!(),
-        TextureFormat::Etc2Rgba8Unorm => todo!(),
-        TextureFormat::Etc2Rgba8UnormSrgb => todo!(),
-        TextureFormat::EacR11Unorm => todo!(),
-        TextureFormat::EacR11Snorm => todo!(),
-        TextureFormat::EacRg11Unorm => todo!(),
-        TextureFormat::EacRg11Snorm => todo!(),
-        TextureFormat::Astc { block, channel } => todo!(),
+        TextureFormat::Stencil8
+        | TextureFormat::Depth16Unorm
+        | TextureFormat::Depth24Plus
+        | TextureFormat::Depth24PlusStencil8
+        | TextureFormat::Depth32Float
+        | TextureFormat::Depth32FloatStencil8
+        | TextureFormat::NV12
+        | TextureFormat::Bc1RgbaUnorm
+        | TextureFormat::Bc1RgbaUnormSrgb
+        | TextureFormat::Bc2RgbaUnorm
+        | TextureFormat::Bc2RgbaUnormSrgb
+        | TextureFormat::Bc3RgbaUnorm
+        | TextureFormat::Bc3RgbaUnormSrgb
+        | TextureFormat::Bc4RUnorm
+        | TextureFormat::Bc4RSnorm
+        | TextureFormat::Bc5RgUnorm
+        | TextureFormat::Bc5RgSnorm
+        | TextureFormat::Bc6hRgbUfloat
+        | TextureFormat::Bc6hRgbFloat
+        | TextureFormat::Bc7RgbaUnorm
+        | TextureFormat::Bc7RgbaUnormSrgb
+        | TextureFormat::Etc2Rgb8Unorm
+        | TextureFormat::Etc2Rgb8UnormSrgb
+        | TextureFormat::Etc2Rgb8A1Unorm
+        | TextureFormat::Etc2Rgb8A1UnormSrgb
+        | TextureFormat::Etc2Rgba8Unorm
+        | TextureFormat::Etc2Rgba8UnormSrgb
+        | TextureFormat::EacR11Unorm
+        | TextureFormat::EacR11Snorm
+        | TextureFormat::EacRg11Unorm
+        | TextureFormat::EacRg11Snorm
+        | TextureFormat::Astc {
+            block: _,
+            channel: _,
+        } => None,
     }
 }
 
@@ -243,42 +251,69 @@ pub fn convert_image(
     session: &backfill::FSessionHandle,
     texture: &Image,
 ) -> Option<backfill::FImageHandle> {
-    todo!();
-
     // texture.texture_descriptor.
 
-    // let desc = bffi::FImageRawDesc {
-    //     width: texture.width(),
-    //     height: texture.height(),
-    //     n_channels: texture
-    //         .texture_descriptor
-    //         .size
-    //         .depth_or_array_layers
-    //         .try_into()
-    //         .ok()?,
-    //     byte_size: texture.data?.len().try_into().ok()?,
-    //     type_: match texture.texture_descriptor.format.is_srgb() {
+    let desc = bffi::FImageRawDesc {
+        width: texture.width(),
+        height: texture.height(),
+        n_channels: texture
+            .texture_descriptor
+            .size
+            .depth_or_array_layers
+            .try_into()
+            .ok()?,
+        byte_size: texture.data.as_deref()?.len().try_into().ok()?,
+        type_: if is_image_float(texture).unwrap_or_default() {
+            FPixelType_PIXEL_FLOAT32
+        } else {
+            FPixelType_PIXEL_UBYTE
+        },
+        colorspace: if texture.texture_descriptor.format.is_srgb() {
+            FColorSpace_CS_SRGB
+        } else {
+            FColorSpace_CS_LINEAR
+        },
+    };
 
-    //     },
-    //     colorspace: todo!(),
-    // };
+    let blob = backfill::blob_from_slice(texture.data.as_deref()?).ok()?;
 
-    // ffi::fimg_init_raw(blobref, arg2)
+    let reference = backfill::blobref_whole(&blob);
+
+    unsafe {
+        NonNull::new(bffi::fimg_init_raw(reference, &raw const desc))
+            .map(|x| backfill::FImageHandle::from_nonnull(x))
+    }
 }
 
 pub fn convert_texture(
     session: &backfill::FSessionHandle,
     texture: &Image,
 ) -> Option<backfill::FTextureHandle> {
-    let mut blob = backfill::blob_from_slice(texture.data.as_deref()?).ok()?;
+    let image = convert_image(session, texture)?;
 
-    let reference = backfill::blobref_whole(&blob);
+    use bevy::render::render_resource::TextureFormat;
 
-    //backfill::fi
+    use bffi::*;
 
-    todo!()
+    // TODO, convert if the backend cant support a texture
+    let bffmt = match texture.texture_descriptor.format {
+        TextureFormat::R8Unorm => FTextureFormat_FMT_R8,
+        TextureFormat::Rg8Unorm => FTextureFormat_FMT_RG8,
+        TextureFormat::Rgba8Unorm => FTextureFormat_FMT_RGBA8,
+        TextureFormat::R16Float => FTextureFormat_FMT_R16F,
+        TextureFormat::Rg16Float => FTextureFormat_FMT_RG16F,
+        TextureFormat::Rgba16Float => FTextureFormat_FMT_RGBA16F,
+        TextureFormat::Rgba32Float => FTextureFormat_FMT_RGBA32F,
+        TextureFormat::Rg11b10Ufloat => FTextureFormat_FMT_R11F_G11F_B10F,
+        _ => return None,
+    };
 
-    //texture.texture_descriptor.format
+    let config = backfill::tex_config_from_image(&image, bffmt).ok()?;
+
+    unsafe {
+        NonNull::new(bffi::ftex_init(session.as_ptr(), config.as_ptr()))
+            .map(|x| backfill::FTextureHandle::from_nonnull(x))
+    }
 }
 
 pub fn convert_material(

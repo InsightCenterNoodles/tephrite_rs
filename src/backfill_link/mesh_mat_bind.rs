@@ -61,6 +61,39 @@ fn watch_mesh_change(
     }
 }
 
+fn watch_image_change(
+    mut events: MessageReader<AssetEvent<Image>>,
+    assets: Res<Assets<Image>>,
+    mut cache: NonSendMut<AssetCache>,
+    session: NonSend<Session>,
+) {
+    for e in events.read() {
+        match e {
+            AssetEvent::Added { id } => {
+                if let Some(asset) = assets.get(*id) {
+                    if let Some(converted) = convert_texture(&session.0, asset) {
+                        cache
+                            .textures
+                            .insert(*id, (converted, asset.sampler.clone()));
+                        debug!("Added new mesh {id}");
+                    } else {
+                        warn!("Mesh {id} unsupported for conversion; skipping");
+                    }
+                } else {
+                    warn!("Mesh asset {id} missing on add; skipping");
+                }
+            }
+            AssetEvent::Modified { id: _ } => {
+                debug!("WE DONT HANDLE THIS YET");
+            }
+            AssetEvent::Removed { id } => {
+                cache.textures.remove(id);
+            }
+            _ => {}
+        }
+    }
+}
+
 fn watch_material_change(
     mut events: MessageReader<AssetEvent<StandardMaterial>>,
     materials: Res<Assets<StandardMaterial>>,
@@ -139,6 +172,7 @@ impl Plugin for RenderableBindingPlugin {
             .add_systems(
                 PostUpdate,
                 (
+                    watch_image_change,
                     watch_mesh_change,
                     watch_material_change,
                     sync_binding_on_renderability_and_asset_changes,

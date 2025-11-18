@@ -322,7 +322,7 @@ pub fn material_config() -> BackfillResult<FMaterialConfigHandle> {
 }
 
 impl FMaterialConfigHandle {
-    pub fn set_option(&self, option: ffi::FMatTexOption, b: bool) {
+    pub fn set_option(&self, option: ffi::FMatOption, b: bool) {
         unsafe { ffi::fmc_set_option(self.as_ptr(), option, b as u8) };
     }
 
