@@ -34,12 +34,8 @@ pub(crate) fn make_common_app() -> App {
             level: bevy::log::Level::DEBUG,
             ..Default::default()
         },
-    ))
-    .add_plugins(ScheduleRunnerPlugin::run_loop(
-        std::time::Duration::from_secs_f64(1.0 / 60.0),
-    ))
-    .insert_resource(Assets::<Shader>::default())
-    .add_plugins((
+        bevy::diagnostic::FrameCountPlugin,
+        ScheduleRunnerPlugin::run_loop(std::time::Duration::from_secs_f64(1.0 / 60.0)),
         TaskPoolPlugin::default(),
         TimePlugin,
         TransformPlugin,
@@ -52,12 +48,6 @@ pub(crate) fn make_common_app() -> App {
         bevy::pbr::MaterialPlugin::<StandardMaterial>::default(),
         bevy::gltf::GltfPlugin::default(),
     ));
-
-    app.register_type::<bevy::camera::primitives::Aabb>();
-    app.register_type::<bevy::camera::visibility::Visibility>();
-    app.register_type::<bevy::camera::visibility::InheritedVisibility>();
-    app.register_type::<bevy::camera::visibility::ViewVisibility>();
-    app.register_type::<bevy::camera::visibility::VisibilityClass>();
 
     app
 }

@@ -13,6 +13,7 @@ pub(crate) struct BReplicate;
 pub(crate) struct BEntity(pub(crate) backfill::EntityId);
 
 /// Component to indicate that we have set the renderable bindings for this entity
+/// They MUST be weak, otherwise we wouldn't know to remove this component
 #[derive(Component, Debug)]
 pub(crate) struct BRenderBinding {
     pub(crate) mesh_handle: AssetId<Mesh>,

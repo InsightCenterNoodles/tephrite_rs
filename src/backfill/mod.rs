@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, ptr::NonNull};
+use std::{marker::PhantomData, ptr::NonNull, rc::Rc};
 
 #[allow(non_camel_case_types, non_upper_case_globals, non_snake_case, unused)]
 pub mod ffi {
@@ -39,6 +39,7 @@ pub unsafe trait Retainable: Releasable {
 /// Not `Clone` because the C API does not expose add_ref.
 pub struct Handle<T: Releasable> {
     ptr: NonNull<T::Raw>,
+    session: Option<FSessionHandle>,
     _pd: PhantomData<T>,
 }
 
@@ -48,6 +49,18 @@ impl<T: Releasable> Handle<T> {
     pub unsafe fn from_nonnull(ptr: NonNull<T::Raw>) -> Self {
         Self {
             ptr,
+            session: None,
+            _pd: PhantomData,
+        }
+    }
+
+    pub unsafe fn from_nonnull_with_session(
+        ptr: NonNull<T::Raw>,
+        session: &FSessionHandle,
+    ) -> Self {
+        Self {
+            ptr,
+            session: Some(session.clone()),
             _pd: PhantomData,
         }
     }
@@ -72,6 +85,7 @@ impl<T: Retainable> Clone for Handle<T> {
         T::retain(self.ptr.as_ptr());
         Self {
             ptr: self.ptr,
+            session: self.session.clone(),
             _pd: self._pd,
         }
     }
@@ -147,7 +161,28 @@ opaque_cloneable!(
 );
 opaque!(FLightConfig, FLightConfigHandle, flightconfig_destroy);
 opaque!(FConfig, FConfigHandle, fconfig_destroy);
-opaque!(FSession, FSessionHandle, fs_destroy);
+
+struct FSessionInner {
+    ptr: NonNull<ffi::FSession>,
+}
+
+impl Drop for FSessionInner {
+    fn drop(&mut self) {
+        unsafe { ffi::fs_destroy(self.ptr.as_ptr()) }
+    }
+}
+
+#[derive(Clone)]
+pub struct FSessionHandle {
+    ptr: Rc<FSessionInner>,
+}
+
+impl FSessionHandle {
+    /// Expose the raw pointer for FFI calls.
+    pub fn as_ptr(&self) -> *mut ffi::FSession {
+        self.ptr.ptr.as_ptr()
+    }
+}
 
 /* ------------------------------------------------------------------------- */
 /* Convenience constructors and helpers                                      */
@@ -208,7 +243,7 @@ pub fn texture_from_config(
 ) -> BackfillResult<FTextureHandle> {
     let ptr = unsafe { ffi::ftex_init(sess.as_ptr(), cfg.as_ptr()) };
     NonNull::new(ptr)
-        .map(|p| unsafe { Handle::from_nonnull(p) })
+        .map(|p| unsafe { Handle::from_nonnull_with_session(p, sess) })
         .ok_or(BackfillError::EmptyPointer)
 }
 
@@ -220,8 +255,14 @@ pub fn env_light_from_equirect(
 ) -> BackfillResult<FEnvironmentLightHandle> {
     let ptr = unsafe { ffi::fenv_light_init_equirect(sess.as_ptr(), tex.as_ptr()) };
     NonNull::new(ptr)
-        .map(|p| unsafe { Handle::from_nonnull(p) })
+        .map(|p| unsafe { Handle::from_nonnull_with_session(p, sess) })
         .ok_or(BackfillError::EmptyPointer)
+}
+
+impl FEnvironmentLightHandle {
+    pub fn set_intensity(&self, intensity: f32) {
+        unsafe { ffi::fenv_set_intensity(self.as_ptr(), intensity) };
+    }
 }
 
 // MARK: Mesh
@@ -275,7 +316,7 @@ pub fn mesh_from_refs(
         )
     };
     NonNull::new(ptr)
-        .map(|p| unsafe { Handle::from_nonnull(p) })
+        .map(|p| unsafe { Handle::from_nonnull_with_session(p, sess) })
         .ok_or(BackfillError::EmptyPointer)
 }
 
@@ -359,7 +400,7 @@ pub fn material(
 ) -> Result<FMaterialHandle, ()> {
     let ptr = unsafe { ffi::fmaterial_init(sess.as_ptr(), config.as_ptr()) };
     NonNull::new(ptr)
-        .map(|p| unsafe { Handle::from_nonnull(p) })
+        .map(|p| unsafe { Handle::from_nonnull_with_session(p, sess) })
         .ok_or(())
 }
 
@@ -371,7 +412,7 @@ pub fn material_set_rm(mat: &FMaterialHandle, roughness: f32, metallic: f32) {
     unsafe { ffi::fmaterial_set_roughness_metallic(mat.as_ptr(), roughness, metallic) }
 }
 
-/* ------------------------------ Lights ------------------------------- */
+// MARK: Light
 
 pub fn light_config(ty: ffi::FLightType) -> BackfillResult<FLightConfigHandle> {
     let ptr = unsafe { ffi::flightconfig_init(ty) };
@@ -393,7 +434,7 @@ pub fn light_set_point_defaults(
     }
 }
 
-/* ------------------------- Config / Session --------------------------- */
+// MARK: Session Config
 
 pub fn config() -> BackfillResult<FConfigHandle> {
     let ptr = unsafe { ffi::fconfig_init() };
@@ -418,8 +459,11 @@ pub fn config_display(cfg: &FConfigHandle, display: &str) {
 
 pub fn session(cfg: &FConfigHandle) -> BackfillResult<FSessionHandle> {
     let ptr = unsafe { ffi::fs_init(cfg.as_ptr()) };
+
     NonNull::new(ptr)
-        .map(|p| unsafe { Handle::from_nonnull(p) })
+        .map(|ptr| FSessionHandle {
+            ptr: Rc::new(FSessionInner { ptr }),
+        })
         .ok_or(BackfillError::EmptyPointer)
 }
 

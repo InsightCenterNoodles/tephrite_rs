@@ -1,4 +1,5 @@
 use crate::replication::components::Replicated;
+use crate::replication::replicated_resources::setup_replicated_resource_systems;
 use crate::serialize::transcript_writer::*;
 use crate::serialize::*;
 use bevy::app::HierarchyPropagatePlugin;
@@ -73,6 +74,7 @@ impl Plugin for ReplicationWriterPlugin {
                 EntityStartDeltaPhase, // slight changes here otherwise events get lost?
                 AssetDeltaPhase,
                 ComponentDeltaPhase,
+                ResourceSyncSet,
                 EntityEndDeltaPhase,
                 FinalSyncPhase,
             )
@@ -82,6 +84,7 @@ impl Plugin for ReplicationWriterPlugin {
         crate::replication::replicated_assets::setup_replicated_asset_systems(app);
 
         setup_replicated_systems(app);
+        setup_replicated_resource_systems(app);
 
         app.add_systems(Startup, setup_shmem);
 

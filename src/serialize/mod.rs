@@ -30,6 +30,7 @@ pub(crate) mod image;
 pub(crate) mod material;
 pub(crate) mod math;
 pub(crate) mod mesh;
+mod resources;
 pub(crate) mod transcript_reader;
 pub(crate) mod transcript_writer;
 

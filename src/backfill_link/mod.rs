@@ -1,6 +1,8 @@
+mod assets;
 pub(crate) mod breplicate;
 pub(crate) mod components;
 pub(crate) mod convert;
+mod ibl;
 pub(crate) mod lighting;
 pub(crate) mod mesh_mat_bind;
 pub(crate) mod resources;
@@ -25,6 +27,7 @@ impl Plugin for BackfillPlugin {
         app.add_plugins(mesh_mat_bind::RenderableBindingPlugin);
         app.add_plugins(transform::TransformPlugin);
         app.add_plugins(lighting::LightBindingPlugin);
+        app.add_plugins(ibl::EnvironmentLightPlugin);
 
         //app.add_systems(FixedLast, run_frame);
         app.add_systems(Last, (run_frame, teardown).chain());
@@ -225,7 +228,7 @@ fn run_frame(
 fn teardown(
     reader: MessageReader<AppExit>,
     query: Query<Entity, With<components::BEntity>>,
-    mut cache: NonSendMut<mesh_mat_bind::AssetCache>,
+    mut cache: NonSendMut<assets::AssetCache>,
     mut commands: Commands,
 ) {
     if reader.len() > 0 {

@@ -3,11 +3,11 @@ use std::ptr::NonNull;
 use bevy::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
 use bevy::prelude::*;
 
+use crate::backfill;
 use crate::backfill::ffi::{
     self as bffi, FColorSpace_CS_LINEAR, FColorSpace_CS_SRGB, FPixelType_PIXEL_FLOAT32,
-    FPixelType_PIXEL_UBYTE, FTextureFormat_FMT_AUTO_LINEAR_DATA,
+    FPixelType_PIXEL_UBYTE,
 };
-use crate::backfill::{self, ffi};
 
 fn iter_or_value<'a, T>(
     slice: Option<&'a [T]>,
@@ -247,21 +247,13 @@ pub fn is_image_float(texture: &Image) -> Option<bool> {
     }
 }
 
-pub fn convert_image(
-    session: &backfill::FSessionHandle,
-    texture: &Image,
-) -> Option<backfill::FImageHandle> {
+pub fn convert_image(texture: &Image) -> Option<backfill::FImageHandle> {
     // texture.texture_descriptor.
 
     let desc = bffi::FImageRawDesc {
         width: texture.width(),
         height: texture.height(),
-        n_channels: texture
-            .texture_descriptor
-            .size
-            .depth_or_array_layers
-            .try_into()
-            .ok()?,
+        n_channels: texture.texture_descriptor.format.components(),
         byte_size: texture.data.as_deref()?.len().try_into().ok()?,
         type_: if is_image_float(texture).unwrap_or_default() {
             FPixelType_PIXEL_FLOAT32
@@ -289,7 +281,7 @@ pub fn convert_texture(
     session: &backfill::FSessionHandle,
     texture: &Image,
 ) -> Option<backfill::FTextureHandle> {
-    let image = convert_image(session, texture)?;
+    let image = convert_image(texture)?;
 
     use bevy::render::render_resource::TextureFormat;
 
@@ -319,7 +311,7 @@ pub fn convert_texture(
 pub fn convert_material(
     session: &backfill::FSessionHandle,
     material: &StandardMaterial,
-    map: &super::mesh_mat_bind::TextureMap,
+    map: &super::assets::TextureMap,
 ) -> Option<backfill::FMaterialHandle> {
     let mut config = backfill::material_config().ok()?;
 
@@ -397,7 +389,7 @@ fn set_texture(
     config: &mut backfill::FMaterialConfigHandle,
     handle: &Option<Handle<Image>>,
     channel: &bevy::pbr::UvChannel,
-    map: &super::mesh_mat_bind::TextureMap,
+    map: &super::assets::TextureMap,
 ) {
     if let Some((tex, sampler)) = handle.as_ref().and_then(|x| map.get(&x.id())) {
         let slot = match channel {

@@ -112,6 +112,12 @@ fn consume_buffer(
 
                 item.component.remove_component(local, commands);
             }
+            ClientInstruction::ResourceUpdate(item) => {
+                item.resouce.add_resource(commands);
+            }
+            ClientInstruction::ResourceDrop(item) => {
+                item.resource.remove_resource(commands);
+            }
             ClientInstruction::CAsset(item) => {
                 use crate::replication::replicated_assets::AssetEnum;
 
@@ -135,7 +141,6 @@ fn consume_buffer(
                 };
             }
             ClientInstruction::HChange(item) => {
-                debug!("Heirarchy change {item:?}");
                 // Remap foreign IDs to local before applying hierarchy changes
                 let child_local = map.map(item.child);
                 match item.new_parent {

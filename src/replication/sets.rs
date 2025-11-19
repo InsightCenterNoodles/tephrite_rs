@@ -4,8 +4,8 @@ use bevy::prelude::*;
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ComponentDeltaPhase;
 
-//#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
-//struct ResourceSyncSet;
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ResourceSyncSet;
 
 /// System set to manage asset changes
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]

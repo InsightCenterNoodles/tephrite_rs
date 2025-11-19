@@ -22,16 +22,6 @@ fn install_light(l: &DirectionalLight, b: &BEntity, session: &Session) {
         let ptr = ffi::flightconfig_init(ffi::FLightType_DIRECTIONAL);
 
         ffi::flc_set_color(ptr, l.color.into());
-        // ffi::flc_set_color(
-        //     ptr,
-        //     ffi::FColor {
-        //         r: 1.0,
-        //         g: 0.0,
-        //         b: 0.0,
-        //         a: 1.0,
-        //     },
-        // );
-
         ffi::flc_set_falloff(ptr, 10000.0);
 
         ffi::flc_set_direction(
@@ -43,19 +33,9 @@ fn install_light(l: &DirectionalLight, b: &BEntity, session: &Session) {
             },
         );
 
-        // ffi::flc_set_direction(
-        //     ptr,
-        //     float3 {
-        //         x: 0.3,
-        //         y: -1.0,
-        //         z: -0.4,
-        //     },
-        // );
-
         ffi::flc_set_shadows(ptr, l.shadows_enabled.into());
 
         ffi::flc_set_intensity(ptr, l.illuminance);
-        //ffi::flc_set_intensity(ptr, 110000.0);
 
         backfill::FLightConfigHandle::from_nonnull(NonNull::new(ptr).unwrap())
     };

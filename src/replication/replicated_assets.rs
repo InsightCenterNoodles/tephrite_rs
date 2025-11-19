@@ -17,10 +17,12 @@ macro_rules! make_change_detection {
               mut writer: NonSendMut<TranscriptWriteStateResource>| {
                 //println!("Checking for deltas to {}", stringify!($A));
                 for e in ev_asset.read() {
-                    //println!("EVENT {e:?}");
+                    debug!("EVENT {e:?}");
                     match e {
                         AssetEvent::Added { id } => {
                             let asset = assets.get(*id).expect("obtaining new asset");
+
+                            //debug!("NEW ASSET {asset:?}");
 
                             let dest: &mut TranscriptWriteStateResource = &mut writer;
 

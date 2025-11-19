@@ -4,6 +4,9 @@ use bevy::prelude::Entity;
 
 use crate::replication::replicated_assets::{AssetEnum, AssetEnumRef};
 use crate::replication::replicated_components::{ReplicatedComponent, ReplicatedComponentRef};
+use crate::replication::replicated_resources::{
+    ReplicatedResource, ReplicatedResourceID, ReplicatedResourceRef,
+};
 use crate::replication::{
     replicated_assets::ReplicatedAssetID, replicated_components::ReplicatedComponentID,
 };
@@ -39,6 +42,46 @@ impl FastWrite for ServerComponentRemoved {
         unsafe {
             self.entity.write_fast(w);
             self.component.write_fast(w);
+        }
+    }
+}
+
+/// An instruction where a resource should be updated
+#[derive(Debug)]
+pub(crate) struct ServerResourceUpdate<'a> {
+    pub resource: ReplicatedResourceRef<'a>,
+}
+
+impl<'a> FastWrite for ServerResourceUpdate<'a> {
+    unsafe fn write_fast(&self, w: &mut impl ByteSink) {
+        unsafe {
+            self.resource.write_fast(w);
+        }
+    }
+}
+
+/// An instruction that a resource should be removed.
+#[derive(Debug)]
+pub(crate) struct ResourceDrop {
+    pub resource: ReplicatedResourceID,
+}
+
+impl FastWrite for ResourceDrop {
+    unsafe fn write_fast(&self, w: &mut impl ByteSink) {
+        unsafe {
+            self.resource.write_fast(w);
+        }
+    }
+}
+
+impl FastRead for ResourceDrop {
+    type Ret = Self;
+
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret {
+        unsafe {
+            Self {
+                resource: ReplicatedResourceID::read_fast(r),
+            }
         }
     }
 }
@@ -130,8 +173,10 @@ create_serialize_enum_write_only!(
         (3, CRemove, ServerComponentRemoved),
         (4, CAsset, ServerReplicateAsset<'a>),
         (5, CDropAsset, DropAsset),
-        (6, HChange, HierarchyChange),
-        (7, EFrame, EndFrame),
+        (6, ResourceUpdate, ServerResourceUpdate<'a>),
+        (7, ResourceDrop, ResourceDrop),
+        (8, HChange, HierarchyChange),
+        (9, EFrame, EndFrame),
     }
 );
 
@@ -183,6 +228,20 @@ impl_fast_serialize!(ClientComponentRemoved,
     }
 );
 
+/// An instruction where a resource has been added.
+#[derive(Debug)]
+pub(crate) struct ClientResourceUpdate {
+    pub resouce: ReplicatedResource,
+}
+
+impl_fast_serialize!(ClientResourceUpdate,
+    keep: {
+        resouce
+    },
+    skip: {
+    }
+);
+
 /// An instruction to replicate an asset.
 #[derive(Debug)]
 pub(crate) struct ClientReplicateAsset {
@@ -208,7 +267,9 @@ create_serialize_enum!(
         (3, CRemove, ClientComponentRemoved),
         (4, CAsset, ClientReplicateAsset),
         (5, CDropAsset, DropAsset),
-        (6, HChange, HierarchyChange),
-        (7, EFrame, EndFrame),
+        (6, ResourceUpdate, ClientResourceUpdate),
+        (7, ResourceDrop, ResourceDrop),
+        (8, HChange, HierarchyChange),
+        (9, EFrame, EndFrame),
     }
 );

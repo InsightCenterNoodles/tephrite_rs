@@ -3,14 +3,16 @@
 //! `AssetId<A>` is serialized by raw bytes as POD. `Handle<A>` is serialized as
 //! its `AssetId`, and is reconstructed as a `Weak` handle on read to avoid
 //! implicit asset loads in the receiving process.
-use bevy::{platform::collections::HashMap, prelude::*};
+use std::fmt::Debug;
+
+use bevy::{asset::uuid::Uuid, platform::collections::HashMap, prelude::*};
 
 use crate::serialize::*;
 
 impl<A: Asset> FastWrite for AssetId<A> {
     /// Serialize an `AssetId` by its raw bytes.
     unsafe fn write_fast(&self, w: &mut impl ByteSink) {
-        // this is, as they say, beyond unsafe. but it looks to be non-alloc all around
+        debug!("Write asset ID {}", self);
         unsafe { byte_serialize(self, w) };
     }
 }
@@ -29,6 +31,7 @@ impl<A: Asset> FastWrite for Handle<A> {
     unsafe fn write_fast(&self, w: &mut impl ByteSink) {
         // being explicit here to make sure we dont have unintended conversion
         let id: AssetId<A> = self.id();
+        debug!("Write asset handle {id}");
         unsafe { id.write_fast(w) };
     }
 }
@@ -40,8 +43,9 @@ pub trait RemappableAsset {
     fn install_mapping(id: AssetId<Self>, asset: Self, assets: &mut Assets<Self>)
     where
         Self: bevy::prelude::Asset,
-        Self: Sized,
+        Self: Sized + Debug,
     {
+        //debug!("install asset: {} {:?}", id, asset);
         let handle = assets.add(asset);
 
         Self::with_remapper_mut(|map| {
@@ -77,11 +81,19 @@ pub trait RemappableAsset {
 
 impl<A: Asset + RemappableAsset> FastRead for Handle<A> {
     type Ret = Self;
-    /// Decode a `Handle` from an `AssetId`, returning a `Weak` handle.
+    /// Decode a `Handle` from an `AssetId`
     unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret {
         let id = unsafe { AssetId::<A>::read_fast(r) };
-        A::remap_to_local(id)
-            .expect("Unable to remap asset. This means an ordering problem has occurred.")
+        debug!("Reading handle {}", id);
+        match A::remap_to_local(id) {
+            Some(x) => x,
+            None => {
+                // ok, this can happen if the host is still loading an asset. lets use a dummy?
+
+                //A::install_mapping(id, A::default(), assets);
+                Handle::Uuid(Uuid::new_v4(), default())
+            }
+        }
     }
 }
 
