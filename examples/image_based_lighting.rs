@@ -13,6 +13,20 @@ impl Plugin for MyPlugin {
 // server: Res<AssetServer>
 // is busted. Workarounds ahoy
 
+fn image_from_file(path: &std::path::Path, format: ImageFormat, is_srgb: bool) -> Option<Image> {
+    let file = std::fs::read(path).ok()?;
+
+    Image::from_buffer(
+        &file,
+        bevy::image::ImageType::Format(format),
+        CompressedImageFormats::all(),
+        is_srgb,
+        bevy::image::ImageSampler::Default,
+        RenderAssetUsages::all(),
+    )
+    .ok()
+}
+
 /// set up a simple 3D scene
 fn setup(
     mut commands: Commands,
@@ -20,10 +34,32 @@ fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut images: ResMut<Assets<Image>>,
 ) {
+    let ground_color = image_from_file(
+        std::path::Path::new("assets/tex/MetalPlates006_1K-JPG_Color.jpg"),
+        ImageFormat::Jpeg,
+        true,
+    )
+    .expect("missing ground color");
+    let ground_normal = image_from_file(
+        std::path::Path::new("assets/tex/MetalPlates006_1K-JPG_NormalGL.jpg"),
+        ImageFormat::Jpeg,
+        true,
+    )
+    .expect("missing ground normal");
+    let ground_rm = image_from_file(
+        std::path::Path::new("assets/tex/MetalPlates006_1K-JPG_RM.png"),
+        ImageFormat::Png,
+        true,
+    )
+    .expect("missing ground roughness/metallic");
+
     let ground_mat = StandardMaterial {
         base_color: Color::WHITE,
+        base_color_texture: Some(images.add(ground_color)),
         metallic: 1.0,
-        perceptual_roughness: 0.1,
+        perceptual_roughness: 1.0,
+        metallic_roughness_texture: Some(images.add(ground_rm)),
+        normal_map_texture: Some(images.add(ground_normal)),
         ..Default::default()
     };
 
@@ -86,17 +122,12 @@ fn setup(
 
     // Hack to get around busted asset loading
 
-    let file = std::fs::read("assets/ibl/workshop_4k_small.exr").expect("missing IBL image");
-
-    let env_map = Image::from_buffer(
-        &file,
-        bevy::image::ImageType::Format(ImageFormat::OpenExr),
-        CompressedImageFormats::all(),
+    let env_map = image_from_file(
+        std::path::Path::new("assets/ibl/workshop_4k_small.exr"),
+        ImageFormat::OpenExr,
         false,
-        bevy::image::ImageSampler::Default,
-        RenderAssetUsages::all(),
     )
-    .expect("unable to decode image");
+    .expect("missing IBL image");
 
     let env_map = images.add(env_map);
 

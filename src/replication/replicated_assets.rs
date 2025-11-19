@@ -9,7 +9,7 @@ use crate::serialize::create_serialize_enum;
 // TODO: The standard mat makes the enum explode in size
 
 macro_rules! make_change_detection {
-    ($app:ident, $A:tt) => {
+    ($app:ident, $A:tt, $P:expr) => {
         $app.add_systems(
             Last,
             (|mut ev_asset: MessageReader<AssetEvent<$A>>,
@@ -58,7 +58,7 @@ macro_rules! make_change_detection {
                     }
                 }
             })
-            .in_set(AssetDeltaPhase),
+            .in_set($P),
         );
     };
 }
@@ -110,7 +110,7 @@ pub(crate) trait ConvertAsset<'a, T: Asset> {
 
 macro_rules! generate_asset_systems {
     (
-        $( ( $id:expr, $T:tt ) ),* $(,)?
+        $( ( $id:expr, $T:tt, $P:expr ) ),* $(,)?
     ) => {
 
         create_serialize_enum!(
@@ -181,11 +181,15 @@ macro_rules! generate_asset_systems {
 
         pub(crate) fn setup_replicated_asset_systems(app: &mut App) {
             $(
-                make_change_detection!(app, $T);
+                make_change_detection!(app, $T, $P);
             )*
         }
 
     };
 }
 
-generate_asset_systems!((0, Mesh), (1, StandardMaterial), (2, Image));
+generate_asset_systems!(
+    (0, Mesh, AssetDeltaPhase::Priority2),
+    (1, StandardMaterial, AssetDeltaPhase::Priority2),
+    (2, Image, AssetDeltaPhase::Priority1)
+);

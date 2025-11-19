@@ -248,7 +248,7 @@ pub fn is_image_float(texture: &Image) -> Option<bool> {
 }
 
 pub fn convert_image(texture: &Image) -> Option<backfill::FImageHandle> {
-    // texture.texture_descriptor.
+    debug!("Converting image to bffi image...");
 
     let desc = bffi::FImageRawDesc {
         width: texture.width(),
@@ -267,6 +267,8 @@ pub fn convert_image(texture: &Image) -> Option<backfill::FImageHandle> {
         },
     };
 
+    debug!("Built description {:?}", desc);
+
     let blob = backfill::blob_from_slice(texture.data.as_deref()?).ok()?;
 
     let reference = backfill::blobref_whole(&blob);
@@ -281,14 +283,17 @@ pub fn convert_texture(
     session: &backfill::FSessionHandle,
     texture: &Image,
 ) -> Option<backfill::FTextureHandle> {
+    debug!("Converting image to bffi texture...");
     let image = convert_image(texture)?;
+
+    debug!("Image ready, creating texture...");
 
     use bevy::render::render_resource::TextureFormat;
 
     use bffi::*;
 
     // TODO, convert if the backend cant support a texture
-    let bffmt = match texture.texture_descriptor.format {
+    let bffmt = match texture.texture_descriptor.format.remove_srgb_suffix() {
         TextureFormat::R8Unorm => FTextureFormat_FMT_R8,
         TextureFormat::Rg8Unorm => FTextureFormat_FMT_RG8,
         TextureFormat::Rgba8Unorm => FTextureFormat_FMT_RGBA8,
@@ -297,7 +302,13 @@ pub fn convert_texture(
         TextureFormat::Rgba16Float => FTextureFormat_FMT_RGBA16F,
         TextureFormat::Rgba32Float => FTextureFormat_FMT_RGBA32F,
         TextureFormat::Rg11b10Ufloat => FTextureFormat_FMT_R11F_G11F_B10F,
-        _ => return None,
+        _ => {
+            debug!(
+                "Unable to match texture format {:?}",
+                texture.texture_descriptor.format
+            );
+            return None;
+        }
     };
 
     let config = backfill::tex_config_from_image(&image, bffmt).ok()?;
@@ -328,6 +339,7 @@ pub fn convert_material(
 
     set_texture(
         &mut config,
+        bffi::FMatTexSemantic_BASE_COLOR_TEX,
         &material.base_color_texture,
         &material.base_color_channel,
         map,
@@ -335,6 +347,7 @@ pub fn convert_material(
 
     set_texture(
         &mut config,
+        bffi::FMatTexSemantic_NORMAL_TEX,
         &material.normal_map_texture,
         &material.normal_map_channel,
         map,
@@ -342,6 +355,7 @@ pub fn convert_material(
 
     set_texture(
         &mut config,
+        bffi::FMatTexSemantic_METAL_ROUGH_TEX,
         &material.metallic_roughness_texture,
         &material.metallic_roughness_channel,
         map,
@@ -387,57 +401,65 @@ fn set_wrap(
 
 fn set_texture(
     config: &mut backfill::FMaterialConfigHandle,
+    semantic: bffi::FMatTexSemantic,
     handle: &Option<Handle<Image>>,
     channel: &bevy::pbr::UvChannel,
     map: &super::assets::TextureMap,
 ) {
-    if let Some((tex, sampler)) = handle.as_ref().and_then(|x| map.get(&x.id())) {
-        let slot = match channel {
-            bevy::pbr::UvChannel::Uv0 => backfill::ffi::FMatTexUVSlot_UV0,
-            bevy::pbr::UvChannel::Uv1 => backfill::ffi::FMatTexUVSlot_UV1,
-        };
+    debug!("set texture for material semantic {}", semantic);
 
-        let sampler = {
-            let mut s = backfill::BSampler::new();
+    let Some(handle) = handle else {
+        debug!("handle is none");
+        return;
+    };
 
-            let sampler = match sampler {
-                bevy::image::ImageSampler::Default => &Default::default(),
-                bevy::image::ImageSampler::Descriptor(image_sampler_descriptor) => {
-                    image_sampler_descriptor
-                }
-            };
+    let Some((tex, sampler)) = map.get(&handle.id()) else {
+        warn!("handle {} referencing unknown image", handle.id());
+        return;
+    };
 
-            s.set_aniso(sampler.anisotropy_clamp.clamp(0, u8::MAX as u16) as u8);
+    let slot = match channel {
+        bevy::pbr::UvChannel::Uv0 => backfill::ffi::FMatTexUVSlot_UV0,
+        bevy::pbr::UvChannel::Uv1 => backfill::ffi::FMatTexUVSlot_UV1,
+    };
 
-            match (sampler.min_filter, sampler.mipmap_filter) {
-                (bevy::image::ImageFilterMode::Nearest, bevy::image::ImageFilterMode::Nearest) => {
-                    s.set_min(bffi::FMinFilter_MIN_FILTER_NEAREST);
-                }
-                (bevy::image::ImageFilterMode::Linear, bevy::image::ImageFilterMode::Nearest) => {
-                    s.set_min(bffi::FMinFilter_MIN_FILTER_LINEAR);
-                }
-                _ => {
-                    s.set_min(bffi::FMinFilter_MIN_FILTER_LINEAR_MIPMAP_LINEAR);
-                }
+    let sampler = {
+        let mut s = backfill::BSampler::new();
+
+        let sampler = match sampler {
+            bevy::image::ImageSampler::Default => &Default::default(),
+            bevy::image::ImageSampler::Descriptor(image_sampler_descriptor) => {
+                image_sampler_descriptor
             }
-
-            s.set_mag(match sampler.mag_filter {
-                bevy::image::ImageFilterMode::Nearest => bffi::FMagFilter_MAG_FILTER_NEAREST,
-                bevy::image::ImageFilterMode::Linear => bffi::FMagFilter_MAG_FILTER_LINEAR,
-            });
-
-            set_wrap(&mut s, sampler.address_mode_u, bffi::FTexAxis_AXIS_U);
-            set_wrap(&mut s, sampler.address_mode_v, bffi::FTexAxis_AXIS_V);
-            set_wrap(&mut s, sampler.address_mode_w, bffi::FTexAxis_AXIS_W);
-
-            s
         };
 
-        config.set_texture(
-            backfill::ffi::FMatTexSemantic_BASE_COLOR_TEX,
-            slot,
-            tex,
-            sampler,
-        );
-    }
+        s.set_aniso(sampler.anisotropy_clamp.clamp(0, u8::MAX as u16) as u8);
+
+        match (sampler.min_filter, sampler.mipmap_filter) {
+            (bevy::image::ImageFilterMode::Nearest, bevy::image::ImageFilterMode::Nearest) => {
+                s.set_min(bffi::FMinFilter_MIN_FILTER_NEAREST);
+            }
+            (bevy::image::ImageFilterMode::Linear, bevy::image::ImageFilterMode::Nearest) => {
+                s.set_min(bffi::FMinFilter_MIN_FILTER_LINEAR);
+            }
+            _ => {
+                s.set_min(bffi::FMinFilter_MIN_FILTER_LINEAR_MIPMAP_LINEAR);
+            }
+        }
+
+        s.set_mag(match sampler.mag_filter {
+            bevy::image::ImageFilterMode::Nearest => bffi::FMagFilter_MAG_FILTER_NEAREST,
+            bevy::image::ImageFilterMode::Linear => bffi::FMagFilter_MAG_FILTER_LINEAR,
+        });
+
+        set_wrap(&mut s, sampler.address_mode_u, bffi::FTexAxis_AXIS_U);
+        set_wrap(&mut s, sampler.address_mode_v, bffi::FTexAxis_AXIS_V);
+        set_wrap(&mut s, sampler.address_mode_w, bffi::FTexAxis_AXIS_W);
+
+        s
+    };
+
+    debug!("installing texture to ffi mat config");
+
+    config.set_texture(semantic, slot, tex, sampler);
 }

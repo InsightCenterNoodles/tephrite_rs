@@ -89,8 +89,9 @@ impl<A: Asset + RemappableAsset> FastRead for Handle<A> {
             Some(x) => x,
             None => {
                 // ok, this can happen if the host is still loading an asset. lets use a dummy?
-
+                error!("Using made up asset!");
                 //A::install_mapping(id, A::default(), assets);
+
                 Handle::Uuid(Uuid::new_v4(), default())
             }
         }

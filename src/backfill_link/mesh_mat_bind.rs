@@ -53,12 +53,12 @@ fn watch_image_change(
                         cache
                             .textures
                             .insert(*id, (converted, asset.sampler.clone()));
-                        debug!("Added new mesh {id}");
+                        debug!("Added new image {id}");
                     } else {
-                        warn!("Mesh {id} unsupported for conversion; skipping");
+                        warn!("Image {id} unsupported for conversion; skipping");
                     }
                 } else {
-                    warn!("Mesh asset {id} missing on add; skipping");
+                    warn!("Image asset {id} missing on add; skipping");
                 }
             }
             AssetEvent::Modified { id: _ } => {

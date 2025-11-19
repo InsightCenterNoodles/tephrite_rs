@@ -72,7 +72,9 @@ impl Plugin for ReplicationWriterPlugin {
             Last,
             (
                 EntityStartDeltaPhase, // slight changes here otherwise events get lost?
-                AssetDeltaPhase,
+                AssetDeltaPhase::Priority0,
+                AssetDeltaPhase::Priority1,
+                AssetDeltaPhase::Priority2,
                 ComponentDeltaPhase,
                 ResourceSyncSet,
                 EntityEndDeltaPhase,
