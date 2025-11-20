@@ -9,7 +9,7 @@ mod common;
 use bevy::{platform::collections::HashMap, prelude::*};
 
 use crate::{
-    input::{ButtonEvent, ButtonEventKind},
+    input::{ButtonEvent, ButtonEventKind, InteractorButton},
     vrpn::common::SharedItemState,
 };
 
@@ -63,9 +63,8 @@ impl VRPNResource {
     }
 }
 
-/// Connect the position and rotation of this entity to a VRPN sender.
+/// Connect this entity to a VRPN sender(s).
 ///
-/// Create with `VRPNObject(VRPNAddress { host, port, sender })`.
 /// When attached to an entity, a network thread is spawned (per endpoint) and
 /// the entity's `Transform` is updated in `FixedUpdate`.
 #[derive(Component)]
@@ -161,9 +160,9 @@ fn service_vrpn(
 
             writer.write_batch(lock.button_changes.drain(..).map(|x| {
                 let kind = if x.1 > 0 {
-                    ButtonEventKind::ButtonPressed(x.0)
+                    ButtonEventKind::ButtonPressed(InteractorButton(x.0))
                 } else {
-                    ButtonEventKind::ButtonReleased(x.0)
+                    ButtonEventKind::ButtonReleased(InteractorButton(x.0))
                 };
 
                 ButtonEvent { from: e, kind }
@@ -209,6 +208,6 @@ impl Plugin for VRPNPlugin {
             vrpn_threads: vec![],
         });
         app.add_observer(check_for_new_vrpn);
-        app.add_systems(FixedUpdate, service_vrpn);
+        app.add_systems(FixedPreUpdate, service_vrpn);
     }
 }

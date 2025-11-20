@@ -29,6 +29,9 @@ pub(crate) fn setup() -> App {
 
     app.add_plugins(crate::multiprocess::app::control_c_watcher);
 
+    // this adds AABB calc, and visibility
+    app.add_plugins(bevy::camera::visibility::VisibilityPlugin);
+
     app.add_systems(Startup, setup_tracked_head);
 
     if get_logic_configuration().vrpn_config.debug_head {
