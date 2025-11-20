@@ -9,7 +9,7 @@ mod common;
 use bevy::{platform::collections::HashMap, prelude::*};
 
 use crate::{
-    input::{ButtonEvent, ButtonEventKind, InteractorButton},
+    input::{AxisEvent, ButtonEvent, ButtonEventKind, InteractorButton},
     vrpn::common::SharedItemState,
 };
 
@@ -128,6 +128,7 @@ fn check_for_new_vrpn(
 fn service_vrpn(
     mut query: Query<(Entity, &VRPNLinkConnected, &mut Transform)>,
     mut writer: MessageWriter<ButtonEvent>,
+    mut axis_writer: MessageWriter<AxisEvent>,
 ) {
     for (e, c, mut tf) in query.iter_mut() {
         // some funky optimization here. we dont want to always hold a write lock
@@ -138,14 +139,15 @@ fn service_vrpn(
             tf.translation = new_pos.position.as_vec3();
             tf.rotation = new_pos.rotation.as_quat().normalize();
 
-            writer.write_batch(new_pos.analog_state.iter().enumerate().filter_map(|x| {
+            axis_writer.write_batch(new_pos.analog_state.iter().enumerate().filter_map(|x| {
                 // We restrict analog IDs to <= u8
 
                 // TODO: sensitivity config
                 if x.1.abs() > 0.00001 {
-                    Some(ButtonEvent {
+                    Some(AxisEvent {
                         from: e,
-                        kind: ButtonEventKind::AnalogActive(x.0 as u8, (*x.1) as f32),
+                        axis: x.0 as u8,
+                        value: (*x.1) as f32,
                     })
                 } else {
                     None
