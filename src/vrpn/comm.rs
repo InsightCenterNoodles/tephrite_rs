@@ -490,6 +490,7 @@ impl MessageState {
     }
 
     fn handle_analog(&mut self, sender: usize, source: &mut Cursor<&[u8]>) -> Result<()> {
+        //debug!("Got analog update");
         // First is a 64 bit float(!!) which is the num of channels.
         // This is in the spec, dont blame me
         let channel_count = read_be_f64(source)?;
@@ -513,6 +514,7 @@ impl MessageState {
     }
 
     fn handle_button_change(&mut self, sender: usize, source: &mut Cursor<&[u8]>) -> Result<()> {
+        //debug!("Got button update");
         // Should be a pair of i32, button, then state
         let button: u8 = read_be_i32(source)?
             .try_into()
@@ -640,7 +642,7 @@ impl MessageState {
             TYPE_CONNTYPE => {
                 let type_id = header.sender();
                 let type_name = extract_prefixed_string(&mut cursor)?;
-                trace!("New type {type_id}: '{type_name}'");
+                debug!("New type {type_id}: '{type_name}'");
 
                 match type_name.as_str() {
                     SUBTYPE_TRACKER_POS_QUAT => {

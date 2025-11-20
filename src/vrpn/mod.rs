@@ -69,7 +69,7 @@ impl VRPNResource {
 /// the entity's `Transform` is updated in `FixedUpdate`.
 #[derive(Component)]
 #[component(immutable)]
-pub struct VRPNObject(pub crate::config::VRPNAddress);
+pub struct VRPNObject(pub Vec<crate::config::VRPNAddress>);
 
 /// Represents the connected VRPN state
 #[derive(Component)]
@@ -96,24 +96,28 @@ fn check_for_new_vrpn(
     };
 
     // Note that if more of these come along, we do NOT reuse existing connections. thats a WIP.
+    // TODO Support late attachment
 
+    // this should be in the resource...
     // index by [endpoint][sender]
     let mut map: HashMap<String, HashMap<String, SharedItemState>> = HashMap::default();
 
-    // Not very fast...
-    let endpoint = format!("{}:{}", link.0.host, link.0.port);
-
     let state = common::new_shared_item_state();
 
-    map.entry(endpoint)
-        .and_modify(|x| {
-            x.insert(link.0.sender.clone(), state.clone());
-        })
-        .or_insert_with(|| {
-            let mut ret = HashMap::default();
-            ret.insert(link.0.sender.clone(), state.clone());
-            ret
-        });
+    for ep in &link.0 {
+        // Not very fast...
+        let endpoint = format!("{}:{}", ep.host, ep.port);
+
+        map.entry(endpoint)
+            .and_modify(|x| {
+                x.insert(ep.sender.clone(), state.clone());
+            })
+            .or_insert_with(|| {
+                let mut ret = HashMap::default();
+                ret.insert(ep.sender.clone(), state.clone());
+                ret
+            });
+    }
 
     commands
         .entity(entity)
@@ -144,6 +148,7 @@ fn service_vrpn(
 
                 // TODO: sensitivity config
                 if x.1.abs() > 0.00001 {
+                    //debug!("Send axis event: {x:?}");
                     Some(AxisEvent {
                         from: e,
                         axis: x.0 as u8,
@@ -161,6 +166,7 @@ fn service_vrpn(
             let mut lock = c.reader.write().unwrap();
 
             writer.write_batch(lock.button_changes.drain(..).map(|x| {
+                //debug!("Send button event {x:?}");
                 let kind = if x.1 > 0 {
                     ButtonEventKind::ButtonPressed(InteractorButton(x.0))
                 } else {

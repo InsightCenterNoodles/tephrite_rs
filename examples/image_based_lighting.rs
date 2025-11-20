@@ -6,6 +6,8 @@ struct MyPlugin;
 impl Plugin for MyPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup);
+
+        app.add_plugins(NavigationPlugin::new(NavigatorMode::ObjectCentric));
     }
 }
 
@@ -21,7 +23,7 @@ fn image_from_file(path: &std::path::Path, format: ImageFormat, is_srgb: bool) -
         bevy::image::ImageType::Format(format),
         CompressedImageFormats::all(),
         is_srgb,
-        bevy::image::ImageSampler::Default,
+        bevy::image::ImageSampler::linear(),
         RenderAssetUsages::all(),
     )
     .ok()
@@ -74,10 +76,11 @@ fn setup(
 
     let mesh = meshes.add(Cuboid::new(0.1, 0.1, 0.1));
 
-    let e = commands
+    let root = commands
         .spawn((
             Transform::from_xyz(0.0, 0.0, -1.0),
             PropagateReplication::default(),
+            NavigatorMarker,
         ))
         .id();
 
@@ -85,7 +88,7 @@ fn setup(
         Mesh3d(mesh.clone()),
         MeshMaterial3d(materials.add(Color::srgb_u8(255, 0, 0))),
         Transform::from_xyz(0.2, 1.0, 0.0),
-        ChildOf(e),
+        ChildOf(root),
     ));
 
     let shiny = materials.add(StandardMaterial {
@@ -99,14 +102,14 @@ fn setup(
         Mesh3d(mesh.clone()),
         MeshMaterial3d(shiny),
         Transform::from_xyz(0.0, 1.2, 0.0),
-        ChildOf(e),
+        ChildOf(root),
     ));
 
     commands.spawn((
         Mesh3d(mesh),
         MeshMaterial3d(materials.add(Color::srgb_u8(0, 0, 255))),
         Transform::from_xyz(0.0, 1.0, 0.2),
-        ChildOf(e),
+        ChildOf(root),
     ));
 
     // light
@@ -132,7 +135,7 @@ fn setup(
     let env_map = images.add(env_map);
 
     commands.insert_resource(EnvironmentLighting {
-        intensity: 10000.0,
+        intensity: 30000.0,
         equirect: env_map,
     });
 

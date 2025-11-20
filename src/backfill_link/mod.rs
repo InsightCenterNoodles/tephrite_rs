@@ -34,69 +34,6 @@ impl Plugin for BackfillPlugin {
     }
 }
 
-/*
-pub fn run_backfill() {
-    let mut app = App::new();
-    app.add_plugins(ScheduleRunnerPlugin::run_loop(
-        std::time::Duration::from_secs_f64(1.0 / 61.0),
-    ))
-    .insert_resource(Assets::<Shader>::default())
-    .add_plugins((
-        PanicHandlerPlugin,
-        LogPlugin {
-            level: bevy::log::Level::DEBUG,
-            ..Default::default()
-        },
-        TaskPoolPlugin::default(),
-        TimePlugin,
-        TransformPlugin,
-        DiagnosticsPlugin,
-        AssetPlugin::default(),
-        AnimationPlugin,
-        bevy::scene::ScenePlugin::default(),
-        bevy::render::mesh::MeshPlugin,
-        bevy::render::texture::ImagePlugin::default(),
-        bevy::pbr::MaterialPlugin::<StandardMaterial>::default(),
-        bevy::gltf::GltfPlugin::default(),
-    ));
-
-    app.register_type::<bevy::render::primitives::Aabb>();
-    app.register_type::<bevy::render::view::visibility::Visibility>();
-    app.register_type::<bevy::render::view::visibility::InheritedVisibility>();
-    app.register_type::<bevy::render::view::visibility::ViewVisibility>();
-    app.register_type::<bevy::render::view::visibility::VisibilityClass>();
-
-    app.run();
-}
-     */
-
-// fn setup_ibl(session: &FSessionHandle) -> Result<IBL> {
-//     let file = std::fs::File::open("assets/ibl/workshop_4k_small.exr")?;
-
-//     let mapping = unsafe { memmap2::Mmap::map(&file) }?;
-
-//     let img_blob = backfill::blob_from_slice(&mapping)?;
-
-//     let r = backfill::BlobReference::whole(&img_blob);
-
-//     let image = backfill::image_from_exr(r)?;
-
-//     let texture_cfg = backfill::tex_config_from_image(&image, bffi::TextureFormat_R11F_G11F_B10F)?;
-
-//     let texture = texture_from_config(session, &texture_cfg)?;
-
-//     let ibl = backfill::env_light_from_equirect(session, &texture)?;
-
-//     backfill::set_environment_light(session, &ibl);
-
-//     Ok(IBL {
-//         blob: img_blob,
-//         img: image,
-//         tex: texture,
-//         fenv: ibl,
-//     })
-// }
-
 fn setup_session(app: &mut App) {
     debug!("Session setup");
 
@@ -126,8 +63,10 @@ fn setup_session(app: &mut App) {
             upper_right: child_config.display_physical.upper_right.into(),
         };
 
-        unsafe {
-            bffi::fconfig_set_log_debug(config.as_ptr(), 1);
+        if child_config.debug_renderer {
+            unsafe {
+                bffi::fconfig_set_log_debug(config.as_ptr(), 1);
+            }
         }
 
         if child_config.use_offaxis {

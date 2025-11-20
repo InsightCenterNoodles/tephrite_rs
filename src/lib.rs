@@ -2,7 +2,7 @@ pub(crate) mod backfill;
 pub(crate) mod backfill_link;
 pub(crate) mod common;
 pub(crate) mod config;
-mod input;
+pub mod input;
 pub mod multiprocess;
 pub mod replication;
 pub(crate) mod serialize;
@@ -16,6 +16,8 @@ pub mod prelude {
     pub use crate::common::Head;
     pub use crate::replication::components::PropagateReplication;
     pub use crate::replication::components::Replicated;
+
+    pub use crate::input::*;
 }
 
 /// Primary entry point for your application

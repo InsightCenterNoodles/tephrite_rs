@@ -1,6 +1,6 @@
 use crate::multiprocess::child_process_id;
 use bevy::{
-    log::warn,
+    log::{error, warn},
     math::{DVec3, UVec2, uvec2},
     reflect::Reflect,
 };
@@ -15,6 +15,7 @@ mod file {
     #[derive(Debug, Default, Deserialize)]
     pub(crate) struct Config {
         pub(crate) use_offaxis: Option<bool>,
+        pub(crate) debug_renderer: Option<bool>,
         pub(crate) render: Option<Render>,
         pub(crate) vrpn: Vrpn,
         pub(crate) displays: Vec<Display>,
@@ -29,6 +30,7 @@ mod file {
     #[derive(Debug, Default, Deserialize)]
     pub(crate) struct Vrpn {
         pub(crate) head: Option<String>,
+        pub(crate) joystick: Option<String>,
         pub(crate) debug_head: Option<bool>,
     }
 
@@ -182,12 +184,15 @@ impl FromStr for VRPNAddress {
 #[derive(Debug, Default, Clone)]
 pub struct VRPNConfig {
     pub head: Option<VRPNAddress>,
+    pub joystick: Option<Vec<VRPNAddress>>,
     pub debug_head: bool,
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct RenderConfiguration {
     pub use_offaxis: bool,
+
+    pub debug_renderer: bool,
 
     /// The rank of the process
     pub process_rank: u32,
@@ -227,6 +232,7 @@ static CHILD_CONFIG: OnceLock<RenderConfiguration> = OnceLock::new();
 fn build_child_config() -> RenderConfiguration {
     let file::Config {
         use_offaxis,
+        debug_renderer,
         render,
         vrpn: _,
         displays,
@@ -247,6 +253,7 @@ fn build_child_config() -> RenderConfiguration {
 
     RenderConfiguration {
         use_offaxis: use_offaxis.unwrap_or_default(),
+        debug_renderer: debug_renderer.unwrap_or_default(),
         process_rank: child_process_id(),
         render_api: render.map(|x| x.api),
         card_index: this_screen.as_ref().and_then(|x| x.card_index),
@@ -271,9 +278,21 @@ pub fn get_render_configuration() -> &'static RenderConfiguration {
     CHILD_CONFIG.get_or_init(build_child_config)
 }
 
+fn get_multiple_vrpn_addresses(string: &str) -> Vec<VRPNAddress> {
+    string
+        .split(',')
+        .filter_map(|x| {
+            VRPNAddress::from_str(x.trim())
+                .inspect_err(|e| error!("Error parsing VRPN address: {e}"))
+                .ok()
+        })
+        .collect()
+}
+
 pub fn get_logic_configuration() -> &'static LogicConfiguration {
     fn build() -> Option<LogicConfiguration> {
         let file::Config {
+            debug_renderer: _,
             use_offaxis: _,
             render: _,
             vrpn,
@@ -286,6 +305,7 @@ pub fn get_logic_configuration() -> &'static LogicConfiguration {
         Some(LogicConfiguration {
             vrpn_config: VRPNConfig {
                 head: vrpn.head.and_then(|x| x.parse().ok()),
+                joystick: vrpn.joystick.map(|x| get_multiple_vrpn_addresses(&x)),
                 debug_head: vrpn.debug_head.unwrap_or_default(),
             },
             child_count: screens.len().try_into().unwrap(),

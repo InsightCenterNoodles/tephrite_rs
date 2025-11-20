@@ -3,8 +3,8 @@ use std::process::Child;
 use bevy::{app::App, prelude::*};
 
 use crate::{
-    common::Head, config::get_logic_configuration, multiprocess::app::make_common_app,
-    prelude::Replicated, vrpn::VRPNObject,
+    common::Head, config::get_logic_configuration, input::Interactor,
+    multiprocess::app::make_common_app, prelude::Replicated, vrpn::VRPNObject,
 };
 
 pub(crate) fn setup() -> App {
@@ -20,6 +20,8 @@ pub(crate) fn setup() -> App {
 
     // Having zero children makes no sense
     let child_count = get_logic_configuration().child_count.max(1);
+
+    app.add_plugins(crate::input::InputPlugin);
 
     app.add_plugins(crate::vrpn::VRPNPlugin);
 
@@ -77,9 +79,13 @@ fn setup_tracked_head(mut commands: Commands) {
     let config = get_logic_configuration();
 
     if let Some(h) = config.vrpn_config.head.clone() {
-        commands.spawn((Replicated, Transform::default(), Head, VRPNObject(h)));
+        commands.spawn((Replicated, Transform::default(), Head, VRPNObject(vec![h])));
     } else if config.vrpn_config.debug_head {
         commands.spawn((Replicated, Transform::default(), Head));
+    }
+
+    if let Some(js) = &config.vrpn_config.joystick {
+        commands.spawn((Transform::default(), Interactor, VRPNObject(js.clone())));
     }
 }
 
