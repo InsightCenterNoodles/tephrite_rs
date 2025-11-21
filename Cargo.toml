@@ -30,6 +30,7 @@ opt-level = 3
 
 [dev-dependencies]
 nix = "0.30"
+tobj = "4.0"
 
 [[test]]
 name = "shmem_integration"
