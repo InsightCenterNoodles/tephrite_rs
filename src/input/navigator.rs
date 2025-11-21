@@ -108,6 +108,23 @@ fn on_tick(
             _ => 0.0,
         };
 
-        //rotation_degrees_per_second *
+        target_tf.rotate_axis(
+            Dir3::Y,
+            (rotation_degrees_per_second * time.delta_secs() * dir).to_radians(),
+        );
+    }
+
+    const SCALE_FACTOR: f32 = 1.01;
+
+    if state.button(super::JoystickButton::BL) {
+        println!("HERE");
+        target_tf.scale =
+            (target_tf.scale / SCALE_FACTOR).clamp(Vec3::splat(0.001), Vec3::splat(1000.0));
+    }
+
+    if state.button(super::JoystickButton::BR) {
+        println!("HERE2");
+        target_tf.scale =
+            (target_tf.scale * SCALE_FACTOR).clamp(Vec3::splat(0.001), Vec3::splat(1000.0));
     }
 }

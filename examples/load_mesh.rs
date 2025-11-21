@@ -98,6 +98,7 @@ struct ObjMaterial {
     /// Diffuse color of the material.
     pub diffuse: Option<[f32; 3]>,
     pub diffuse_texture: Option<Image>,
+    pub normal_texture: Option<Image>,
 
     pub roughness: f32,
     pub metallic: f32,
@@ -142,6 +143,12 @@ fn load_mesh() -> Option<AMesh> {
                     .get("Pm")
                     .and_then(|x| f32::from_str(&x).ok())
                     .unwrap_or(1.0),
+
+                normal_texture: x
+                    .normal_texture
+                    .and_then(|f| resolve_mtl_texture_path(&mesh, &f, &[]))
+                    .inspect(|x| info!("Found image at {}", x.display()))
+                    .and_then(|f| image_from_file(&f, ImageFormat::Png, true)),
                 unknown_param: x.unknown_param.into_iter().collect(),
             })
             .collect()
@@ -172,6 +179,8 @@ fn convert_mat(
 
         perceptual_roughness: mat.roughness,
         metallic: mat.metallic,
+
+        normal_map_texture: mat.normal_texture.map(|x| images.add(x)),
 
         // others?
         ..Default::default()
@@ -358,7 +367,7 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     let env_map = images.add(env_map);
 
     commands.insert_resource(EnvironmentLighting {
-        intensity: 30000.0,
+        intensity: 15000.0,
         equirect: env_map,
     });
 

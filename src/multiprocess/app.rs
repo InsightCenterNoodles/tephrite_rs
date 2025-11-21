@@ -24,14 +24,18 @@ pub(crate) fn control_c_catch(_: &mut App) {
     .unwrap();
 }
 
-pub(crate) fn make_common_app() -> App {
+pub(crate) fn make_common_app(debug: bool) -> App {
     // build bevy application
     let mut app = App::new();
 
     app.add_plugins((
         PanicHandlerPlugin,
         LogPlugin {
-            level: bevy::log::Level::DEBUG,
+            level: if debug {
+                bevy::log::Level::DEBUG
+            } else {
+                bevy::log::Level::INFO
+            },
             ..Default::default()
         },
         bevy::diagnostic::FrameCountPlugin,

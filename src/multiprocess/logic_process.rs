@@ -14,7 +14,7 @@ pub(crate) fn setup() -> App {
     crate::multiprocess::install_session_id(&session_id);
 
     // build bevy application
-    let mut app = make_common_app();
+    let mut app = make_common_app(true);
 
     // only now are logs enabled!
 

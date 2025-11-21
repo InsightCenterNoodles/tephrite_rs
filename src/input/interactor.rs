@@ -76,6 +76,24 @@ impl InteractorState {
             None
         }
     }
+
+    // TODO BAD API
+    pub fn button(&self, button: JoystickButton) -> bool {
+        let index = match button {
+            JoystickButton::X => X,
+            JoystickButton::Y => Y,
+            JoystickButton::A => A,
+            JoystickButton::B => B,
+            JoystickButton::BL => BL,
+            JoystickButton::BR => BR,
+            JoystickButton::TL => TL,
+            JoystickButton::TR => TR,
+            JoystickButton::Back => BACK,
+            JoystickButton::Start => START,
+        };
+
+        self.buttons.pressed(InteractorButton(index))
+    }
 }
 
 /// The states of all interactors
@@ -127,6 +145,7 @@ fn update_current_states(
     mut state: ResMut<AllInteractorState>,
 ) {
     for event in button_reader.read() {
+        println!("BUTTON E {event:?}");
         let state = state.0.entry(event.from).or_default();
 
         match event.kind {
