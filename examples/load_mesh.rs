@@ -98,6 +98,10 @@ struct ObjMaterial {
     /// Diffuse color of the material.
     pub diffuse: Option<[f32; 3]>,
     pub diffuse_texture: Option<Image>,
+
+    pub roughness: f32,
+    pub metallic: f32,
+
     pub unknown_param: HashMap<String, String>,
 }
 
@@ -108,18 +112,36 @@ fn load_mesh() -> Option<AMesh> {
 
     let mesh: PathBuf = mesh.strip_prefix("-m")?.into();
 
+    let mesh = std::fs::canonicalize(mesh).ok()?;
+
+    info!("Loading mesh {}", mesh.display());
+
     let result = tobj::load_obj(&mesh, &tobj::GPU_LOAD_OPTIONS)
         .inspect_err(|x| error!("Unable to load mesh {}: {x}", mesh.display()))
         .ok()?;
 
+    use std::str::FromStr;
+
     let materials = result.1.ok().map(|x| {
         x.into_iter()
+            .inspect(|x| debug!("{:?}", x.unknown_param))
             .map(|x| ObjMaterial {
                 diffuse: x.diffuse,
                 diffuse_texture: x
                     .diffuse_texture
                     .and_then(|f| resolve_mtl_texture_path(&mesh, &f, &[]))
+                    .inspect(|x| info!("Found image at {}", x.display()))
                     .and_then(|f| image_from_file(&f, ImageFormat::Png, true)),
+                roughness: x
+                    .unknown_param
+                    .get("Pr")
+                    .and_then(|x| f32::from_str(&x).ok())
+                    .unwrap_or(1.0),
+                metallic: x
+                    .unknown_param
+                    .get("Pm")
+                    .and_then(|x| f32::from_str(&x).ok())
+                    .unwrap_or(1.0),
                 unknown_param: x.unknown_param.into_iter().collect(),
             })
             .collect()
@@ -135,16 +157,27 @@ struct DeferredMesh {
     channel: std::sync::mpsc::Receiver<AMesh>,
 }
 
-fn convert_mat(mat: &ObjMaterial) -> StandardMaterial {
-    StandardMaterial {
+fn convert_mat(
+    mat: ObjMaterial,
+    materials: &mut Assets<StandardMaterial>,
+    images: &mut Assets<Image>,
+) -> Handle<StandardMaterial> {
+    let m = StandardMaterial {
         base_color: mat
             .diffuse
             .map(|x| Color::srgb_from_array(x))
             .unwrap_or(Color::WHITE),
 
+        base_color_texture: mat.diffuse_texture.map(|x| images.add(x)),
+
+        perceptual_roughness: mat.roughness,
+        metallic: mat.metallic,
+
         // others?
         ..Default::default()
-    }
+    };
+
+    materials.add(m)
 }
 
 pub(crate) struct MeshConverter {
@@ -244,6 +277,7 @@ fn deferred_mesh_watcher(
     query: Query<Entity, With<AttachTo>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut images: ResMut<Assets<Image>>,
 ) {
     let Ok(x) = res.channel.recv() else {
         return;
@@ -251,11 +285,16 @@ fn deferred_mesh_watcher(
 
     let root = query.single().unwrap();
 
+    let converted_mats: Option<Vec<_>> = x.1.map(|x| {
+        x.into_iter()
+            .map(|f| convert_mat(f, &mut materials, &mut images))
+            .collect()
+    });
+
     for (model_i, model) in x.0.into_iter().enumerate() {
-        let material =
-            x.1.as_ref()
-                .map(|x| convert_mat(&x[model_i]))
-                .unwrap_or_default();
+        let Some(material) = converted_mats.as_ref().and_then(|x| x.get(model_i)) else {
+            continue;
+        };
 
         let converter = MeshConverter {
             meshes: vec![model.mesh],
@@ -264,7 +303,7 @@ fn deferred_mesh_watcher(
 
         commands.spawn((
             Mesh3d(meshes.add(mesh)),
-            MeshMaterial3d(materials.add(material)),
+            MeshMaterial3d(material.clone()),
             ChildOf(root),
         ));
     }
