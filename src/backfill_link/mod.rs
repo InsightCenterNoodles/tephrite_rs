@@ -51,12 +51,6 @@ fn setup_session(app: &mut App) {
             child_config.resolution.y as i32,
         );
 
-        // let plane = bffi::FScreenPlane {
-        //     lower_left: [-2.5, 0.0, -1.768],
-        //     lower_right: [2.5, 0.0, -1.768],
-        //     upper_right: [2.5, 2.5, -1.768],
-        // };
-
         let plane = bffi::FScreenPlane {
             lower_left: child_config.display_physical.lower_left.into(),
             lower_right: child_config.display_physical.lower_right.into(),
@@ -109,6 +103,8 @@ fn setup_session(app: &mut App) {
             unsafe { bffi::fconfig_set_device(config.as_ptr(), (*index) as i32) };
         }
 
+        unsafe { bffi::fconfig_set_ssao(config.as_ptr(), 1) };
+
         backfill::session(&config).unwrap()
     };
 
@@ -124,18 +120,6 @@ fn setup_session(app: &mut App) {
             },
         );
     }
-
-    //setup_lights(&session);
-    //setup_ibl(&session);
-
-    // match setup_ibl(&session) {
-    //     Ok(x) => {
-    //         app.insert_non_send_resource(x);
-    //     }
-    //     Err(x) => {
-    //         error!("Unable to load IBL {x}");
-    //     }
-    // }
 
     app.insert_non_send_resource(resources::Session(session));
 

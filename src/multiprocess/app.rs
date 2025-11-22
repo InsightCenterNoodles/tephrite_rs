@@ -41,6 +41,8 @@ pub(crate) fn make_common_app(debug: bool) -> App {
         bevy::diagnostic::FrameCountPlugin,
         ScheduleRunnerPlugin::run_loop(std::time::Duration::from_secs_f64(1.0 / 60.0)),
         TaskPoolPlugin::default(),
+    ));
+    app.add_plugins((
         TimePlugin,
         TransformPlugin,
         DiagnosticsPlugin,
@@ -51,6 +53,7 @@ pub(crate) fn make_common_app(debug: bool) -> App {
         bevy::image::ImagePlugin::default(),
         bevy::pbr::MaterialPlugin::<StandardMaterial>::default(),
         bevy::gltf::GltfPlugin::default(),
+        bevy::render::texture::TexturePlugin,
     ));
 
     app
