@@ -4,7 +4,7 @@ use crate::{config::get_render_configuration, multiprocess::app::make_common_app
 
 /// Function to run a render (or child) process
 pub(crate) fn run() -> AppExit {
-    let mut app = make_common_app(false);
+    let mut app = make_common_app(true);
 
     // Get child config
     let child_config = get_render_configuration();

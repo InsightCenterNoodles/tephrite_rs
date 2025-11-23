@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use bevy::prelude::*;
 
 use super::components::*;
@@ -16,7 +18,7 @@ fn watch_mesh_change(
 ) {
     for e in events.read() {
         match e {
-            AssetEvent::Added { id } => {
+            AssetEvent::Added { id } | AssetEvent::Modified { id } => {
                 if let Some(asset) = meshes.get(*id) {
                     if let Some(converted) = convert_mesh(&session.0, asset) {
                         cache.meshes.insert(*id, converted);
@@ -25,11 +27,8 @@ fn watch_mesh_change(
                         warn!("Mesh {id} unsupported for conversion; skipping");
                     }
                 } else {
-                    warn!("Mesh asset {id} missing on add; skipping");
+                    debug!("Mesh {id} is placeholder...")
                 }
-            }
-            AssetEvent::Modified { id: _ } => {
-                debug!("WE DONT HANDLE THIS YET");
             }
             AssetEvent::Removed { id } => {
                 cache.meshes.remove(id);
@@ -47,7 +46,7 @@ fn watch_image_change(
 ) {
     for e in events.read() {
         match e {
-            AssetEvent::Added { id } => {
+            AssetEvent::Added { id } | AssetEvent::Modified { id } => {
                 if let Some(asset) = assets.get(*id) {
                     if let Some(converted) = convert_texture(&session.0, asset) {
                         cache
@@ -58,11 +57,8 @@ fn watch_image_change(
                         warn!("Image {id} unsupported for conversion; skipping");
                     }
                 } else {
-                    warn!("Image asset {id} missing on add; skipping");
+                    debug!("Image {id} is placeholder...")
                 }
-            }
-            AssetEvent::Modified { id: _ } => {
-                debug!("WE DONT HANDLE THIS YET");
             }
             AssetEvent::Removed { id } => {
                 cache.textures.remove(id);
@@ -80,7 +76,7 @@ fn watch_material_change(
 ) {
     for e in events.read() {
         match e {
-            AssetEvent::Added { id } => {
+            AssetEvent::Added { id } | AssetEvent::Modified { id } => {
                 if let Some(asset) = materials.get(*id) {
                     if let Some(converted) = convert_material(&session.0, asset, &cache.textures) {
                         cache.materials.insert(*id, converted);
@@ -89,11 +85,8 @@ fn watch_material_change(
                         warn!("Material {id} failed conversion; skipping");
                     }
                 } else {
-                    warn!("Material asset {id} missing on add; skipping");
+                    debug!("Material {id} is placeholder...")
                 }
-            }
-            AssetEvent::Modified { .. } => {
-                debug!("WE DONT HANDLE THIS YET");
             }
             AssetEvent::Removed { id } => {
                 cache.materials.remove(id);

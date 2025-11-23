@@ -11,57 +11,21 @@ impl Plugin for MyPlugin {
     }
 }
 
-// For the moment, the normal way of using
-// server: Res<AssetServer>
-// is busted. Workarounds ahoy
-
-fn image_from_file(path: &std::path::Path, format: ImageFormat, is_srgb: bool) -> Option<Image> {
-    let file = std::fs::read(path).ok()?;
-
-    Image::from_buffer(
-        &file,
-        bevy::image::ImageType::Format(format),
-        CompressedImageFormats::all(),
-        is_srgb,
-        bevy::image::ImageSampler::linear(),
-        RenderAssetUsages::all(),
-    )
-    .ok()
-}
-
 /// set up a simple 3D scene
 fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut images: ResMut<Assets<Image>>,
+    mut server: Res<AssetServer>,
 ) {
-    let ground_color = image_from_file(
-        std::path::Path::new("assets/tex/MetalPlates006_1K-JPG_Color.jpg"),
-        ImageFormat::Jpeg,
-        true,
-    )
-    .expect("missing ground color");
-    let ground_normal = image_from_file(
-        std::path::Path::new("assets/tex/MetalPlates006_1K-JPG_NormalGL.jpg"),
-        ImageFormat::Jpeg,
-        true,
-    )
-    .expect("missing ground normal");
-    let ground_rm = image_from_file(
-        std::path::Path::new("assets/tex/MetalPlates006_1K-JPG_RM.png"),
-        ImageFormat::Png,
-        true,
-    )
-    .expect("missing ground roughness/metallic");
+    let ground_color = server.load("tex/MetalPlates006_1K-JPG_Color.jpg");
 
     let ground_mat = StandardMaterial {
         base_color: Color::WHITE,
-        base_color_texture: Some(images.add(ground_color)),
+        base_color_texture: Some(ground_color),
         metallic: 1.0,
-        perceptual_roughness: 1.0,
-        metallic_roughness_texture: Some(images.add(ground_rm)),
-        normal_map_texture: Some(images.add(ground_normal)),
+        //perceptual_roughness: 1.0,
+        perceptual_roughness: 0.0,
         ..Default::default()
     };
 
@@ -123,21 +87,25 @@ fn setup(
         Replicated,
     ));
 
-    // Hack to get around busted asset loading
+    commands.spawn((
+        DirectionalLight {
+            shadows_enabled: true,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 5.0, 3.0).looking_at((0.0, 0.0, 0.0).into(), Dir3::Y),
+        Replicated,
+    ));
 
-    let env_map = image_from_file(
-        std::path::Path::new("assets/ibl/workshop_4k_small.exr"),
-        ImageFormat::OpenExr,
-        false,
-    )
-    .expect("missing IBL image");
+    /*
 
-    let env_map = images.add(env_map);
+    let env_map = server.load("ibl/workshop_4k_small.exr");
 
     commands.insert_resource(EnvironmentLighting {
         intensity: 30000.0,
         equirect: env_map,
     });
+
+     */
 
     // camera
     commands.spawn((

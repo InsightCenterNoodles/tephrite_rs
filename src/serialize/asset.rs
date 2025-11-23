@@ -38,18 +38,38 @@ impl<A: Asset> FastWrite for Handle<A> {
 
 pub trait RemappableAsset {
     fn with_remapper<F: FnOnce(&HashMap<AssetId<Self>, Handle<Self>>)>(func: F);
-    fn with_remapper_mut<F: FnMut(&mut HashMap<AssetId<Self>, Handle<Self>>)>(func: F);
+    fn with_remapper_mut<F: FnOnce(&mut HashMap<AssetId<Self>, Handle<Self>>)>(func: F);
 
-    fn install_mapping(id: AssetId<Self>, asset: Self, assets: &mut Assets<Self>)
+    fn reserve_mapping(id: AssetId<Self>, assets: &mut Assets<Self>)
+    where
+        Self: bevy::prelude::Asset,
+        Self: Sized + Debug,
+    {
+        let handle = assets.reserve_handle();
+
+        Self::with_remapper_mut(|map| {
+            map.insert(id, handle.clone());
+        });
+    }
+
+    fn set_mapping(id: AssetId<Self>, asset: Self, assets: &mut Assets<Self>)
     where
         Self: bevy::prelude::Asset,
         Self: Sized + Debug,
     {
         //debug!("install asset: {} {:?}", id, asset);
-        let handle = assets.add(asset);
 
-        Self::with_remapper_mut(|map| {
-            map.insert(id, handle.clone());
+        Self::with_remapper_mut(move |map| {
+            if map.contains_key(&id) {
+                // mapping exists, update asset
+                debug!("Update asset {id}");
+                assets.insert(id, asset).expect("insert should not fail");
+            } else {
+                // this is new
+                debug!("New asset {id}");
+                let handle = assets.add(asset);
+                map.insert(id, handle.clone());
+            }
         });
     }
 
@@ -89,7 +109,7 @@ impl<A: Asset + RemappableAsset> FastRead for Handle<A> {
             Some(x) => x,
             None => {
                 // ok, this can happen if the host is still loading an asset. lets use a dummy?
-                error!("Using made up asset!");
+                panic!("Using made up asset!");
                 //A::install_mapping(id, A::default(), assets);
 
                 Handle::Uuid(Uuid::new_v4(), default())
