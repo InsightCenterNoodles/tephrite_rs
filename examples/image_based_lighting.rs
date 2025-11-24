@@ -16,16 +16,21 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut server: Res<AssetServer>,
+    server: Res<AssetServer>,
 ) {
     let ground_color = server.load("tex/MetalPlates006_1K-JPG_Color.jpg");
+    let ground_normal = server.load("tex/MetalPlates006_1K-JPG_NormalGL.jpg");
+    let ground_roughmet = server.load("tex/MetalPlates006_1K-JPG_RM.png");
 
     let ground_mat = StandardMaterial {
         base_color: Color::WHITE,
         base_color_texture: Some(ground_color),
         metallic: 1.0,
-        //perceptual_roughness: 1.0,
-        perceptual_roughness: 0.0,
+        perceptual_roughness: 1.0,
+
+        metallic_roughness_texture: Some(ground_roughmet),
+
+        normal_map_texture: Some(ground_normal),
         ..Default::default()
     };
 
@@ -79,24 +84,13 @@ fn setup(
     // light
     commands.spawn((
         DirectionalLight {
-            illuminance: 1000.0,
+            illuminance: 32000.0,
             shadows_enabled: true,
             ..default()
         },
         Transform::from_xyz(0.0, 5.0, 3.0).looking_at((0.0, 0.0, 0.0).into(), Dir3::Y),
         Replicated,
     ));
-
-    commands.spawn((
-        DirectionalLight {
-            shadows_enabled: true,
-            ..default()
-        },
-        Transform::from_xyz(0.0, 5.0, 3.0).looking_at((0.0, 0.0, 0.0).into(), Dir3::Y),
-        Replicated,
-    ));
-
-    /*
 
     let env_map = server.load("ibl/workshop_4k_small.exr");
 
@@ -104,8 +98,6 @@ fn setup(
         intensity: 30000.0,
         equirect: env_map,
     });
-
-     */
 
     // camera
     commands.spawn((

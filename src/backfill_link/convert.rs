@@ -268,7 +268,18 @@ pub fn is_image_float(texture: &Image) -> Option<bool> {
     }
 }
 
-pub fn convert_image(texture: &Image) -> Option<backfill::FImageHandle> {
+struct RawBackfillImage {
+    image: backfill::FImageHandle,
+    _blob: backfill::FBlobHandle,
+}
+
+impl RawBackfillImage {
+    fn handle(&self) -> &backfill::FImageHandle {
+        &self.image
+    }
+}
+
+fn convert_image(texture: &Image) -> Option<RawBackfillImage> {
     debug!("Converting image to bffi image...");
 
     let desc = bffi::FImageRawDesc {
@@ -295,8 +306,10 @@ pub fn convert_image(texture: &Image) -> Option<backfill::FImageHandle> {
     let reference = backfill::blobref_whole(&blob);
 
     unsafe {
-        NonNull::new(bffi::fimg_init_raw(reference, &raw const desc))
-            .map(|x| backfill::FImageHandle::from_nonnull(x))
+        NonNull::new(bffi::fimg_init_raw(reference, &raw const desc)).map(|x| RawBackfillImage {
+            image: backfill::FImageHandle::from_nonnull(x),
+            _blob: blob,
+        })
     }
 }
 
@@ -332,7 +345,7 @@ pub fn convert_texture(
         }
     };
 
-    let config = backfill::tex_config_from_image(&image, bffmt).ok()?;
+    let config = backfill::tex_config_from_image(image.handle(), bffmt).ok()?;
 
     unsafe {
         NonNull::new(bffi::ftex_init(session.as_ptr(), config.as_ptr()))
@@ -433,6 +446,8 @@ fn set_texture(
         debug!("handle is none");
         return;
     };
+
+    debug!("Handle is {}", handle.id());
 
     let Some((tex, sampler)) = map.get(&handle.id()) else {
         warn!("handle {} referencing unknown image", handle.id());

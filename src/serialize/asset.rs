@@ -45,6 +45,7 @@ pub trait RemappableAsset {
         Self: bevy::prelude::Asset,
         Self: Sized + Debug,
     {
+        debug!("Reserve asset {id}");
         let handle = assets.reserve_handle();
 
         Self::with_remapper_mut(|map| {
@@ -66,8 +67,8 @@ pub trait RemappableAsset {
                 assets.insert(id, asset).expect("insert should not fail");
             } else {
                 // this is new
-                debug!("New asset {id}");
                 let handle = assets.add(asset);
+                debug!("New asset {id} MAPPING TO {}", handle.id());
                 map.insert(id, handle.clone());
             }
         });
@@ -83,6 +84,11 @@ pub trait RemappableAsset {
         Self::with_remapper(|map| {
             ret = map.get(&id).cloned();
         });
+
+        debug!(
+            "REMAPPING INCOMING {id} TO {:?}",
+            ret.as_ref().map(|x| x.id())
+        );
 
         ret
     }
@@ -108,11 +114,7 @@ impl<A: Asset + RemappableAsset> FastRead for Handle<A> {
         match A::remap_to_local(id) {
             Some(x) => x,
             None => {
-                // ok, this can happen if the host is still loading an asset. lets use a dummy?
                 panic!("Using made up asset!");
-                //A::install_mapping(id, A::default(), assets);
-
-                Handle::Uuid(Uuid::new_v4(), default())
             }
         }
     }

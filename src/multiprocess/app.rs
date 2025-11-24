@@ -53,7 +53,7 @@ pub(crate) fn make_common_app(debug: bool) -> App {
         bevy::image::ImagePlugin::default(),
         bevy::pbr::MaterialPlugin::<StandardMaterial>::default(),
         bevy::gltf::GltfPlugin::default(),
-        bevy::render::texture::TexturePlugin,
+        bevy::render::texture::TexturePlugin, // without this, AssetServer does not work.
     ));
 
     app

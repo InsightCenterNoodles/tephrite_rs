@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use bevy::prelude::*;
 
 use super::components::*;
@@ -21,17 +19,14 @@ fn watch_mesh_change(
             AssetEvent::Added { id } | AssetEvent::Modified { id } => {
                 if let Some(asset) = meshes.get(*id) {
                     if let Some(converted) = convert_mesh(&session.0, asset) {
+                        debug!("Converted new mesh {id} {:?}", converted.as_ptr());
                         cache.meshes.insert(*id, converted);
-                        debug!("Added new mesh {id}");
                     } else {
                         warn!("Mesh {id} unsupported for conversion; skipping");
                     }
                 } else {
                     debug!("Mesh {id} is placeholder...")
                 }
-            }
-            AssetEvent::Removed { id } => {
-                cache.meshes.remove(id);
             }
             _ => {}
         }
@@ -48,20 +43,24 @@ fn watch_image_change(
         match e {
             AssetEvent::Added { id } | AssetEvent::Modified { id } => {
                 if let Some(asset) = assets.get(*id) {
+                    // debug!(
+                    //     "QUICK DUMP {id:?} bytes {:?}",
+                    //     asset
+                    //         .data
+                    //         .as_ref()
+                    //         .map(|x| x.iter().take(25).collect::<Vec<_>>())
+                    // );
                     if let Some(converted) = convert_texture(&session.0, asset) {
+                        debug!("Converted new image {id} {:?}", converted.as_ptr());
                         cache
                             .textures
                             .insert(*id, (converted, asset.sampler.clone()));
-                        debug!("Added new image {id}");
                     } else {
                         warn!("Image {id} unsupported for conversion; skipping");
                     }
                 } else {
                     debug!("Image {id} is placeholder...")
                 }
-            }
-            AssetEvent::Removed { id } => {
-                cache.textures.remove(id);
             }
             _ => {}
         }
@@ -79,17 +78,14 @@ fn watch_material_change(
             AssetEvent::Added { id } | AssetEvent::Modified { id } => {
                 if let Some(asset) = materials.get(*id) {
                     if let Some(converted) = convert_material(&session.0, asset, &cache.textures) {
+                        debug!("Converted new material {id} {:?}", converted.as_ptr());
                         cache.materials.insert(*id, converted);
-                        debug!("Added new material {id}");
                     } else {
                         warn!("Material {id} failed conversion; skipping");
                     }
                 } else {
                     debug!("Material {id} is placeholder...")
                 }
-            }
-            AssetEvent::Removed { id } => {
-                cache.materials.remove(id);
             }
             _ => {}
         }
@@ -98,7 +94,7 @@ fn watch_material_change(
 
 // build (or rebuild) binding from the current assets/handles
 fn build_binding_for(
-    entity: &BEntity,
+    bentity: &BEntity,
     mesh_handle: AssetId<Mesh>,
     mat_handle: AssetId<StandardMaterial>,
     cache: &mut NonSendMut<AssetCache>,
@@ -109,11 +105,19 @@ fn build_binding_for(
     let mesh = cache.meshes.get(&mesh_handle).unwrap();
     let material = cache.materials.get(&mat_handle).unwrap();
 
-    backfill::add_renderable(&session.0, entity.0, mesh, material);
+    let mesh_handle_ffi = mesh.clone();
+    let material_handle_ffi = material.clone();
+
+    backfill::add_renderable(
+        &session.0,
+        bentity.0,
+        &mesh_handle_ffi,
+        &material_handle_ffi,
+    );
 
     debug!(
         "Installing new renderable to {:?}: mesh {} and mat {} ",
-        entity.0, mesh_handle, mat_handle
+        bentity.0, mesh_handle, mat_handle,
     );
 
     BRenderBinding {
