@@ -48,6 +48,7 @@ fn setup(mut commands: Commands, server: Res<AssetServer>) {
             commands.spawn((
                 SceneRoot(server.load(GltfAssetLabel::Scene(0).from_asset(val))),
                 Replicated,
+                PropagateReplication::default(),
             ));
         }
     }
