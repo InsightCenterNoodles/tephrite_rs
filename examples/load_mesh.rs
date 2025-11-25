@@ -12,12 +12,6 @@ impl Plugin for MyPlugin {
 }
 
 fn setup(mut commands: Commands, server: Res<AssetServer>) {
-    commands.spawn((
-        Transform::from_xyz(0.0, 0.0, -1.0),
-        PropagateReplication::default(),
-        NavigatorMarker,
-    ));
-
     // light
     commands.spawn((
         DirectionalLight {
@@ -49,6 +43,7 @@ fn setup(mut commands: Commands, server: Res<AssetServer>) {
                 SceneRoot(server.load(GltfAssetLabel::Scene(0).from_asset(val))),
                 Replicated,
                 PropagateReplication::default(),
+                NavigatorMarker,
             ));
         }
     }
