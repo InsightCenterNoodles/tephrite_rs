@@ -6,6 +6,8 @@ use crate::input::common::map_point;
 use super::*;
 
 // TODO: make mappable
+// Lets split this up. the raw ints are from VRPN. we will take those events, and translate to user facing API
+
 const LEFT_STICK_X: u8 = 0;
 const LEFT_STICK_Y: u8 = 1;
 const RIGHT_STICK_X: u8 = 2;
@@ -23,12 +25,14 @@ const TR: u8 = 7;
 const BACK: u8 = 8;
 const START: u8 = 9;
 
+#[derive(Debug, Clone, Copy)]
 pub enum Joystick {
     Left,
     Right,
     DPad,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum JoystickButton {
     X,
     Y,
@@ -49,6 +53,12 @@ pub struct Interactor;
 /// A button on an interactor
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct InteractorButton(pub(crate) u8);
+
+impl InteractorButton {
+    pub fn is(&self, b: JoystickButton) -> bool {
+        b as u8 == self.0
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct InteractorState {

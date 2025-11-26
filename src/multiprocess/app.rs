@@ -24,14 +24,14 @@ pub(crate) fn control_c_catch(_: &mut App) {
     .unwrap();
 }
 
-pub(crate) fn make_common_app(debug: bool) -> App {
+pub(crate) fn make_common_app() -> App {
     // build bevy application
     let mut app = App::new();
 
     app.add_plugins((
         PanicHandlerPlugin,
         LogPlugin {
-            level: if debug {
+            level: if std::env::var("TEPH_DEBUG").is_ok() {
                 bevy::log::Level::DEBUG
             } else {
                 bevy::log::Level::INFO

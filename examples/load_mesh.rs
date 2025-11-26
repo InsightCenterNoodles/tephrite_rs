@@ -5,13 +5,16 @@ struct MyPlugin;
 
 impl Plugin for MyPlugin {
     fn build(&self, app: &mut App) {
+        app.insert_resource(KnownScenes::default());
         app.add_systems(Startup, setup);
+
+        app.add_observer(on_button);
 
         app.add_plugins(NavigationPlugin::new(NavigatorMode::ObjectCentric));
     }
 }
 
-fn setup(mut commands: Commands, server: Res<AssetServer>) {
+fn setup(mut commands: Commands, server: Res<AssetServer>, mut known: ResMut<KnownScenes>) {
     // light
     commands.spawn((
         DirectionalLight {
@@ -30,6 +33,10 @@ fn setup(mut commands: Commands, server: Res<AssetServer>) {
         equirect: env_map,
     });
 
+    let root = commands
+        .spawn((Transform::default(), Replicated, NavigatorMarker))
+        .id();
+
     let mut iter = std::env::args();
     while let Some(arg) = iter.next() {
         if arg != "-m" {
@@ -37,14 +44,60 @@ fn setup(mut commands: Commands, server: Res<AssetServer>) {
         }
 
         if let Some(val) = iter.next() {
-            commands.spawn((
-                SceneRoot(server.load_override(GltfAssetLabel::Scene(0).from_asset(val))),
-                Replicated,
-                PropagateReplication::default(),
-                NavigatorMarker,
-            ));
+            let vis = if known.vec.is_empty() {
+                Visibility::Visible
+            } else {
+                Visibility::Hidden
+            };
+
+            let id = commands
+                .spawn((
+                    SceneRoot(server.load_override(GltfAssetLabel::Scene(0).from_asset(val))),
+                    Replicated,
+                    PropagateReplication::default(),
+                    ChildOf(root),
+                    vis,
+                ))
+                .id();
+            known.vec.push(id);
         }
     }
+}
+
+#[derive(Debug, Default, Resource)]
+struct KnownScenes {
+    vec: Vec<Entity>,
+    current: usize,
+}
+
+fn on_button(trigger: On<GlobalActivate>, mut known: ResMut<KnownScenes>, mut commands: Commands) {
+    if known.vec.is_empty() {
+        return;
+    }
+
+    let mut new = known.current;
+
+    let current_len = known.vec.len();
+
+    if trigger.button.is(JoystickButton::TL) {
+        new = (new + current_len - 1) % current_len;
+    } else if trigger.button.is(JoystickButton::TR) {
+        new = (new + 1) % current_len;
+    }
+
+    if new == known.current {
+        return;
+    }
+
+    if let Some(e) = known.vec.get(known.current) {
+        commands.entity(*e).insert(Visibility::Hidden);
+    }
+
+    if let Some(e) = known.vec.get(new) {
+        commands.entity(*e).insert(Visibility::Visible);
+    }
+
+    known.current = new;
 }
 
 fn main() {
