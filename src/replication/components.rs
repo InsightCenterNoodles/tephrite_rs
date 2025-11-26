@@ -1,4 +1,4 @@
-use bevy::{app::Propagate, ecs::bundle::Bundle, prelude::Component};
+use bevy::{app::Propagate, camera::visibility::*, ecs::bundle::Bundle, prelude::Component};
 
 /// A component indicating that the entity should be replicated.
 ///
@@ -21,6 +21,7 @@ use bevy::{app::Propagate, ecs::bundle::Bundle, prelude::Component};
 /// TODO: move to HierarchyPropagatePlugin
 #[derive(Component, Debug, Clone, Copy, PartialEq)]
 #[component(immutable)]
+#[require(Visibility, InheritedVisibility)]
 pub struct Replicated;
 
 //pub type PropagateReplication = Propagate(Replicated);

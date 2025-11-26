@@ -1,4 +1,4 @@
-use bevy::{asset::RenderAssetUsages, image::CompressedImageFormats, prelude::*};
+use bevy::{image::ImageLoaderSettings, prelude::*};
 use tephrite_rs::prelude::*;
 
 struct MyPlugin;
@@ -6,6 +6,7 @@ struct MyPlugin;
 impl Plugin for MyPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup);
+        app.add_systems(Update, blink);
 
         app.add_plugins(NavigationPlugin::new(NavigatorMode::ObjectCentric));
     }
@@ -18,9 +19,16 @@ fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
     server: Res<AssetServer>,
 ) {
-    let ground_color = server.load("tex/MetalPlates006_1K-JPG_Color.jpg");
-    let ground_normal = server.load("tex/MetalPlates006_1K-JPG_NormalGL.jpg");
-    let ground_roughmet = server.load("tex/MetalPlates006_1K-JPG_RM.png");
+    let setting_editor = |x: &mut ImageLoaderSettings| {
+        x.sampler = bevy::image::ImageSampler::linear();
+    };
+
+    let ground_color =
+        server.load_with_settings("tex/MetalPlates006_1K-JPG_Color.jpg", setting_editor);
+    let ground_normal =
+        server.load_with_settings("tex/MetalPlates006_1K-JPG_NormalGL.jpg", setting_editor);
+    let ground_roughmet =
+        server.load_with_settings("tex/MetalPlates006_1K-JPG_RM.png", setting_editor);
 
     let ground_mat = StandardMaterial {
         base_color: Color::WHITE,
@@ -72,6 +80,8 @@ fn setup(
         MeshMaterial3d(shiny),
         Transform::from_xyz(0.0, 1.2, 0.0),
         ChildOf(root),
+        Blinker,
+        Visibility::Visible,
     ));
 
     commands.spawn((
@@ -104,6 +114,25 @@ fn setup(
         Camera3d::default(),
         Transform::from_xyz(-2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
+}
+
+#[derive(Debug, Component)]
+struct Blinker;
+
+// Show visibility
+fn blink(time: Res<Time>, mut local: Local<f32>, query: Query<&mut Visibility, With<Blinker>>) {
+    *local -= time.delta_secs();
+
+    if *local > 0.0 {
+        return;
+    }
+
+    *local = 2.5;
+
+    for mut q in query {
+        debug!("Blink!");
+        q.toggle_visible_hidden();
+    }
 }
 
 fn main() {

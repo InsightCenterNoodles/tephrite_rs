@@ -46,7 +46,10 @@ pub(crate) fn make_common_app(debug: bool) -> App {
         TimePlugin,
         TransformPlugin,
         DiagnosticsPlugin,
-        AssetPlugin::default(),
+        AssetPlugin {
+            unapproved_path_mode: bevy::asset::UnapprovedPathMode::Allow,
+            ..Default::default()
+        },
         AnimationPlugin,
         bevy::scene::ScenePlugin,
         bevy::mesh::MeshPlugin,

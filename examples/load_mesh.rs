@@ -15,15 +15,13 @@ fn setup(mut commands: Commands, server: Res<AssetServer>) {
     // light
     commands.spawn((
         DirectionalLight {
-            illuminance: 1000.0,
+            color: Color::srgb_u8(253, 242, 197),
             shadows_enabled: true,
             ..default()
         },
-        Transform::from_xyz(0.0, 5.0, 3.0).looking_at((0.0, 0.0, 0.0).into(), Dir3::Y),
+        Transform::from_xyz(-2.0, 4.0, 3.0).looking_at((0.0, 0.0, 0.0).into(), Dir3::Y),
         Replicated,
     ));
-
-    // Hack to get around busted asset loading
 
     let env_map = server.load("ibl/workshop_4k_small.exr");
 
@@ -40,7 +38,7 @@ fn setup(mut commands: Commands, server: Res<AssetServer>) {
 
         if let Some(val) = iter.next() {
             commands.spawn((
-                SceneRoot(server.load(GltfAssetLabel::Scene(0).from_asset(val))),
+                SceneRoot(server.load_override(GltfAssetLabel::Scene(0).from_asset(val))),
                 Replicated,
                 PropagateReplication::default(),
                 NavigatorMarker,

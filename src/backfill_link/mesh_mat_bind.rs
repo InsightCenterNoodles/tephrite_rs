@@ -158,7 +158,11 @@ impl Plugin for RenderableBindingPlugin {
             // if BEntity appears later on an already-renderable entity
             .add_systems(
                 PostUpdate,
-                on_bentity_added_attach_binding_if_renderable
+                (
+                    on_bentity_added_attach_binding_if_renderable,
+                    update_visibility,
+                )
+                    .chain()
                     .in_set(RenderableSet::Refresh)
                     .after(RenderableSet::Detect),
             )
@@ -315,5 +319,17 @@ fn remove_binding_when_prereqs_missing(
         if !still_has_all {
             commands.entity(entity).remove::<BRenderBinding>();
         }
+    }
+}
+
+fn update_visibility(
+    query: Query<(&BEntity, &InheritedVisibility), Changed<InheritedVisibility>>,
+    session: NonSend<Session>,
+) {
+    for (bent, vis) in query {
+        //debug!("Update vis {vis:?}");
+        unsafe {
+            backfill::ffi::fs_set_visible(session.0.as_ptr(), bent.0.into(), vis.get() as u8)
+        };
     }
 }

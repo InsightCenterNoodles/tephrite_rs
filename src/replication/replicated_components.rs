@@ -167,5 +167,6 @@ detect_component_changes!(
     (4, DirectionalLight),
     (5, SpotLight),
     (6, Mesh3d),
-    (7, StandardMatComponent)
+    (7, StandardMatComponent),
+    (8, InheritedVisibility)
 );

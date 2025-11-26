@@ -411,6 +411,11 @@ pub fn convert_material(
 
     backfill::material_set_rm(&bmat, material.perceptual_roughness, material.metallic);
 
+    unsafe {
+        bffi::fmaterial_set_ior(bmat.as_ptr(), material.ior);
+        bffi::fmaterial_set_clearcoat(bmat.as_ptr(), material.clearcoat);
+    }
+
     Some(bmat)
 }
 

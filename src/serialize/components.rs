@@ -61,18 +61,7 @@ impl_fast_raw_item!(Visibility);
 
 // =============================================================================
 
-// impl FastWrite for InheritedVisibility {
-//     unsafe fn write_fast(&self, w: &mut crate::serialize::fast_io::ByteWriter) {
-//         self.get().serialize(w);
-//     }
-// }
-// impl FastRead for InheritedVisibility {
-//     unsafe fn read_fast(r: &mut crate::serialize::fast_io::ByteReader) -> Self {
-//         let _ = bool::deserialize(r);
-//         // discard! Bevy will overwrite
-//         InheritedVisibility::VISIBLE
-//     }
-// }
+impl_fast_raw_item!(InheritedVisibility);
 
 // =============================================================================
 
