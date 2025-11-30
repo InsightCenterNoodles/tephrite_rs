@@ -10,6 +10,7 @@ use bevy::{
     prelude::*,
 };
 
+pub use common::*;
 pub use events::*;
 pub use interactor::*;
 pub use navigator::*;

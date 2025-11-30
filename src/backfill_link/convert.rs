@@ -360,9 +360,18 @@ pub fn convert_material(
 ) -> Option<backfill::FMaterialHandle> {
     let mut config = backfill::material_config().ok()?;
 
-    config.set_option(backfill::ffi::FMatOption_CLEARCOAT, true);
+    let needs_clearcoat = material.clearcoat > 0.0;
+    let needs_transmission = material.diffuse_transmission > 0.0;
+
+    if needs_clearcoat {
+        config.set_option(backfill::ffi::FMatOption_CLEARCOAT, true);
+    }
+
     config.set_option(backfill::ffi::FMatOption_IOR, true);
-    config.set_option(backfill::ffi::FMatOption_TRANSMISSION, true);
+
+    if needs_transmission {
+        config.set_option(backfill::ffi::FMatOption_TRANSMISSION, true);
+    }
 
     match material.alpha_mode {
         AlphaMode::Opaque => config.set_blend(backfill::ffi::FMatBlendType_OPAQUE),
@@ -413,7 +422,14 @@ pub fn convert_material(
 
     unsafe {
         bffi::fmaterial_set_ior(bmat.as_ptr(), material.ior);
-        bffi::fmaterial_set_clearcoat(bmat.as_ptr(), material.clearcoat);
+
+        if needs_clearcoat {
+            bffi::fmaterial_set_clearcoat(bmat.as_ptr(), material.clearcoat);
+        }
+
+        if needs_transmission {
+            bffi::fmaterial_set_transmission(bmat.as_ptr(), material.diffuse_transmission);
+        }
     }
 
     Some(bmat)

@@ -21,24 +21,37 @@ fn setup(
     server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    interactors: Query<Entity, With<Interactor>>,
 ) {
     // light
     commands.spawn((
         DirectionalLight {
-            color: Color::srgb_u8(253, 242, 197),
+            color: Color::srgb_u8(255, 235, 198),
             shadows_enabled: true,
+            illuminance: 130000.0,
             ..default()
         },
-        Transform::from_xyz(-2.0, 4.0, 3.0).looking_at((0.0, 0.0, 0.0).into(), Dir3::Y),
+        Transform::from_xyz(4.0, 4.0, 3.0).looking_at((0.0, 0.0, 0.0).into(), Dir3::Y),
         Replicated,
     ));
 
     let env_map = server.load("ibl/workshop_4k_small.exr");
 
     commands.insert_resource(EnvironmentLighting {
-        intensity: 15000.0,
+        //intensity: 15000.0,
+        intensity: 10000.0,
         equirect: env_map,
     });
+
+    // Interactor light
+
+    for interactor_ent in interactors {
+        commands.entity(interactor_ent).insert(PointLight {
+            color: Color::WHITE,
+            intensity: 4000.0,
+            ..Default::default()
+        });
+    }
 
     let root = commands
         .spawn((Transform::default(), Replicated, NavigatorMarker))
@@ -110,6 +123,7 @@ fn setup(
                     },
                     Particle { age: 1.0 },
                     Replicated,
+                    ChildOf(root),
                 ))
                 .id(),
         )
@@ -119,6 +133,7 @@ fn setup(
 
     // spawn an emitter somewhere
 
+    /*
     let emitter_mesh = meshes.add(SphereMeshBuilder::new(
         0.05,
         bevy::mesh::SphereKind::Ico { subdivisions: 1 },
@@ -136,6 +151,7 @@ fn setup(
         Transform::from_translation(vec3(-0.8, 0.15, 2.0)),
         Replicated,
     ));
+     */
 }
 
 fn main() {
@@ -145,10 +161,10 @@ fn main() {
 use field::{Field, inside_bounds_strict, lerp_box};
 use grid::sample_vec3;
 
-const NUM_POINTS: usize = 50; // a few hundred
+const NUM_POINTS: usize = 1000;
 const PARTICLE_LIFETIME: f32 = 20.0; // seconds
-const SMOKE_VELOCITY: f32 = 1.0; // arbitrary units / sec
-const NUM_SPAWN: usize = 1;
+const SMOKE_VELOCITY: f32 = 0.1; // arbitrary units / sec
+const NUM_SPAWN: usize = 7;
 const FIELD_NAME: &str = "Electrolyte Flux Ce";
 
 // Paths: adjust to suit your data layout
@@ -172,6 +188,7 @@ struct AllParticles {
 
 fn advect_particles(
     time: Res<Time>,
+    q_transform: Query<(&GlobalTransform), With<NavigatorMarker>>,
     mut q_particles: Query<(&mut Transform, &mut Particle)>,
     field_res: Res<FlowField>,
 ) {
@@ -190,11 +207,17 @@ fn advect_particles(
     let smoke_advection_dist = SMOKE_VELOCITY * dt;
     let particle_time_delta = dt / PARTICLE_LIFETIME;
 
+    let to_grid = q_transform
+        .single()
+        .map(|x| x.affine().inverse())
+        .unwrap_or_default();
+
     q_particles
         .par_iter_mut()
         .for_each(|(mut transform, mut particle)| {
             particle.age += particle_time_delta;
 
+            //let world_pos = to_grid.transform_point3(transform.translation);
             let world_pos = transform.translation;
 
             // world → volume coordinates
@@ -231,11 +254,17 @@ fn advect_particles(
 // TODO: having to do a global query on interactors is stupid. move to a per-interactor state
 
 fn joy_spawn_particles(
-    q_emitter: Query<(Entity, &Transform), With<Interactor>>,
+    q_root: Query<&GlobalTransform, With<NavigatorMarker>>,
+    q_emitter: Query<(Entity, &GlobalTransform), With<Interactor>>,
     mut q_particle: Query<(&mut Transform, &mut Particle), Without<Interactor>>,
     mut all_particles: ResMut<AllParticles>,
     all_interactors: Res<AllInteractorState>,
 ) {
+    let root_inv = q_root
+        .single()
+        .map(|x| x.affine().inverse())
+        .unwrap_or_default();
+
     for (entity, tf) in q_emitter {
         // is button down?
 
@@ -249,9 +278,11 @@ fn joy_spawn_particles(
 
         // spawn where?
 
-        let world_point = tf.translation;
+        let joy_world_point = tf.translation();
 
-        spawn_from_point(world_point, &mut all_particles, &mut q_particle);
+        let root_local = root_inv.transform_point3(joy_world_point);
+
+        spawn_from_point(root_local, &mut all_particles, &mut q_particle);
     }
 }
 

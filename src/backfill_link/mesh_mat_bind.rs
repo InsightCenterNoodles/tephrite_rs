@@ -235,10 +235,10 @@ fn sync_binding_on_renderability_and_asset_changes(
         }
     }
 
-    if !changed_materials.is_empty() || !changed_meshes.is_empty() {
-        dbg!(&changed_materials);
-        dbg!(&changed_meshes);
-    }
+    // if !changed_materials.is_empty() || !changed_meshes.is_empty() {
+    //     dbg!(&changed_materials);
+    //     dbg!(&changed_meshes);
+    // }
 
     // Fast path: if no handle changes AND no asset changes, we still need to handle
     // the case where an entity *just* became renderable this frame (Added<Mesh3d>/Material).

@@ -84,9 +84,17 @@ fn setup(
         Visibility::Visible,
     ));
 
+    let translucent = materials.add(StandardMaterial {
+        base_color: Color::srgb_u8(0, 0, 255),
+        metallic: 0.0,
+        perceptual_roughness: 0.1,
+        diffuse_transmission: 1.0,
+        ..Default::default()
+    });
+
     commands.spawn((
         Mesh3d(mesh),
-        MeshMaterial3d(materials.add(Color::srgb_u8(0, 0, 255))),
+        MeshMaterial3d(translucent),
         Transform::from_xyz(0.0, 1.0, 0.2),
         ChildOf(root),
     ));
