@@ -90,7 +90,11 @@ fn consume_buffer(
 
         match instruction {
             ClientInstruction::EAdd(entity) => {
-                let local = commands.spawn((BReplicate, Transform::default()));
+                let local = commands.spawn((
+                    BReplicate,
+                    InheritedVisibility::default(),
+                    Transform::default(),
+                ));
 
                 map.0.insert(entity, local.id());
                 debug!("Mapping entity {:?} -> {:?}", entity, local.id());

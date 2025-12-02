@@ -155,7 +155,7 @@ fn update_current_states(
     mut state: ResMut<AllInteractorState>,
 ) {
     for event in button_reader.read() {
-        println!("BUTTON E {event:?}");
+        //println!("BUTTON E {event:?}");
         let state = state.0.entry(event.from).or_default();
 
         match event.kind {
@@ -184,7 +184,6 @@ fn update_current_states(
         //debug!("Read event {} {}", state.analogs.len(), event.axis);
 
         if state.analogs.len() <= event.axis.into() {
-            debug!("Axis revise");
             state.analogs.resize((state.analogs.len() * 2).max(32), 0.0);
         }
         state.analogs[event.axis as usize] = event.value;

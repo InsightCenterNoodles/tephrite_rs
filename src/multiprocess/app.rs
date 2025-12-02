@@ -1,6 +1,7 @@
 use bevy::{
     app::{App, PanicHandlerPlugin, ScheduleRunnerPlugin, TerminalCtrlCHandlerPlugin, ctrlc},
     diagnostic::DiagnosticsPlugin,
+    image::{CompressedImageFormatSupport, CompressedImageFormats},
     log::LogPlugin,
     prelude::*,
     time::TimePlugin,
@@ -31,6 +32,7 @@ pub(crate) fn make_common_app() -> App {
     app.add_plugins((
         PanicHandlerPlugin,
         LogPlugin {
+            filter: "warn,bevy_render=off".into(),
             level: if std::env::var("TEPH_DEBUG").is_ok() {
                 bevy::log::Level::DEBUG
             } else {
@@ -58,6 +60,9 @@ pub(crate) fn make_common_app() -> App {
         bevy::gltf::GltfPlugin::default(),
         bevy::render::texture::TexturePlugin, // without this, AssetServer does not work.
     ));
+
+    app.world_mut()
+        .insert_resource(CompressedImageFormatSupport(CompressedImageFormats::BC));
 
     app
 }

@@ -123,7 +123,7 @@ fn setup_session(app: &mut App) {
 
     app.insert_non_send_resource(resources::Session(session));
 
-    println!("Session setup done");
+    //println!("Session setup done");
 }
 
 fn run_frame(

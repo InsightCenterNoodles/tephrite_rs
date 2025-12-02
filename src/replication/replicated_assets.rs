@@ -23,7 +23,7 @@ macro_rules! make_change_detection {
                             let dest: &mut TranscriptWriteStateResource = &mut writer;
 
                             if let Some(asset) = assets.get(*id) {
-                                warn!("SEND ASSET {id:?}");
+                                //warn!("SEND ASSET {id:?}");
                                 unsafe {
                                     ServerInstruction::CAsset(ServerReplicateAsset {
                                         asset: AssetEnumRef::convert(*id, asset),
@@ -31,7 +31,7 @@ macro_rules! make_change_detection {
                                     .write_fast(dest);
                                 }
                             } else {
-                                warn!("PREP ASSET {id:?}");
+                                //warn!("PREP ASSET {id:?}");
                                 unsafe {
                                     ServerInstruction::CPrepAsset(ReserveAsset {
                                         id: (*id).into(),
@@ -41,7 +41,7 @@ macro_rules! make_change_detection {
                             }
                         }
                         AssetEvent::Modified { id } => {
-                            warn!("MODIFY ASSET {id:?}");
+                            //warn!("MODIFY ASSET {id:?}");
                             let asset = assets.get(*id).expect("obtaining changed asset");
 
                             let dest: &mut TranscriptWriteStateResource = &mut writer;
@@ -54,7 +54,7 @@ macro_rules! make_change_detection {
                             }
                         }
                         AssetEvent::Removed { id } => {
-                            warn!("DESTROY ASSET {id:?}");
+                            //warn!("DESTROY ASSET {id:?}");
                             let dest: &mut TranscriptWriteStateResource = &mut writer;
                             unsafe {
                                 ServerInstruction::CDropAsset(DropAsset { id: (*id).into() })
@@ -65,7 +65,7 @@ macro_rules! make_change_detection {
                             // handled
                         }
                         AssetEvent::LoadedWithDependencies { id } => {
-                            warn!("COMPLETE ASSET {id:?}");
+                            //warn!("COMPLETE ASSET {id:?}");
                             // let asset = assets.get(*id).expect("obtaining changed asset");
 
                             // let dest: &mut TranscriptWriteStateResource = &mut writer;

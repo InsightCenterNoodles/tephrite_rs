@@ -74,7 +74,7 @@ impl SharedMemory {
 
     /// Attach to a previously created multiprocess state. This should only be called by child processes
     pub fn attach(key: &str) -> Result<Self> {
-        println!("Attaching Communicator {}", unsafe { getpid() });
+        //println!("Attaching Communicator {}", unsafe { getpid() });
 
         let local_key = CString::new(key).expect("create shmem");
 
