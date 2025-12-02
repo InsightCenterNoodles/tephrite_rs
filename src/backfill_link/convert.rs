@@ -268,7 +268,18 @@ pub fn is_image_float(texture: &Image) -> Option<bool> {
     }
 }
 
-pub fn convert_image(texture: &Image) -> Option<backfill::FImageHandle> {
+struct RawBackfillImage {
+    image: backfill::FImageHandle,
+    _blob: backfill::FBlobHandle,
+}
+
+impl RawBackfillImage {
+    fn handle(&self) -> &backfill::FImageHandle {
+        &self.image
+    }
+}
+
+fn convert_image(texture: &Image) -> Option<RawBackfillImage> {
     debug!("Converting image to bffi image...");
 
     let desc = bffi::FImageRawDesc {
@@ -295,8 +306,10 @@ pub fn convert_image(texture: &Image) -> Option<backfill::FImageHandle> {
     let reference = backfill::blobref_whole(&blob);
 
     unsafe {
-        NonNull::new(bffi::fimg_init_raw(reference, &raw const desc))
-            .map(|x| backfill::FImageHandle::from_nonnull(x))
+        NonNull::new(bffi::fimg_init_raw(reference, &raw const desc)).map(|x| RawBackfillImage {
+            image: backfill::FImageHandle::from_nonnull(x),
+            _blob: blob,
+        })
     }
 }
 
@@ -332,7 +345,7 @@ pub fn convert_texture(
         }
     };
 
-    let config = backfill::tex_config_from_image(&image, bffmt).ok()?;
+    let config = backfill::tex_config_from_image(image.handle(), bffmt).ok()?;
 
     unsafe {
         NonNull::new(bffi::ftex_init(session.as_ptr(), config.as_ptr()))
@@ -347,9 +360,18 @@ pub fn convert_material(
 ) -> Option<backfill::FMaterialHandle> {
     let mut config = backfill::material_config().ok()?;
 
-    config.set_option(backfill::ffi::FMatOption_CLEARCOAT, true);
+    let needs_clearcoat = material.clearcoat > 0.0;
+    let needs_transmission = material.diffuse_transmission > 0.0;
+
+    if needs_clearcoat {
+        config.set_option(backfill::ffi::FMatOption_CLEARCOAT, true);
+    }
+
     config.set_option(backfill::ffi::FMatOption_IOR, true);
-    config.set_option(backfill::ffi::FMatOption_TRANSMISSION, true);
+
+    if needs_transmission {
+        config.set_option(backfill::ffi::FMatOption_TRANSMISSION, true);
+    }
 
     match material.alpha_mode {
         AlphaMode::Opaque => config.set_blend(backfill::ffi::FMatBlendType_OPAQUE),
@@ -398,6 +420,18 @@ pub fn convert_material(
 
     backfill::material_set_rm(&bmat, material.perceptual_roughness, material.metallic);
 
+    unsafe {
+        bffi::fmaterial_set_ior(bmat.as_ptr(), material.ior);
+
+        if needs_clearcoat {
+            bffi::fmaterial_set_clearcoat(bmat.as_ptr(), material.clearcoat);
+        }
+
+        if needs_transmission {
+            bffi::fmaterial_set_transmission(bmat.as_ptr(), material.diffuse_transmission);
+        }
+    }
+
     Some(bmat)
 }
 
@@ -433,6 +467,8 @@ fn set_texture(
         debug!("handle is none");
         return;
     };
+
+    debug!("Handle is {}", handle.id());
 
     let Some((tex, sampler)) = map.get(&handle.id()) else {
         warn!("handle {} referencing unknown image", handle.id());

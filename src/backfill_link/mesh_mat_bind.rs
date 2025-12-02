@@ -16,23 +16,17 @@ fn watch_mesh_change(
 ) {
     for e in events.read() {
         match e {
-            AssetEvent::Added { id } => {
+            AssetEvent::Added { id } | AssetEvent::Modified { id } => {
                 if let Some(asset) = meshes.get(*id) {
                     if let Some(converted) = convert_mesh(&session.0, asset) {
+                        debug!("Converted new mesh {id} {:?}", converted.as_ptr());
                         cache.meshes.insert(*id, converted);
-                        debug!("Added new mesh {id}");
                     } else {
                         warn!("Mesh {id} unsupported for conversion; skipping");
                     }
                 } else {
-                    warn!("Mesh asset {id} missing on add; skipping");
+                    debug!("Mesh {id} is placeholder...")
                 }
-            }
-            AssetEvent::Modified { id: _ } => {
-                debug!("WE DONT HANDLE THIS YET");
-            }
-            AssetEvent::Removed { id } => {
-                cache.meshes.remove(id);
             }
             _ => {}
         }
@@ -47,25 +41,26 @@ fn watch_image_change(
 ) {
     for e in events.read() {
         match e {
-            AssetEvent::Added { id } => {
+            AssetEvent::Added { id } | AssetEvent::Modified { id } => {
                 if let Some(asset) = assets.get(*id) {
+                    // debug!(
+                    //     "QUICK DUMP {id:?} bytes {:?}",
+                    //     asset
+                    //         .data
+                    //         .as_ref()
+                    //         .map(|x| x.iter().take(25).collect::<Vec<_>>())
+                    // );
                     if let Some(converted) = convert_texture(&session.0, asset) {
+                        debug!("Converted new image {id} {:?}", converted.as_ptr());
                         cache
                             .textures
                             .insert(*id, (converted, asset.sampler.clone()));
-                        debug!("Added new image {id}");
                     } else {
                         warn!("Image {id} unsupported for conversion; skipping");
                     }
                 } else {
-                    warn!("Image asset {id} missing on add; skipping");
+                    debug!("Image {id} is placeholder...")
                 }
-            }
-            AssetEvent::Modified { id: _ } => {
-                debug!("WE DONT HANDLE THIS YET");
-            }
-            AssetEvent::Removed { id } => {
-                cache.textures.remove(id);
             }
             _ => {}
         }
@@ -80,23 +75,17 @@ fn watch_material_change(
 ) {
     for e in events.read() {
         match e {
-            AssetEvent::Added { id } => {
+            AssetEvent::Added { id } | AssetEvent::Modified { id } => {
                 if let Some(asset) = materials.get(*id) {
                     if let Some(converted) = convert_material(&session.0, asset, &cache.textures) {
+                        debug!("Converted new material {id} {:?}", converted.as_ptr());
                         cache.materials.insert(*id, converted);
-                        debug!("Added new material {id}");
                     } else {
                         warn!("Material {id} failed conversion; skipping");
                     }
                 } else {
-                    warn!("Material asset {id} missing on add; skipping");
+                    debug!("Material {id} is placeholder...")
                 }
-            }
-            AssetEvent::Modified { .. } => {
-                debug!("WE DONT HANDLE THIS YET");
-            }
-            AssetEvent::Removed { id } => {
-                cache.materials.remove(id);
             }
             _ => {}
         }
@@ -105,7 +94,7 @@ fn watch_material_change(
 
 // build (or rebuild) binding from the current assets/handles
 fn build_binding_for(
-    entity: &BEntity,
+    bentity: &BEntity,
     mesh_handle: AssetId<Mesh>,
     mat_handle: AssetId<StandardMaterial>,
     cache: &mut NonSendMut<AssetCache>,
@@ -116,11 +105,19 @@ fn build_binding_for(
     let mesh = cache.meshes.get(&mesh_handle).unwrap();
     let material = cache.materials.get(&mat_handle).unwrap();
 
-    backfill::add_renderable(&session.0, entity.0, mesh, material);
+    let mesh_handle_ffi = mesh.clone();
+    let material_handle_ffi = material.clone();
+
+    backfill::add_renderable(
+        &session.0,
+        bentity.0,
+        &mesh_handle_ffi,
+        &material_handle_ffi,
+    );
 
     debug!(
         "Installing new renderable to {:?}: mesh {} and mat {} ",
-        entity.0, mesh_handle, mat_handle
+        bentity.0, mesh_handle, mat_handle,
     );
 
     BRenderBinding {
@@ -161,7 +158,11 @@ impl Plugin for RenderableBindingPlugin {
             // if BEntity appears later on an already-renderable entity
             .add_systems(
                 PostUpdate,
-                on_bentity_added_attach_binding_if_renderable
+                (
+                    on_bentity_added_attach_binding_if_renderable,
+                    update_visibility,
+                )
+                    .chain()
                     .in_set(RenderableSet::Refresh)
                     .after(RenderableSet::Detect),
             )
@@ -234,10 +235,10 @@ fn sync_binding_on_renderability_and_asset_changes(
         }
     }
 
-    if !changed_materials.is_empty() || !changed_meshes.is_empty() {
-        dbg!(&changed_materials);
-        dbg!(&changed_meshes);
-    }
+    // if !changed_materials.is_empty() || !changed_meshes.is_empty() {
+    //     dbg!(&changed_materials);
+    //     dbg!(&changed_meshes);
+    // }
 
     // Fast path: if no handle changes AND no asset changes, we still need to handle
     // the case where an entity *just* became renderable this frame (Added<Mesh3d>/Material).
@@ -318,5 +319,17 @@ fn remove_binding_when_prereqs_missing(
         if !still_has_all {
             commands.entity(entity).remove::<BRenderBinding>();
         }
+    }
+}
+
+fn update_visibility(
+    query: Query<(&BEntity, &InheritedVisibility), Changed<InheritedVisibility>>,
+    session: NonSend<Session>,
+) {
+    for (bent, vis) in query {
+        //debug!("Update vis {vis:?}");
+        unsafe {
+            backfill::ffi::fs_set_visible(session.0.as_ptr(), bent.0.into(), vis.get() as u8)
+        };
     }
 }

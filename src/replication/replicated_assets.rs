@@ -20,20 +20,28 @@ macro_rules! make_change_detection {
                     debug!("EVENT {e:?}");
                     match e {
                         AssetEvent::Added { id } => {
-                            let asset = assets.get(*id).expect("obtaining new asset");
-
-                            //debug!("NEW ASSET {asset:?}");
-
                             let dest: &mut TranscriptWriteStateResource = &mut writer;
 
-                            unsafe {
-                                ServerInstruction::CAsset(ServerReplicateAsset {
-                                    asset: AssetEnumRef::convert(*id, asset),
-                                })
-                                .write_fast(dest);
+                            if let Some(asset) = assets.get(*id) {
+                                //warn!("SEND ASSET {id:?}");
+                                unsafe {
+                                    ServerInstruction::CAsset(ServerReplicateAsset {
+                                        asset: AssetEnumRef::convert(*id, asset),
+                                    })
+                                    .write_fast(dest);
+                                }
+                            } else {
+                                //warn!("PREP ASSET {id:?}");
+                                unsafe {
+                                    ServerInstruction::CPrepAsset(ReserveAsset {
+                                        id: (*id).into(),
+                                    })
+                                    .write_fast(dest);
+                                }
                             }
                         }
                         AssetEvent::Modified { id } => {
+                            //warn!("MODIFY ASSET {id:?}");
                             let asset = assets.get(*id).expect("obtaining changed asset");
 
                             let dest: &mut TranscriptWriteStateResource = &mut writer;
@@ -46,15 +54,29 @@ macro_rules! make_change_detection {
                             }
                         }
                         AssetEvent::Removed { id } => {
+                            //warn!("DESTROY ASSET {id:?}");
                             let dest: &mut TranscriptWriteStateResource = &mut writer;
                             unsafe {
                                 ServerInstruction::CDropAsset(DropAsset { id: (*id).into() })
                                     .write_fast(dest);
                             }
                         }
-                        _ => {} // do nothing for NOW
-                                //AssetEvent::Unused { id } => todo!(),
-                                //AssetEvent::LoadedWithDependencies { id } => todo!(),
+                        AssetEvent::Unused { id: _ } => {
+                            // handled
+                        }
+                        AssetEvent::LoadedWithDependencies { id } => {
+                            //warn!("COMPLETE ASSET {id:?}");
+                            // let asset = assets.get(*id).expect("obtaining changed asset");
+
+                            // let dest: &mut TranscriptWriteStateResource = &mut writer;
+
+                            // unsafe {
+                            //     ServerInstruction::CAsset(ServerReplicateAsset {
+                            //         asset: AssetEnumRef::convert(*id, asset),
+                            //     })
+                            //     .write_fast(dest);
+                            // }
+                        }
                     }
                 }
             })

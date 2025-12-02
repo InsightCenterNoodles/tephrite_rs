@@ -128,7 +128,7 @@ impl Producer {
         buffer_size: usize,
         num_consumers: usize,
     ) -> Result<Self> {
-        println!("Creating new producer: {key} {num_buffers} {buffer_size} {num_consumers}");
+        //println!("Creating new producer: {key} {num_buffers} {buffer_size} {num_consumers}");
         if num_buffers < 2 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -207,7 +207,7 @@ impl Producer {
         if self.cached_ready {
             return Ok(());
         }
-        println!("PRODUCER WAITING");
+        //println!("PRODUCER WAITING");
         let need = self.control_block().num_consumers;
         let mut spins = 0;
         loop {

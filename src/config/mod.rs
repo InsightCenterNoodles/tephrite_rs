@@ -219,6 +219,8 @@ pub struct RenderConfiguration {
 
 #[derive(Debug, Default, Clone)]
 pub struct LogicConfiguration {
+    pub debug_renderer: bool,
+
     /// VRPN configuration information
     pub vrpn_config: VRPNConfig,
 
@@ -292,7 +294,7 @@ fn get_multiple_vrpn_addresses(string: &str) -> Vec<VRPNAddress> {
 pub fn get_logic_configuration() -> &'static LogicConfiguration {
     fn build() -> Option<LogicConfiguration> {
         let file::Config {
-            debug_renderer: _,
+            debug_renderer,
             use_offaxis: _,
             render: _,
             vrpn,
@@ -303,6 +305,7 @@ pub fn get_logic_configuration() -> &'static LogicConfiguration {
             .ok()?;
 
         Some(LogicConfiguration {
+            debug_renderer: debug_renderer.unwrap_or_default(),
             vrpn_config: VRPNConfig {
                 head: vrpn.head.and_then(|x| x.parse().ok()),
                 joystick: vrpn.joystick.map(|x| get_multiple_vrpn_addresses(&x)),

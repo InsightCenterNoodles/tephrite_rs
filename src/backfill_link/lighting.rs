@@ -17,7 +17,7 @@ impl Plugin for LightBindingPlugin {
     }
 }
 
-fn install_light(l: &DirectionalLight, b: &BEntity, session: &Session) {
+fn install_directional_light(l: &DirectionalLight, b: &BEntity, session: &Session) {
     let handle = unsafe {
         let ptr = ffi::flightconfig_init(ffi::FLightType_DIRECTIONAL);
 
@@ -45,11 +45,44 @@ fn install_light(l: &DirectionalLight, b: &BEntity, session: &Session) {
     unsafe { ffi::fs_add_light(session.0.as_ptr(), b.0.into(), handle.as_ptr()) };
 }
 
+fn install_point_light(l: &PointLight, b: &BEntity, session: &Session) {
+    let handle = unsafe {
+        let ptr = ffi::flightconfig_init(ffi::FLightType_POINT);
+
+        ffi::flc_set_color(ptr, l.color.into());
+        ffi::flc_set_falloff(ptr, 10000.0);
+
+        ffi::flc_set_direction(
+            ptr,
+            float3 {
+                x: 0.0,
+                y: 0.0,
+                z: -1.0,
+            },
+        );
+
+        ffi::flc_set_shadows(ptr, l.shadows_enabled.into());
+
+        ffi::flc_set_intensity(ptr, l.intensity);
+
+        backfill::FLightConfigHandle::from_nonnull(NonNull::new(ptr).unwrap())
+    };
+
+    debug!("Adding light to {:?}", b.0);
+
+    unsafe { ffi::fs_add_light(session.0.as_ptr(), b.0.into(), handle.as_ptr()) };
+}
+
 fn check_add(
-    query: Query<(&DirectionalLight, &BEntity), Or<(Changed<DirectionalLight>, Changed<BEntity>)>>,
+    q_dir: Query<(&DirectionalLight, &BEntity), Or<(Changed<DirectionalLight>, Changed<BEntity>)>>,
+    q_point: Query<(&PointLight, &BEntity), Or<(Changed<PointLight>, Changed<BEntity>)>>,
     session: NonSend<Session>,
 ) {
-    for (l, b) in query {
-        install_light(l, b, &session);
+    for (l, b) in q_dir {
+        install_directional_light(l, b, &session);
+    }
+
+    for (l, b) in q_point {
+        install_point_light(l, b, &session);
     }
 }

@@ -344,7 +344,7 @@ impl RemappableAsset for Mesh {
         func(&MAP.read().unwrap());
     }
     #[inline]
-    fn with_remapper_mut<F: FnMut(&mut HashMap<AssetId<Self>, Handle<Self>>)>(mut func: F) {
+    fn with_remapper_mut<F: FnOnce(&mut HashMap<AssetId<Self>, Handle<Self>>)>(func: F) {
         func(&mut MAP.write().unwrap());
     }
 }

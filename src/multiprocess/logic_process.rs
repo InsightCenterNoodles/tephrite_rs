@@ -14,7 +14,7 @@ pub(crate) fn setup() -> App {
     crate::multiprocess::install_session_id(&session_id);
 
     // build bevy application
-    let mut app = make_common_app(true);
+    let mut app = make_common_app();
 
     // only now are logs enabled!
 
@@ -50,14 +50,20 @@ pub(crate) fn setup() -> App {
 
     info!("Launching {child_count} render processes");
 
+    let install_debug_env_var = get_logic_configuration().debug_renderer;
+
     let children: Vec<_> = (0..child_count)
         .map(|i| {
             let current_exe = current_exe.clone();
             let session_clone = session_id.clone();
-            info!("Spawning {i}...");
+            //info!("Spawning {i}...");
 
             let mut command = std::process::Command::new(current_exe);
             crate::multiprocess::install_ids(&mut command, &session_clone, i);
+
+            if install_debug_env_var {
+                command.env("TEPH_DEBUG", "1");
+            }
 
             command.spawn().expect("launching render process")
         })

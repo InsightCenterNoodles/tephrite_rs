@@ -90,7 +90,11 @@ fn consume_buffer(
 
         match instruction {
             ClientInstruction::EAdd(entity) => {
-                let local = commands.spawn((BReplicate, Transform::default()));
+                let local = commands.spawn((
+                    BReplicate,
+                    InheritedVisibility::default(),
+                    Transform::default(),
+                ));
 
                 map.0.insert(entity, local.id());
                 debug!("Mapping entity {:?} -> {:?}", entity, local.id());
@@ -122,11 +126,11 @@ fn consume_buffer(
                 use crate::replication::replicated_assets::AssetEnum;
 
                 match *item.asset {
-                    AssetEnum::Mesh(x) => Mesh::install_mapping(x.id, x.data, meshes),
+                    AssetEnum::Mesh(x) => Mesh::set_mapping(x.id, x.data, meshes),
                     AssetEnum::StandardMaterial(x) => {
-                        StandardMaterial::install_mapping(x.id, x.data, materials);
+                        StandardMaterial::set_mapping(x.id, x.data, materials);
                     }
-                    AssetEnum::Image(x) => Image::install_mapping(x.id, x.data, images),
+                    AssetEnum::Image(x) => Image::set_mapping(x.id, x.data, images),
                 }
             }
             ClientInstruction::CDropAsset(drop_asset) => {
@@ -138,6 +142,17 @@ fn consume_buffer(
                         StandardMaterial::clear_mapping(id, materials);
                     }
                     ReplicatedAssetID::Image(id) => Image::clear_mapping(id, images),
+                };
+            }
+            ClientInstruction::CPrepAsset(item) => {
+                use crate::replication::replicated_assets::ReplicatedAssetID;
+
+                match item.id {
+                    ReplicatedAssetID::Mesh(id) => Mesh::reserve_mapping(id, meshes),
+                    ReplicatedAssetID::StandardMaterial(id) => {
+                        StandardMaterial::reserve_mapping(id, materials);
+                    }
+                    ReplicatedAssetID::Image(id) => Image::reserve_mapping(id, images),
                 };
             }
             ClientInstruction::HChange(item) => {

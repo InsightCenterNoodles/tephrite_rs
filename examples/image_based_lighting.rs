@@ -1,4 +1,4 @@
-use bevy::{asset::RenderAssetUsages, image::CompressedImageFormats, prelude::*};
+use bevy::{image::ImageLoaderSettings, prelude::*};
 use tephrite_rs::prelude::*;
 
 struct MyPlugin;
@@ -6,27 +6,10 @@ struct MyPlugin;
 impl Plugin for MyPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup);
+        app.add_systems(Update, blink);
 
         app.add_plugins(NavigationPlugin::new(NavigatorMode::ObjectCentric));
     }
-}
-
-// For the moment, the normal way of using
-// server: Res<AssetServer>
-// is busted. Workarounds ahoy
-
-fn image_from_file(path: &std::path::Path, format: ImageFormat, is_srgb: bool) -> Option<Image> {
-    let file = std::fs::read(path).ok()?;
-
-    Image::from_buffer(
-        &file,
-        bevy::image::ImageType::Format(format),
-        CompressedImageFormats::all(),
-        is_srgb,
-        bevy::image::ImageSampler::linear(),
-        RenderAssetUsages::all(),
-    )
-    .ok()
 }
 
 /// set up a simple 3D scene
@@ -34,34 +17,28 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut images: ResMut<Assets<Image>>,
+    server: Res<AssetServer>,
 ) {
-    let ground_color = image_from_file(
-        std::path::Path::new("assets/tex/MetalPlates006_1K-JPG_Color.jpg"),
-        ImageFormat::Jpeg,
-        true,
-    )
-    .expect("missing ground color");
-    let ground_normal = image_from_file(
-        std::path::Path::new("assets/tex/MetalPlates006_1K-JPG_NormalGL.jpg"),
-        ImageFormat::Jpeg,
-        true,
-    )
-    .expect("missing ground normal");
-    let ground_rm = image_from_file(
-        std::path::Path::new("assets/tex/MetalPlates006_1K-JPG_RM.png"),
-        ImageFormat::Png,
-        true,
-    )
-    .expect("missing ground roughness/metallic");
+    let setting_editor = |x: &mut ImageLoaderSettings| {
+        x.sampler = bevy::image::ImageSampler::linear();
+    };
+
+    let ground_color =
+        server.load_with_settings("tex/MetalPlates006_1K-JPG_Color.jpg", setting_editor);
+    let ground_normal =
+        server.load_with_settings("tex/MetalPlates006_1K-JPG_NormalGL.jpg", setting_editor);
+    let ground_roughmet =
+        server.load_with_settings("tex/MetalPlates006_1K-JPG_RM.png", setting_editor);
 
     let ground_mat = StandardMaterial {
         base_color: Color::WHITE,
-        base_color_texture: Some(images.add(ground_color)),
+        base_color_texture: Some(ground_color),
         metallic: 1.0,
         perceptual_roughness: 1.0,
-        metallic_roughness_texture: Some(images.add(ground_rm)),
-        normal_map_texture: Some(images.add(ground_normal)),
+
+        metallic_roughness_texture: Some(ground_roughmet),
+
+        normal_map_texture: Some(ground_normal),
         ..Default::default()
     };
 
@@ -103,11 +80,21 @@ fn setup(
         MeshMaterial3d(shiny),
         Transform::from_xyz(0.0, 1.2, 0.0),
         ChildOf(root),
+        Blinker,
+        Visibility::Visible,
     ));
+
+    let translucent = materials.add(StandardMaterial {
+        base_color: Color::srgb_u8(0, 0, 255),
+        metallic: 0.0,
+        perceptual_roughness: 0.1,
+        diffuse_transmission: 1.0,
+        ..Default::default()
+    });
 
     commands.spawn((
         Mesh3d(mesh),
-        MeshMaterial3d(materials.add(Color::srgb_u8(0, 0, 255))),
+        MeshMaterial3d(translucent),
         Transform::from_xyz(0.0, 1.0, 0.2),
         ChildOf(root),
     ));
@@ -115,7 +102,7 @@ fn setup(
     // light
     commands.spawn((
         DirectionalLight {
-            illuminance: 1000.0,
+            illuminance: 32000.0,
             shadows_enabled: true,
             ..default()
         },
@@ -123,16 +110,7 @@ fn setup(
         Replicated,
     ));
 
-    // Hack to get around busted asset loading
-
-    let env_map = image_from_file(
-        std::path::Path::new("assets/ibl/workshop_4k_small.exr"),
-        ImageFormat::OpenExr,
-        false,
-    )
-    .expect("missing IBL image");
-
-    let env_map = images.add(env_map);
+    let env_map = server.load("ibl/workshop_4k_small.exr");
 
     commands.insert_resource(EnvironmentLighting {
         intensity: 30000.0,
@@ -144,6 +122,25 @@ fn setup(
         Camera3d::default(),
         Transform::from_xyz(-2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
+}
+
+#[derive(Debug, Component)]
+struct Blinker;
+
+// Show visibility
+fn blink(time: Res<Time>, mut local: Local<f32>, query: Query<&mut Visibility, With<Blinker>>) {
+    *local -= time.delta_secs();
+
+    if *local > 0.0 {
+        return;
+    }
+
+    *local = 2.5;
+
+    for mut q in query {
+        debug!("Blink!");
+        q.toggle_visible_hidden();
+    }
 }
 
 fn main() {
