@@ -4,10 +4,15 @@ use std::{
     path::{Path, PathBuf},
 };
 
+const BACKFILL_ABI_VERSION: u32 = 0;
+
 fn main() -> anyhow::Result<()> {
-    let pc_names = &["backfill"]; // pkg-config name(s) 
-    let lib_basename = "backfill"; // lib file like libfoo.a
-    let header_hints = &["backfill/api.h"]; // likely headers to test that an include dir works
+    let canon_name = format!("backfill-{BACKFILL_ABI_VERSION}");
+    let header_name = format!("{canon_name}/backfill/api.h");
+
+    let pc_names = &[canon_name.as_str()]; // pkg-config name(s) 
+    let lib_basename = canon_name.as_str(); // lib file like libfoo.a
+    let header_hints = &[header_name.as_str()]; // likely headers to test that an include dir works
 
     // 1) Try pkg-config first
     if let Some(meta) = try_pkg_config(pc_names) {
@@ -121,7 +126,12 @@ fn find_include_dir(prefixes: &[PathBuf], header_hints: &[&str]) -> Option<PathB
     for prefix in prefixes {
         // We only need to check the canonical include root; header_hints carry subpaths.
         let dir = prefix.join("include");
-        if header_hints.iter().any(|h| dir.join(h).exists()) {
+        eprintln!("include check > {}", dir.display());
+        if header_hints
+            .iter()
+            .inspect(|x| eprintln!("{}", x))
+            .any(|h| dir.join(h).exists())
+        {
             return Some(dir);
         }
     }
@@ -133,6 +143,7 @@ fn find_lib_dir(prefixes: &[PathBuf], lib_basename: &str) -> Option<PathBuf> {
         for libdir in ["lib", "lib64"].iter() {
             let dir = prefix.join(libdir);
             let b_lib = dir.join(format!("lib{}.dylib", lib_basename));
+            eprintln!("checking > {}", b_lib.display());
             if b_lib.exists() {
                 return Some(dir);
             }
