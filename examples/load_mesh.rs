@@ -52,6 +52,8 @@ fn setup(mut commands: Commands, server: Res<AssetServer>, mut known: ResMut<Kno
                 Visibility::Hidden
             };
 
+            info!("Loading from: {val}");
+
             let id = commands
                 .spawn((
                     SceneRoot(server.load_override(GltfAssetLabel::Scene(0).from_asset(val))),

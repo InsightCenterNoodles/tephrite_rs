@@ -17,8 +17,8 @@ use core::{fmt, mem, ptr};
 
 #[inline(always)]
 #[cold]
-fn oob() -> ! {
-    panic!("ByteReader/ByteWriter out of bounds")
+fn oob(reason: &str) -> ! {
+    panic!("ByteReader/ByteWriter out of bounds: {reason}")
 }
 
 // MARK: Traits
@@ -141,7 +141,10 @@ pub trait ByteSource<'a> {
     fn get_pod_vec<T: Pod + Zeroable>(&mut self) -> Vec<T> {
         let count = self.get_usize();
         let Some(nbytes) = count.checked_mul(mem::size_of::<T>()) else {
-            oob()
+            oob(&format!(
+                "Oversized object {count} * {}",
+                mem::size_of::<T>()
+            ))
         };
         let bytes = self.take_bytes(nbytes);
         // Owned Vec<T> without per-element loops
@@ -254,11 +257,14 @@ impl<'a> ByteSink for ByteWriter<'a> {
     #[inline(always)]
     fn put_bytes(&mut self, src: &[u8]) {
         let Some(end) = self.pos.checked_add(src.len()) else {
-            oob()
+            oob("Arithmetic overflow in write")
         };
 
         if end > self.buf.len() {
-            oob();
+            oob(&format!(
+                "Write buffer overflow: {end} vs {}",
+                self.buf.len()
+            ));
         }
         // Safety: we just bounds-checked
         unsafe {
@@ -316,10 +322,13 @@ impl<'a> ByteSource<'a> for ByteReader<'a> {
     #[inline(always)]
     fn take_bytes(&mut self, n: usize) -> &'a [u8] {
         let Some(end) = self.pos.checked_add(n) else {
-            oob()
+            oob("Arithmetic overflow in read")
         };
         if end > self.buf.len() {
-            oob();
+            oob(&format!(
+                "Read buffer overflow: {end} vs {}",
+                self.buf.len()
+            ));
         }
         // Safety: bounds checked; split borrow lifetime to 'a
         let p = unsafe { self.buf.get_unchecked(self.pos..end) };
@@ -330,10 +339,13 @@ impl<'a> ByteSource<'a> for ByteReader<'a> {
     #[inline(always)]
     fn take_bytes_to(&mut self, n: &mut [u8]) {
         let Some(end) = self.pos.checked_add(n.len()) else {
-            oob()
+            oob("Arithmetic overflow in read")
         };
         if end > self.buf.len() {
-            oob();
+            oob(&format!(
+                "Read buffer overflow: {end} vs {}",
+                self.buf.len()
+            ));
         }
         // Safety: bounds checked; split borrow lifetime to 'a
         let p = unsafe { self.buf.get_unchecked(self.pos..end) };

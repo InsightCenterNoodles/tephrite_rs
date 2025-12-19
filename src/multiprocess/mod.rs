@@ -22,7 +22,7 @@ const SHMEM_NAME_PREFIX: &str = "TEPH_";
 // Size of shared memory region. Not resizable at this time.
 // Since we are sending large textures, meshes, and huge instance lists, this is a 'safe' bound.
 // Previous versions would break at 2 gigs. In the future, we should shard this.
-pub const SHMEM_DEFAULT_BLOCK_SIZE: u64 = 2u64.pow(32);
+pub const SHMEM_DEFAULT_BLOCK_SIZE: u64 = 2u64.pow(33);
 
 // Size of shared memory region for testing purposes.
 pub const SHMEM_TESTING_BLOCK_SIZE: u64 = 2u64.pow(17);
