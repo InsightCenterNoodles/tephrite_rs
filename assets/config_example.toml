@@ -1,7 +1,10 @@
+# Use this option for local, non-cave development
+use_offaxis = false
+
 [vrpn]
 head = "Head0@10.79.144.3:3883"
 
-# Define the six physical displays
+# Define six physical displays
 [[displays]]
 id = 0
 lower_left  = [-2.499, 0.915, -1.768]
@@ -44,6 +47,7 @@ lower_right = [ 2.472, 0.000, -0.1750]
 upper_right = [ 2.468, 0.000, -1.7680]
 resolution = [1920, 1200]
 
+# Define screens, or windows, which use the displays to render content
 [[screens]]
 display = 0
 card_index = 4
