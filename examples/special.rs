@@ -255,24 +255,19 @@ fn advect_particles(
 
 fn joy_spawn_particles(
     q_root: Query<&GlobalTransform, With<NavigatorMarker>>,
-    q_emitter: Query<(Entity, &GlobalTransform), With<Interactor>>,
+    q_emitter: Query<(&GlobalTransform, &InteractorState), With<Interactor>>,
     mut q_particle: Query<(&mut Transform, &mut Particle), Without<Interactor>>,
     mut all_particles: ResMut<AllParticles>,
-    all_interactors: Res<AllInteractorState>,
 ) {
     let root_inv = q_root
         .single()
         .map(|x| x.affine().inverse())
         .unwrap_or_default();
 
-    for (entity, tf) in q_emitter {
+    for (tf, state) in q_emitter {
         // is button down?
 
-        let Some(state) = all_interactors.state_for(entity) else {
-            continue;
-        };
-
-        if !state.button(JoystickButton::A) {
+        if !state.buttons.pressed(JoystickButton::A) {
             continue;
         };
 

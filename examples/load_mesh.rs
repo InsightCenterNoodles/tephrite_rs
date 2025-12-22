@@ -83,10 +83,14 @@ fn on_button(trigger: On<GlobalActivate>, mut known: ResMut<KnownScenes>, mut co
 
     let current_len = known.vec.len();
 
-    if trigger.button.is(JoystickButton::TL) {
-        new = (new + current_len - 1) % current_len;
-    } else if trigger.button.is(JoystickButton::TR) {
-        new = (new + 1) % current_len;
+    match trigger.button {
+        JoystickButton::TL => {
+            new = (new + current_len - 1) % current_len;
+        }
+        JoystickButton::TR => {
+            new = (new + 1) % current_len;
+        }
+        _ => {}
     }
 
     if new == known.current {
