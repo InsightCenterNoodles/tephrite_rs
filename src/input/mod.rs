@@ -18,7 +18,7 @@ pub use navigator::*;
 /// Can be Activated (clicked)
 #[derive(Debug, Clone, PartialEq, Component, Default)]
 pub struct CanActivate {
-    button_down_map: EntityHashMap<HashSet<u8>>,
+    button_down_map: EntityHashMap<HashSet<JoystickButton>>,
 }
 
 /// The bounding box of an interactor, events inside this box will be channeled to the host entity
@@ -31,7 +31,6 @@ pub(crate) struct InputPlugin;
 
 impl Plugin for InputPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<AllInteractorState>();
         app.add_message::<ButtonEvent>();
         app.add_message::<AxisEvent>();
 

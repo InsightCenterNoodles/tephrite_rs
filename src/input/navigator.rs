@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 
-use crate::input::{AllInteractorState, Interactor, common::map_point};
+use crate::input::{Interactor, InteractorState, common::map_point};
 
-use super::Joystick;
+use super::JoystickType;
 
 #[derive(Debug, Clone, Copy)]
 pub enum NavigatorMode {
@@ -45,8 +45,7 @@ fn on_tick(
         (&mut Transform, &GlobalTransform),
         (With<NavigatorMarker>, Without<Interactor>),
     >,
-    mut joystick: Query<(Entity, &mut Transform, &GlobalTransform), With<Interactor>>,
-    mut states: Res<AllInteractorState>,
+    mut joystick: Query<(Entity, &mut Transform, &GlobalTransform, &InteractorState)>,
     settings: Res<NavigatorSettings>,
     time: Res<Time>,
 ) {
@@ -55,11 +54,7 @@ fn on_tick(
     };
 
     // will fail if we add more interactors
-    let Ok((joy_e, joystick_tf, joystick_global_tf)) = joystick.single_mut() else {
-        return;
-    };
-
-    let Some(state) = states.state_for(joy_e) else {
+    let Ok((joy_e, joystick_tf, joystick_global_tf, state)) = joystick.single_mut() else {
         return;
     };
 
@@ -68,7 +63,7 @@ fn on_tick(
 
     let joy_world_position = joystick_global_tf.transform_point(Vec3::ZERO);
 
-    if let Some(right_stick) = state.stick_state(Joystick::Right) {
+    if let Some(right_stick) = state.stick_state(JoystickType::Right) {
         // direction vector
 
         let dir = vec3(right_stick.x, 0.0, right_stick.y);
@@ -89,7 +84,7 @@ fn on_tick(
         target_tf.translation += local_displace;
     }
 
-    if let Some(left_stick) = state.stick_state(Joystick::Left) {
+    if let Some(left_stick) = state.stick_state(JoystickType::Left) {
         target_tf.translation += vec3(
             0.0,
             time.delta_secs() * speed_meters_per_second * left_stick.y,
@@ -97,7 +92,7 @@ fn on_tick(
         )
     }
 
-    if let Some(dpad) = state.stick_state(Joystick::DPad) {
+    if let Some(dpad) = state.stick_state(JoystickType::DPad) {
         let degrees = dpad.x;
 
         // left is 270 ish and right is 90 ish

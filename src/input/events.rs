@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 
+use crate::input::JoystickAxis;
+
 use super::interactor::InteractorButton;
 
 /// A raw event for joystick button messages
@@ -15,7 +17,7 @@ pub struct ButtonEvent {
 pub struct AxisEvent {
     /// The joystick this event came from
     pub from: Entity,
-    pub axis: u8,
+    pub axis: JoystickAxis,
     pub value: f32,
 }
 

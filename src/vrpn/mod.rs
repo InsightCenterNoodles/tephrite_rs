@@ -9,7 +9,9 @@ mod common;
 use bevy::{platform::collections::HashMap, prelude::*};
 
 use crate::{
-    input::{AxisEvent, ButtonEvent, ButtonEventKind, InteractorButton},
+    input::{
+        AxisEvent, ButtonEvent, ButtonEventKind, InteractorButton, JoystickAxis, JoystickButton,
+    },
     vrpn::common::SharedItemState,
 };
 
@@ -128,6 +130,37 @@ fn check_for_new_vrpn(
     }
 }
 
+const AXIS_MAP: [JoystickAxis; 9] = [
+    JoystickAxis::LeftX,   //0
+    JoystickAxis::LeftY,   //1
+    JoystickAxis::RightX,  //2
+    JoystickAxis::Unknown, //3
+    JoystickAxis::Unknown, //4
+    JoystickAxis::RightY,  //5
+    JoystickAxis::Unknown, //6
+    JoystickAxis::Unknown, //7
+    JoystickAxis::DPad,    //8
+];
+
+const BUTTON_MAP: [JoystickButton; 10] = [
+    JoystickButton::X,
+    JoystickButton::A,
+    JoystickButton::B,
+    JoystickButton::Y,
+    JoystickButton::BL,
+    JoystickButton::BR,
+    JoystickButton::TL,
+    JoystickButton::TR,
+    JoystickButton::Back,
+    JoystickButton::Start,
+];
+
+fn map_button(button_index: u8) -> JoystickButton {
+    *(BUTTON_MAP
+        .get(button_index as usize)
+        .unwrap_or(&JoystickButton::Unknown))
+}
+
 /// System that applies the latest VRPN-derived transform to entities.
 fn service_vrpn(
     mut query: Query<(Entity, &VRPNLinkConnected, &mut Transform)>,
@@ -151,7 +184,7 @@ fn service_vrpn(
                     //debug!("Send axis event: {x:?}");
                     Some(AxisEvent {
                         from: e,
-                        axis: x.0 as u8,
+                        axis: (AXIS_MAP.get(x.0 as usize)).cloned().unwrap_or_default(),
                         value: (*x.1) as f32,
                     })
                 } else {
@@ -168,9 +201,9 @@ fn service_vrpn(
             writer.write_batch(lock.button_changes.drain(..).map(|x| {
                 //debug!("Send button event {x:?}");
                 let kind = if x.1 > 0 {
-                    ButtonEventKind::ButtonPressed(InteractorButton(x.0))
+                    ButtonEventKind::ButtonPressed(InteractorButton(map_button(x.0)))
                 } else {
-                    ButtonEventKind::ButtonReleased(InteractorButton(x.0))
+                    ButtonEventKind::ButtonReleased(InteractorButton(map_button(x.0)))
                 };
 
                 ButtonEvent { from: e, kind }

@@ -1,4 +1,3 @@
-use bevy::ecs::entity::EntityHashMap;
 use bevy::prelude::*;
 
 use crate::input::common::map_point;
@@ -8,31 +7,25 @@ use super::*;
 // TODO: make mappable
 // Lets split this up. the raw ints are from VRPN. we will take those events, and translate to user facing API
 
-const LEFT_STICK_X: u8 = 0;
-const LEFT_STICK_Y: u8 = 1;
-const RIGHT_STICK_X: u8 = 2;
-const RIGHT_STICK_Y: u8 = 5;
-const D_PAD: u8 = 8;
-
-const X: u8 = 0;
-const A: u8 = 1;
-const B: u8 = 2;
-const Y: u8 = 3;
-const BL: u8 = 4;
-const BR: u8 = 5;
-const TL: u8 = 6;
-const TR: u8 = 7;
-const BACK: u8 = 8;
-const START: u8 = 9;
-
 #[derive(Debug, Clone, Copy)]
-pub enum Joystick {
+pub enum JoystickType {
     Left,
     Right,
     DPad,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
+pub enum JoystickAxis {
+    LeftX,
+    LeftY,
+    RightX,
+    RightY,
+    DPad,
+    #[default]
+    Unknown,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum JoystickButton {
     X,
     Y,
@@ -44,38 +37,35 @@ pub enum JoystickButton {
     TR,
     Back,
     Start,
+    #[default]
+    Unknown,
 }
 
 /// Marker for the entity that represents a user's controller
-#[derive(Component, Debug)]
+#[derive(Component, Default, Debug)]
 pub struct Interactor;
 
 /// A button on an interactor
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct InteractorButton(pub(crate) u8);
+pub struct InteractorButton(pub(crate) JoystickButton);
 
-impl InteractorButton {
-    pub fn is(&self, b: JoystickButton) -> bool {
-        b as u8 == self.0
-    }
-}
-
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Component)]
+#[require(Interactor)]
 pub struct InteractorState {
     buttons: ButtonInput<InteractorButton>,
     analogs: Vec<f32>,
 }
 
 impl InteractorState {
-    fn get_axis_value(&self, axis: u8) -> f32 {
+    fn get_axis_value(&self, axis: JoystickAxis) -> f32 {
         self.analogs.get(axis as usize).cloned().unwrap_or_default()
     }
 
-    pub fn stick_state(&self, stick: Joystick) -> Option<Vec2> {
+    pub fn stick_state(&self, stick: JoystickType) -> Option<Vec2> {
         let (a, b) = match stick {
-            Joystick::Left => (LEFT_STICK_X, LEFT_STICK_Y),
-            Joystick::Right => (RIGHT_STICK_X, RIGHT_STICK_Y),
-            Joystick::DPad => (D_PAD, D_PAD),
+            JoystickType::Left => (JoystickAxis::LeftX, JoystickAxis::LeftY),
+            JoystickType::Right => (JoystickAxis::RightX, JoystickAxis::RightY),
+            JoystickType::DPad => (JoystickAxis::DPad, JoystickAxis::DPad),
         };
 
         let ret = vec2(self.get_axis_value(a), self.get_axis_value(b));
@@ -87,34 +77,20 @@ impl InteractorState {
         }
     }
 
-    // TODO BAD API
     pub fn button(&self, button: JoystickButton) -> bool {
-        let index = match button {
-            JoystickButton::X => X,
-            JoystickButton::Y => Y,
-            JoystickButton::A => A,
-            JoystickButton::B => B,
-            JoystickButton::BL => BL,
-            JoystickButton::BR => BR,
-            JoystickButton::TL => TL,
-            JoystickButton::TR => TR,
-            JoystickButton::Back => BACK,
-            JoystickButton::Start => START,
-        };
-
-        self.buttons.pressed(InteractorButton(index))
+        self.buttons.pressed(InteractorButton(button))
     }
 }
 
-/// The states of all interactors
-#[derive(Debug, Resource, Default)]
-pub struct AllInteractorState(EntityHashMap<InteractorState>);
+// The states of all interactors
+//#[derive(Debug, Resource, Default)]
+//pub struct AllInteractorState(EntityHashMap<InteractorState>);
 
-impl AllInteractorState {
-    pub fn state_for(&self, entity: Entity) -> Option<&InteractorState> {
-        self.0.get(&entity)
-    }
-}
+//impl AllInteractorState {
+//    pub fn state_for(&self, entity: Entity) -> Option<&InteractorState> {
+//        self.0.get(&entity)
+//    }
+//}
 
 pub struct InteractorPlugin;
 
@@ -129,22 +105,16 @@ impl Plugin for InteractorPlugin {
     }
 }
 
-fn on_joy_removal(
-    trigger: On<Remove, Interactor>,
-    mut state: ResMut<AllInteractorState>,
-    all_interactables: Query<&mut CanActivate>,
-) {
+fn on_joy_removal(trigger: On<Remove, Interactor>, all_activated: Query<&mut CanActivate>) {
     let e = trigger.entity;
 
-    state.0.remove(&e);
-
-    for mut joy in all_interactables {
+    for mut joy in all_activated {
         joy.button_down_map.remove(&e);
     }
 }
 
-fn reset_current_states(mut state: ResMut<AllInteractorState>) {
-    for x in state.bypass_change_detection().0.values_mut() {
+fn reset_current_states(all_buttons: Query<&mut InteractorState>) {
+    for mut x in all_buttons {
         x.buttons.clear();
     }
 }
@@ -152,11 +122,13 @@ fn reset_current_states(mut state: ResMut<AllInteractorState>) {
 fn update_current_states(
     mut button_reader: MessageReader<ButtonEvent>,
     mut axis_reader: MessageReader<AxisEvent>,
-    mut state: ResMut<AllInteractorState>,
+    mut states: Query<&mut InteractorState>,
 ) {
     for event in button_reader.read() {
         //println!("BUTTON E {event:?}");
-        let state = state.0.entry(event.from).or_default();
+        let Ok(mut state) = states.get_mut(event.from) else {
+            continue;
+        };
 
         match event.kind {
             ButtonEventKind::ButtonPressed(interactor_button) => {
@@ -169,7 +141,7 @@ fn update_current_states(
     }
 
     // add decay factor
-    for state in state.0.values_mut() {
+    for mut state in &mut states {
         for a in &mut state.analogs {
             *a = *a * 0.9;
 
@@ -180,11 +152,14 @@ fn update_current_states(
     }
 
     for event in axis_reader.read() {
-        let state = state.0.entry(event.from).or_default();
-        //debug!("Read event {} {}", state.analogs.len(), event.axis);
+        let Ok(mut state) = states.get_mut(event.from) else {
+            continue;
+        };
 
-        if state.analogs.len() <= event.axis.into() {
-            state.analogs.resize((state.analogs.len() * 2).max(32), 0.0);
+        let l = state.analogs.len();
+
+        if l <= (event.axis as usize) {
+            state.analogs.resize((l * 2).max(32), 0.0);
         }
         state.analogs[event.axis as usize] = event.value;
     }
