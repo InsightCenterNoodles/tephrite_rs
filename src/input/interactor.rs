@@ -45,14 +45,10 @@ pub enum JoystickButton {
 #[derive(Component, Default, Debug)]
 pub struct Interactor;
 
-/// A button on an interactor
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct InteractorButton(pub(crate) JoystickButton);
-
 #[derive(Debug, Default, Component)]
 #[require(Interactor)]
 pub struct InteractorState {
-    buttons: ButtonInput<InteractorButton>,
+    pub buttons: ButtonInput<JoystickButton>,
     analogs: Vec<f32>,
 }
 
@@ -75,10 +71,6 @@ impl InteractorState {
         } else {
             None
         }
-    }
-
-    pub fn button(&self, button: JoystickButton) -> bool {
-        self.buttons.pressed(InteractorButton(button))
     }
 }
 
@@ -210,14 +202,14 @@ fn read_events(
                         .button_down_map
                         .entry(event.from)
                         .or_default()
-                        .insert(interactor_button.0);
+                        .insert(interactor_button);
                 }
                 ButtonEventKind::ButtonReleased(interactor_button) => {
                     let was_down = active
                         .button_down_map
                         .entry(event.from)
                         .or_default()
-                        .remove(&interactor_button.0);
+                        .remove(&interactor_button);
 
                     if was_down {
                         // emit action

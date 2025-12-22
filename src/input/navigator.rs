@@ -38,22 +38,21 @@ impl Plugin for NavigationPlugin {
     }
 }
 
-//TODO: can we merge the interactor marker, or get some extra info in there so we dont have to pull AllInteractorState
-
 fn on_tick(
     mut target: Query<
-        (&mut Transform, &GlobalTransform),
+        (&mut Transform, Option<&ChildOf>),
         (With<NavigatorMarker>, Without<Interactor>),
     >,
     mut joystick: Query<(Entity, &mut Transform, &GlobalTransform, &InteractorState)>,
+    parents: Query<&GlobalTransform>,
     settings: Res<NavigatorSettings>,
     time: Res<Time>,
 ) {
-    let Ok((mut target_tf, target_global_tf)) = target.single_mut() else {
+    let Ok((mut target_tf, target_parent)) = target.single_mut() else {
         return;
     };
 
-    // will fail if we add more interactors
+    // TODO: will fail if we add more interactors
     let Ok((joy_e, joystick_tf, joystick_global_tf, state)) = joystick.single_mut() else {
         return;
     };
@@ -76,8 +75,12 @@ fn on_tick(
 
         // map to the local of the entity
 
-        let local_displace = target_global_tf
-            .affine()
+        let parent_global_affine = target_parent
+            .and_then(|parent| parents.get(parent.0).ok())
+            .map(|parent_tf| parent_tf.affine())
+            .unwrap_or_else(|| GlobalTransform::IDENTITY.affine());
+
+        let local_displace = parent_global_affine
             .inverse()
             .transform_vector3(global_displace);
 
@@ -111,13 +114,20 @@ fn on_tick(
 
     const SCALE_FACTOR: f32 = 1.01;
 
-    if state.button(super::JoystickButton::BL) {
+    if state.buttons.pressed(super::JoystickButton::BL) {
         target_tf.scale =
             (target_tf.scale / SCALE_FACTOR).clamp(Vec3::splat(0.001), Vec3::splat(1000.0));
     }
 
-    if state.button(super::JoystickButton::BR) {
+    if state.buttons.pressed(super::JoystickButton::BR) {
         target_tf.scale =
             (target_tf.scale * SCALE_FACTOR).clamp(Vec3::splat(0.001), Vec3::splat(1000.0));
+    }
+
+    if state
+        .buttons
+        .just_pressed(crate::input::JoystickButton::Start)
+    {
+        *target_tf = Transform::IDENTITY;
     }
 }

@@ -9,9 +9,7 @@ mod common;
 use bevy::{platform::collections::HashMap, prelude::*};
 
 use crate::{
-    input::{
-        AxisEvent, ButtonEvent, ButtonEventKind, InteractorButton, JoystickAxis, JoystickButton,
-    },
+    input::{AxisEvent, ButtonEvent, ButtonEventKind, JoystickAxis, JoystickButton},
     vrpn::common::SharedItemState,
 };
 
@@ -201,9 +199,9 @@ fn service_vrpn(
             writer.write_batch(lock.button_changes.drain(..).map(|x| {
                 //debug!("Send button event {x:?}");
                 let kind = if x.1 > 0 {
-                    ButtonEventKind::ButtonPressed(InteractorButton(map_button(x.0)))
+                    ButtonEventKind::ButtonPressed(map_button(x.0))
                 } else {
-                    ButtonEventKind::ButtonReleased(InteractorButton(map_button(x.0)))
+                    ButtonEventKind::ButtonReleased(map_button(x.0))
                 };
 
                 ButtonEvent { from: e, kind }
