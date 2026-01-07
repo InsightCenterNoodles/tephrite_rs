@@ -43,7 +43,10 @@ fn on_tick(
         (&mut Transform, Option<&ChildOf>),
         (With<NavigatorMarker>, Without<Interactor>),
     >,
-    mut joystick: Query<(Entity, &mut Transform, &GlobalTransform, &InteractorState)>,
+    mut joystick: Query<
+        (Entity, &mut Transform, &GlobalTransform, &InteractorState),
+        With<Interactor>,
+    >,
     parents: Query<&GlobalTransform>,
     settings: Res<NavigatorSettings>,
     time: Res<Time>,
