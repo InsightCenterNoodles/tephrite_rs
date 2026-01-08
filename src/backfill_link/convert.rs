@@ -63,7 +63,7 @@ pub fn pack_with_index<T: bytemuck::Pod>(
     match index_type {
         bffi::FMeshIndexType_U16 => {
             unsafe {
-                bffi::pack_vertex_u16(
+                backfill::DYN_LIBRARY.pack_vertex_u16(
                     unpacked.as_ptr(),
                     unpacked.len().try_into().unwrap(),
                     index_slice.as_ptr() as *const bffi::ushort3,
@@ -74,7 +74,7 @@ pub fn pack_with_index<T: bytemuck::Pod>(
         }
 
         bffi::FMeshIndexType_U32 => unsafe {
-            bffi::pack_vertex_u32(
+            backfill::DYN_LIBRARY.pack_vertex_u32(
                 unpacked.as_ptr(),
                 unpacked.len().try_into().unwrap(),
                 index_slice.as_ptr() as *const bffi::uint3,
@@ -306,9 +306,11 @@ fn convert_image(texture: &Image) -> Option<RawBackfillImage> {
     let reference = backfill::blobref_whole(&blob);
 
     unsafe {
-        NonNull::new(bffi::fimg_init_raw(reference, &raw const desc)).map(|x| RawBackfillImage {
-            image: backfill::FImageHandle::from_nonnull(x),
-            _blob: blob,
+        NonNull::new(backfill::DYN_LIBRARY.fimg_init_raw(reference, &raw const desc)).map(|x| {
+            RawBackfillImage {
+                image: backfill::FImageHandle::from_nonnull(x),
+                _blob: blob,
+            }
         })
     }
 }
@@ -348,7 +350,7 @@ pub fn convert_texture(
     let config = backfill::tex_config_from_image(image.handle(), bffmt).ok()?;
 
     unsafe {
-        NonNull::new(bffi::ftex_init(session.as_ptr(), config.as_ptr()))
+        NonNull::new(backfill::DYN_LIBRARY.ftex_init(session.as_ptr(), config.as_ptr()))
             .map(|x| backfill::FTextureHandle::from_nonnull(x))
     }
 }
@@ -421,14 +423,15 @@ pub fn convert_material(
     backfill::material_set_rm(&bmat, material.perceptual_roughness, material.metallic);
 
     unsafe {
-        bffi::fmaterial_set_ior(bmat.as_ptr(), material.ior);
+        backfill::DYN_LIBRARY.fmaterial_set_ior(bmat.as_ptr(), material.ior);
 
         if needs_clearcoat {
-            bffi::fmaterial_set_clearcoat(bmat.as_ptr(), material.clearcoat);
+            backfill::DYN_LIBRARY.fmaterial_set_clearcoat(bmat.as_ptr(), material.clearcoat);
         }
 
         if needs_transmission {
-            bffi::fmaterial_set_transmission(bmat.as_ptr(), material.diffuse_transmission);
+            backfill::DYN_LIBRARY
+                .fmaterial_set_transmission(bmat.as_ptr(), material.diffuse_transmission);
         }
     }
 

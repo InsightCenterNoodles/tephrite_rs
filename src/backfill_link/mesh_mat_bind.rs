@@ -329,7 +329,7 @@ fn update_visibility(
     for (bent, vis) in query {
         //debug!("Update vis {vis:?}");
         unsafe {
-            backfill::ffi::fs_set_visible(session.0.as_ptr(), bent.0.into(), vis.get() as u8)
+            backfill::DYN_LIBRARY.fs_set_visible(session.0.as_ptr(), bent.0.into(), vis.get() as u8)
         };
     }
 }

@@ -1,8 +1,71 @@
-use std::{marker::PhantomData, ptr::NonNull, rc::Rc};
+use std::{
+    ffi::OsString, marker::PhantomData, path::PathBuf, ptr::NonNull, rc::Rc, sync::LazyLock,
+};
 
 #[allow(non_camel_case_types, non_upper_case_globals, non_snake_case, unused)]
-pub mod ffi {
-    include!(concat!(env!("OUT_DIR"), "/backfill_bindings.rs"));
+pub(crate) mod backfill_sys;
+
+pub(crate) use backfill_sys as ffi;
+
+const BACKFILL_ABI_VERSION: u32 = 0;
+
+pub static DYN_LIBRARY: LazyLock<ffi::BackfillDylib> = LazyLock::new(|| {
+    // find library
+
+    let library = find_library();
+    println!("Discovered backfill at {}", library.display());
+    let library = unsafe {
+        ffi::BackfillDylib::new(library)
+            .expect("Unable to import backfill library. Please report this to the developer.")
+    };
+
+    library
+});
+
+fn find_library() -> OsString {
+    let canon_name = format!("backfill-{BACKFILL_ABI_VERSION}");
+
+    // Pull in environment variables
+    use std::env;
+
+    let env_lib = env::var_os("BACKFILL_LIB_DIR").map(PathBuf::from);
+    let env_prefix = env::var_os("BACKFILL_DIR").map(PathBuf::from);
+
+    // Build candidate prefixes to scan
+    let mut prefixes: Vec<PathBuf> = vec![
+        PathBuf::from("/usr/local"),
+        PathBuf::from("/usr"),
+        PathBuf::from("/opt"),
+        PathBuf::from("/opt/local"),
+    ];
+    if let Some(h) = dirs::home_dir() {
+        prefixes.insert(0, h.join(".local"));
+    }
+    if let Some(p) = &env_prefix {
+        prefixes.insert(0, p.clone());
+    }
+    if let Some(p) = &env_lib {
+        prefixes.insert(0, p.clone());
+    }
+
+    // Resolve
+    for prefix in prefixes {
+        for libdir in ["", "lib", "lib64"].iter() {
+            let dir = prefix.join(libdir);
+            let b_lib = dir.join(format!("lib{}.dylib", canon_name));
+            if b_lib.exists() {
+                return b_lib.into();
+            }
+            let b_lib = dir.join(format!("lib{}.so", canon_name));
+            if b_lib.exists() {
+                return b_lib.into();
+            }
+        }
+    }
+
+    panic!(
+        "Unable to find backfill library. Please ensure it is installed in a discoverable location"
+    );
 }
 
 // Safety: These are designed to be PODs from the C side of things
@@ -109,7 +172,7 @@ macro_rules! opaque {
         }
         unsafe impl Releasable for $name {
             fn release(ptr: *mut Self::Raw) {
-                unsafe { ffi::$release(ptr) }
+                unsafe { DYN_LIBRARY.$release(ptr) }
             }
         }
         pub type $handle = Handle<$name>;
@@ -124,12 +187,12 @@ macro_rules! opaque_cloneable {
         }
         unsafe impl Releasable for $name {
             fn release(ptr: *mut Self::Raw) {
-                unsafe { ffi::$release(ptr) }
+                unsafe { DYN_LIBRARY.$release(ptr) }
             }
         }
         unsafe impl Retainable for $name {
             fn retain(ptr: *mut Self::Raw) {
-                unsafe { ffi::$retain(ptr) }
+                unsafe { DYN_LIBRARY.$retain(ptr) }
             }
         }
         pub type $handle = Handle<$name>;
@@ -168,7 +231,7 @@ struct FSessionInner {
 
 impl Drop for FSessionInner {
     fn drop(&mut self) {
-        unsafe { ffi::fs_destroy(self.ptr.as_ptr()) }
+        unsafe { DYN_LIBRARY.fs_destroy(self.ptr.as_ptr()) }
     }
 }
 
@@ -205,15 +268,16 @@ pub fn color(r: f32, g: f32, b: f32, a: f32) -> ffi::FColor {
 // MARK: Blob
 
 pub fn blob_from_slice(bytes: &[u8]) -> BackfillResult<FBlobHandle> {
-    let ptr =
-        unsafe { ffi::fblob_init_copy(bytes.as_ptr() as *const i8, bytes.len() as ffi::u64_) };
+    let ptr = unsafe {
+        DYN_LIBRARY.fblob_init_copy(bytes.as_ptr() as *const i8, bytes.len() as ffi::u64_)
+    };
     NonNull::new(ptr)
         .map(|p| unsafe { Handle::from_nonnull(p) })
         .ok_or(BackfillError::EmptyPointer)
 }
 
 pub fn blobref_whole(blob: &FBlobHandle) -> ffi::FBlobRef {
-    unsafe { ffi::fblobref_whole(blob.as_ptr()) }
+    unsafe { DYN_LIBRARY.fblobref_whole(blob.as_ptr()) }
 }
 
 // MARK: Image
@@ -231,7 +295,7 @@ pub fn tex_config_from_image(
     img: &FImageHandle,
     fmt: ffi::FTextureFormat,
 ) -> BackfillResult<FTextureConfigHandle> {
-    let ptr = unsafe { ffi::ftex_config_init(img.as_ptr(), fmt) };
+    let ptr = unsafe { DYN_LIBRARY.ftex_config_init(img.as_ptr(), fmt) };
     NonNull::new(ptr)
         .map(|p| unsafe { Handle::from_nonnull(p) })
         .ok_or(BackfillError::EmptyPointer)
@@ -241,7 +305,7 @@ pub fn texture_from_config(
     sess: &FSessionHandle,
     cfg: &FTextureConfigHandle,
 ) -> BackfillResult<FTextureHandle> {
-    let ptr = unsafe { ffi::ftex_init(sess.as_ptr(), cfg.as_ptr()) };
+    let ptr = unsafe { DYN_LIBRARY.ftex_init(sess.as_ptr(), cfg.as_ptr()) };
     NonNull::new(ptr)
         .map(|p| unsafe { Handle::from_nonnull_with_session(p, sess) })
         .ok_or(BackfillError::EmptyPointer)
@@ -253,7 +317,7 @@ pub fn env_light_from_equirect(
     sess: &FSessionHandle,
     tex: &FTextureHandle,
 ) -> BackfillResult<FEnvironmentLightHandle> {
-    let ptr = unsafe { ffi::fenv_light_init_equirect(sess.as_ptr(), tex.as_ptr()) };
+    let ptr = unsafe { DYN_LIBRARY.fenv_light_init_equirect(sess.as_ptr(), tex.as_ptr()) };
     NonNull::new(ptr)
         .map(|p| unsafe { Handle::from_nonnull_with_session(p, sess) })
         .ok_or(BackfillError::EmptyPointer)
@@ -261,7 +325,7 @@ pub fn env_light_from_equirect(
 
 impl FEnvironmentLightHandle {
     pub fn set_intensity(&self, intensity: f32) {
-        unsafe { ffi::fenv_set_intensity(self.as_ptr(), intensity) };
+        unsafe { DYN_LIBRARY.fenv_set_intensity(self.as_ptr(), intensity) };
     }
 }
 
@@ -277,7 +341,7 @@ pub struct BlobReference {
 impl BlobReference {
     pub fn whole(h: &Handle<FBlob>) -> Self {
         unsafe {
-            let r = ffi::fblobref_whole(h.as_ptr());
+            let r = DYN_LIBRARY.fblobref_whole(h.as_ptr());
             Self {
                 id: h.clone(),
                 start: r.start,
@@ -305,7 +369,7 @@ pub fn mesh_from_refs(
     bounds: ffi::aabb,
 ) -> BackfillResult<FMeshHandle> {
     let ptr = unsafe {
-        ffi::fmesh_init(
+        DYN_LIBRARY.fmesh_init(
             sess.as_ptr(),
             vref.internal(),
             vcount,
@@ -331,7 +395,7 @@ impl BSampler {
     pub fn new() -> Self {
         let mut x = std::mem::MaybeUninit::<ffi::Sampler>::zeroed();
 
-        unsafe { ffi::fsamp_init(x.as_mut_ptr()) };
+        unsafe { DYN_LIBRARY.fsamp_init(x.as_mut_ptr()) };
 
         Self {
             sampler: unsafe { x.assume_init() },
@@ -339,24 +403,24 @@ impl BSampler {
     }
 
     pub fn set_mag(&mut self, filter: ffi::FMagFilter) {
-        unsafe { ffi::fsamp_set_mag(&raw mut self.sampler, filter) };
+        unsafe { DYN_LIBRARY.fsamp_set_mag(&raw mut self.sampler, filter) };
     }
 
     pub fn set_min(&mut self, filter: ffi::FMinFilter) {
-        unsafe { ffi::fsamp_set_min(&raw mut self.sampler, filter) };
+        unsafe { DYN_LIBRARY.fsamp_set_min(&raw mut self.sampler, filter) };
     }
 
     pub fn set_wrap(&mut self, wrap: ffi::FWrapMode, axis: ffi::FTexAxis) {
-        unsafe { ffi::fsamp_set_wrap(&raw mut self.sampler, wrap, axis) };
+        unsafe { DYN_LIBRARY.fsamp_set_wrap(&raw mut self.sampler, wrap, axis) };
     }
 
     pub fn set_aniso(&mut self, levels: u8) {
-        unsafe { ffi::fsamp_set_aniso(&raw mut self.sampler, levels) };
+        unsafe { DYN_LIBRARY.fsamp_set_aniso(&raw mut self.sampler, levels) };
     }
 }
 
 pub fn material_config() -> BackfillResult<FMaterialConfigHandle> {
-    let ptr = unsafe { ffi::fmaterialconfig_init() };
+    let ptr = unsafe { DYN_LIBRARY.fmaterialconfig_init() };
     NonNull::new(ptr)
         .map(|p| unsafe { Handle::from_nonnull(p) })
         .ok_or(BackfillError::EmptyPointer)
@@ -364,7 +428,7 @@ pub fn material_config() -> BackfillResult<FMaterialConfigHandle> {
 
 impl FMaterialConfigHandle {
     pub fn set_option(&self, option: ffi::FMatOption, b: bool) {
-        unsafe { ffi::fmc_set_option(self.as_ptr(), option, b as u8) };
+        unsafe { DYN_LIBRARY.fmc_set_option(self.as_ptr(), option, b as u8) };
     }
 
     pub fn set_texture(
@@ -375,7 +439,7 @@ impl FMaterialConfigHandle {
         mut sampler: BSampler,
     ) {
         unsafe {
-            ffi::fmc_set_texture(
+            DYN_LIBRARY.fmc_set_texture(
                 self.as_ptr(),
                 semantic,
                 slot,
@@ -387,7 +451,7 @@ impl FMaterialConfigHandle {
 
     pub fn set_blend(&self, ty: ffi::FMatBlendType) {
         unsafe {
-            ffi::fmc_set_blend(self.as_ptr(), ty);
+            DYN_LIBRARY.fmc_set_blend(self.as_ptr(), ty);
         }
     }
 }
@@ -398,24 +462,24 @@ pub fn material(
     sess: &FSessionHandle,
     config: &FMaterialConfigHandle,
 ) -> Result<FMaterialHandle, ()> {
-    let ptr = unsafe { ffi::fmaterial_init(sess.as_ptr(), config.as_ptr()) };
+    let ptr = unsafe { DYN_LIBRARY.fmaterial_init(sess.as_ptr(), config.as_ptr()) };
     NonNull::new(ptr)
         .map(|p| unsafe { Handle::from_nonnull_with_session(p, sess) })
         .ok_or(())
 }
 
 pub fn material_set_base_color(mat: &FMaterialHandle, c: ffi::FColor) {
-    unsafe { ffi::fmaterial_set_base_color(mat.as_ptr(), c) }
+    unsafe { DYN_LIBRARY.fmaterial_set_base_color(mat.as_ptr(), c) }
 }
 
 pub fn material_set_rm(mat: &FMaterialHandle, roughness: f32, metallic: f32) {
-    unsafe { ffi::fmaterial_set_roughness_metallic(mat.as_ptr(), roughness, metallic) }
+    unsafe { DYN_LIBRARY.fmaterial_set_roughness_metallic(mat.as_ptr(), roughness, metallic) }
 }
 
 // MARK: Light
 
 pub fn light_config(ty: ffi::FLightType) -> BackfillResult<FLightConfigHandle> {
-    let ptr = unsafe { ffi::flightconfig_init(ty) };
+    let ptr = unsafe { DYN_LIBRARY.flightconfig_init(ty) };
     NonNull::new(ptr)
         .map(|p| unsafe { Handle::from_nonnull(p) })
         .ok_or(BackfillError::EmptyPointer)
@@ -428,16 +492,16 @@ pub fn light_set_point_defaults(
     falloff: f32,
 ) {
     unsafe {
-        ffi::flc_set_intensity(lc.as_ptr(), intensity);
-        ffi::flc_set_color(lc.as_ptr(), rgb);
-        ffi::flc_set_falloff(lc.as_ptr(), falloff);
+        DYN_LIBRARY.flc_set_intensity(lc.as_ptr(), intensity);
+        DYN_LIBRARY.flc_set_color(lc.as_ptr(), rgb);
+        DYN_LIBRARY.flc_set_falloff(lc.as_ptr(), falloff);
     }
 }
 
 // MARK: Session Config
 
 pub fn config() -> BackfillResult<FConfigHandle> {
-    let ptr = unsafe { ffi::fconfig_init() };
+    let ptr = unsafe { DYN_LIBRARY.fconfig_init() };
     NonNull::new(ptr)
         .map(|p| unsafe { Handle::from_nonnull(p) })
         .ok_or(BackfillError::EmptyPointer)
@@ -445,20 +509,20 @@ pub fn config() -> BackfillResult<FConfigHandle> {
 
 pub fn config_title(cfg: &FConfigHandle, title: &str) {
     let c = std::ffi::CString::new(title).unwrap();
-    unsafe { ffi::fconfig_set_title(cfg.as_ptr(), c.as_ptr()) }
+    unsafe { DYN_LIBRARY.fconfig_set_title(cfg.as_ptr(), c.as_ptr()) }
 }
 
 pub fn config_screen(cfg: &FConfigHandle, w: i32, h: i32) {
-    unsafe { ffi::fconfig_set_screen(cfg.as_ptr(), w, h) }
+    unsafe { DYN_LIBRARY.fconfig_set_screen(cfg.as_ptr(), w, h) }
 }
 
 pub fn config_display(cfg: &FConfigHandle, display: &str) {
     let c = std::ffi::CString::new(display).unwrap();
-    unsafe { ffi::fconfig_set_display(cfg.as_ptr(), c.as_ptr()) }
+    unsafe { DYN_LIBRARY.fconfig_set_display(cfg.as_ptr(), c.as_ptr()) }
 }
 
 pub fn session(cfg: &FConfigHandle) -> BackfillResult<FSessionHandle> {
-    let ptr = unsafe { ffi::fs_init(cfg.as_ptr()) };
+    let ptr = unsafe { DYN_LIBRARY.fs_init(cfg.as_ptr()) };
 
     NonNull::new(ptr)
         .map(|ptr| FSessionHandle {
@@ -479,11 +543,11 @@ impl From<EntityId> for i32 {
 }
 
 pub fn new_entity(sess: &FSessionHandle) -> EntityId {
-    EntityId(unsafe { ffi::fs_new_entity(sess.as_ptr()) })
+    EntityId(unsafe { DYN_LIBRARY.fs_new_entity(sess.as_ptr()) })
 }
 
 pub fn destroy_entity(sess: &FSessionHandle, id: EntityId) {
-    unsafe { ffi::fs_destroy_entity(sess.as_ptr(), id.0) }
+    unsafe { DYN_LIBRARY.fs_destroy_entity(sess.as_ptr(), id.0) }
 }
 
 pub fn add_renderable(
@@ -492,31 +556,33 @@ pub fn add_renderable(
     mesh: &FMeshHandle,
     mat: &FMaterialHandle,
 ) {
-    unsafe { ffi::fs_add_renderable(sess.as_ptr(), id.0, mesh.as_ptr(), mat.as_ptr()) }
+    unsafe { DYN_LIBRARY.fs_add_renderable(sess.as_ptr(), id.0, mesh.as_ptr(), mat.as_ptr()) }
 }
 
 pub fn set_transform(sess: &FSessionHandle, id: EntityId, m: &bevy::math::Mat4) {
     const _SIZE_OK: () = assert!(size_of::<ffi::mat4>() == size_of::<bevy::math::Mat4>());
-    unsafe { ffi::fs_set_transform(sess.as_ptr(), id.0, (m as *const _) as *const ffi::mat4) }
+    unsafe {
+        DYN_LIBRARY.fs_set_transform(sess.as_ptr(), id.0, (m as *const _) as *const ffi::mat4)
+    }
 }
 
 pub fn set_parent(sess: &FSessionHandle, child: EntityId, parent: EntityId) {
-    unsafe { ffi::fs_set_parent(sess.as_ptr(), child.0, parent.0) }
+    unsafe { DYN_LIBRARY.fs_set_parent(sess.as_ptr(), child.0, parent.0) }
 }
 
 pub fn update_head(sess: &FSessionHandle, pos: bevy::math::Vec3, rot: bevy::math::Quat) {
     let pos = pos.into();
     let rot = rot.into();
 
-    unsafe { ffi::fs_update_head(sess.as_ptr(), pos, rot) };
+    unsafe { DYN_LIBRARY.fs_update_head(sess.as_ptr(), pos, rot) };
 }
 
 pub fn set_environment_light(sess: &FSessionHandle, handle: &FEnvironmentLightHandle) {
-    unsafe { ffi::fs_set_environment_light(sess.as_ptr(), handle.as_ptr()) };
+    unsafe { DYN_LIBRARY.fs_set_environment_light(sess.as_ptr(), handle.as_ptr()) };
 }
 
 pub fn frame(sess: &FSessionHandle) -> bool {
-    unsafe { ffi::fs_frame(sess.as_ptr()) != 0 }
+    unsafe { DYN_LIBRARY.fs_frame(sess.as_ptr()) != 0 }
 }
 
 // MARK: Conversions

@@ -19,12 +19,12 @@ impl Plugin for LightBindingPlugin {
 
 fn install_directional_light(l: &DirectionalLight, b: &BEntity, session: &Session) {
     let handle = unsafe {
-        let ptr = ffi::flightconfig_init(ffi::FLightType_DIRECTIONAL);
+        let ptr = backfill::DYN_LIBRARY.flightconfig_init(ffi::FLightType_DIRECTIONAL);
 
-        ffi::flc_set_color(ptr, l.color.into());
-        ffi::flc_set_falloff(ptr, 10000.0);
+        backfill::DYN_LIBRARY.flc_set_color(ptr, l.color.into());
+        backfill::DYN_LIBRARY.flc_set_falloff(ptr, 10000.0);
 
-        ffi::flc_set_direction(
+        backfill::DYN_LIBRARY.flc_set_direction(
             ptr,
             float3 {
                 x: 0.0,
@@ -33,26 +33,26 @@ fn install_directional_light(l: &DirectionalLight, b: &BEntity, session: &Sessio
             },
         );
 
-        ffi::flc_set_shadows(ptr, l.shadows_enabled.into());
+        backfill::DYN_LIBRARY.flc_set_shadows(ptr, l.shadows_enabled.into());
 
-        ffi::flc_set_intensity(ptr, l.illuminance);
+        backfill::DYN_LIBRARY.flc_set_intensity(ptr, l.illuminance);
 
         backfill::FLightConfigHandle::from_nonnull(NonNull::new(ptr).unwrap())
     };
 
     debug!("Adding light to {:?}", b.0);
 
-    unsafe { ffi::fs_add_light(session.0.as_ptr(), b.0.into(), handle.as_ptr()) };
+    unsafe { backfill::DYN_LIBRARY.fs_add_light(session.0.as_ptr(), b.0.into(), handle.as_ptr()) };
 }
 
 fn install_point_light(l: &PointLight, b: &BEntity, session: &Session) {
     let handle = unsafe {
-        let ptr = ffi::flightconfig_init(ffi::FLightType_POINT);
+        let ptr = backfill::DYN_LIBRARY.flightconfig_init(ffi::FLightType_POINT);
 
-        ffi::flc_set_color(ptr, l.color.into());
-        ffi::flc_set_falloff(ptr, 10000.0);
+        backfill::DYN_LIBRARY.flc_set_color(ptr, l.color.into());
+        backfill::DYN_LIBRARY.flc_set_falloff(ptr, 10000.0);
 
-        ffi::flc_set_direction(
+        backfill::DYN_LIBRARY.flc_set_direction(
             ptr,
             float3 {
                 x: 0.0,
@@ -61,16 +61,16 @@ fn install_point_light(l: &PointLight, b: &BEntity, session: &Session) {
             },
         );
 
-        ffi::flc_set_shadows(ptr, l.shadows_enabled.into());
+        backfill::DYN_LIBRARY.flc_set_shadows(ptr, l.shadows_enabled.into());
 
-        ffi::flc_set_intensity(ptr, l.intensity);
+        backfill::DYN_LIBRARY.flc_set_intensity(ptr, l.intensity);
 
         backfill::FLightConfigHandle::from_nonnull(NonNull::new(ptr).unwrap())
     };
 
     debug!("Adding light to {:?}", b.0);
 
-    unsafe { ffi::fs_add_light(session.0.as_ptr(), b.0.into(), handle.as_ptr()) };
+    unsafe { backfill::DYN_LIBRARY.fs_add_light(session.0.as_ptr(), b.0.into(), handle.as_ptr()) };
 }
 
 fn check_add(

@@ -59,14 +59,14 @@ fn setup_session(app: &mut App) {
 
         if child_config.debug_renderer {
             unsafe {
-                bffi::fconfig_set_log_debug(config.as_ptr(), 1);
+                backfill::DYN_LIBRARY.fconfig_set_log_debug(config.as_ptr(), 1);
             }
         }
 
         if child_config.use_offaxis {
             unsafe {
-                bffi::fconfig_set_offaxis_plane(config.as_ptr(), &plane);
-                bffi::fconfig_set_stereo_eye(
+                backfill::DYN_LIBRARY.fconfig_set_offaxis_plane(config.as_ptr(), &plane);
+                backfill::DYN_LIBRARY.fconfig_set_stereo_eye(
                     config.as_ptr(),
                     if child_config.is_right {
                         bffi::FEye_EYE_RIGHT
@@ -79,7 +79,7 @@ fn setup_session(app: &mut App) {
 
         unsafe {
             if child_config.fullscreen {
-                bffi::fconfig_set_fullscreen(config.as_ptr(), 1);
+                backfill::DYN_LIBRARY.fconfig_set_fullscreen(config.as_ptr(), 1);
             }
         };
 
@@ -90,7 +90,7 @@ fn setup_session(app: &mut App) {
                 "vulkan" => bffi::FRenderer_R_VULKAN,
                 x => panic!("Unknown graphics API {x}"),
             };
-            unsafe { bffi::fconfig_set_renderer(config.as_ptr(), api) };
+            unsafe { backfill::DYN_LIBRARY.fconfig_set_renderer(config.as_ptr(), api) };
         }
 
         if let Some(d) = &child_config.display_name {
@@ -100,17 +100,17 @@ fn setup_session(app: &mut App) {
 
         if let Some(index) = &child_config.card_index {
             debug!("Setting card index to {index}");
-            unsafe { bffi::fconfig_set_device(config.as_ptr(), (*index) as i32) };
+            unsafe { backfill::DYN_LIBRARY.fconfig_set_device(config.as_ptr(), (*index) as i32) };
         }
 
-        unsafe { bffi::fconfig_set_ssao(config.as_ptr(), 1) };
+        unsafe { backfill::DYN_LIBRARY.fconfig_set_ssao(config.as_ptr(), 1) };
 
         backfill::session(&config).unwrap()
     };
 
     unsafe {
-        bffi::fs_set_postprocess(session.as_ptr(), 1);
-        bffi::fs_set_skybox_color(
+        backfill::DYN_LIBRARY.fs_set_postprocess(session.as_ptr(), 1);
+        backfill::DYN_LIBRARY.fs_set_skybox_color(
             session.as_ptr(),
             bffi::FColor {
                 r: 0.1,
