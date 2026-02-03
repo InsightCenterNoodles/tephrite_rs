@@ -3,7 +3,7 @@ use std::process::Child;
 use bevy::{app::App, prelude::*};
 
 use crate::{
-    common::Head, config::get_logic_configuration, input::Interactor,
+    common::Head, config::get_logic_configuration, input::Interactor, input::InteractorState,
     multiprocess::app::make_common_app, prelude::Replicated, vrpn::VRPNObject,
 };
 
@@ -91,7 +91,12 @@ fn setup_tracked_head(mut commands: Commands) {
     }
 
     if let Some(js) = &config.vrpn_config.joystick {
-        commands.spawn((Transform::default(), Interactor, VRPNObject(js.clone())));
+        commands.spawn((
+            Transform::default(),
+            Interactor,
+            InteractorState::default(),
+            VRPNObject(js.clone()),
+        ));
     }
 }
 

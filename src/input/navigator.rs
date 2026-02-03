@@ -43,10 +43,7 @@ fn on_tick(
         (&mut Transform, Option<&ChildOf>),
         (With<NavigatorMarker>, Without<Interactor>),
     >,
-    mut joystick: Query<
-        (Entity, &mut Transform, &GlobalTransform, &InteractorState),
-        With<Interactor>,
-    >,
+    mut joystick: Query<(&GlobalTransform, &InteractorState), With<Interactor>>,
     parents: Query<&GlobalTransform>,
     settings: Res<NavigatorSettings>,
     time: Res<Time>,
@@ -56,7 +53,7 @@ fn on_tick(
     };
 
     // TODO: will fail if we add more interactors
-    let Ok((joy_e, joystick_tf, joystick_global_tf, state)) = joystick.single_mut() else {
+    let Ok((joystick_global_tf, state)) = joystick.single_mut() else {
         return;
     };
 
