@@ -363,7 +363,7 @@ pub fn convert_material(
     let mut config = backfill::material_config().ok()?;
 
     let needs_clearcoat = material.clearcoat > 0.0;
-    let needs_transmission = material.diffuse_transmission > 0.0;
+    let needs_transmission = material.specular_transmission > 0.0;
 
     if needs_clearcoat {
         config.set_option(backfill::ffi::FMatOption_CLEARCOAT, true);
@@ -431,7 +431,7 @@ pub fn convert_material(
 
         if needs_transmission {
             backfill::DYN_LIBRARY
-                .fmaterial_set_transmission(bmat.as_ptr(), material.diffuse_transmission);
+                .fmaterial_set_transmission(bmat.as_ptr(), material.specular_transmission);
         }
     }
 
