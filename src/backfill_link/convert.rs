@@ -420,6 +420,26 @@ pub fn convert_material(
         },
     );
 
+    unsafe {
+        pub fn split_color_max(c: LinearRgba) -> (Vec3, f32) {
+            let rgb = Vec3::new(c.red, c.green, c.blue);
+
+            let strength = rgb.max_element();
+
+            if strength > 0.0 {
+                (rgb / strength, strength)
+            } else {
+                (Vec3::ZERO, 0.0)
+            }
+        }
+
+        if material.emissive != LinearRgba::BLACK {
+            let (factor, strength) = split_color_max(material.emissive);
+
+            backfill::DYN_LIBRARY.fmaterial_set_emissive(bmat.as_ptr(), strength, factor.into());
+        }
+    }
+
     backfill::material_set_rm(&bmat, material.perceptual_roughness, material.metallic);
 
     unsafe {
