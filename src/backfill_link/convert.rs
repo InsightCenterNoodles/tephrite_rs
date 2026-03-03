@@ -261,6 +261,7 @@ pub fn is_image_float(texture: &Image) -> Option<bool> {
         | TextureFormat::EacR11Snorm
         | TextureFormat::EacRg11Unorm
         | TextureFormat::EacRg11Snorm
+        | TextureFormat::P010
         | TextureFormat::Astc {
             block: _,
             channel: _,
