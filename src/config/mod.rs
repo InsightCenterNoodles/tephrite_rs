@@ -265,10 +265,8 @@ fn build_child_config() -> RenderConfiguration {
             .as_ref()
             .map(|x| x.fullscreen)
             .unwrap_or_default(),
-        is_right: this_screen
-            .as_ref()
-            .map(|x| x.is_right)
-            .or(mono_override)
+        is_right: mono_override
+            .or(this_screen.as_ref().map(|x| x.is_right))
             .unwrap_or_default(),
         display_name: this_screen.and_then(|x| x.x_display),
         display_physical: this_display
