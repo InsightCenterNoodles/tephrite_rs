@@ -253,6 +253,8 @@ fn build_child_config() -> RenderConfiguration {
         .map(|x| x.resolution.into())
         .unwrap_or_else(|| uvec2(1920, 1200));
 
+    let mono_override = std::env::var("TEPH_MONO").ok().map(|_| false);
+
     RenderConfiguration {
         use_offaxis: use_offaxis.unwrap_or_default(),
         debug_renderer: debug_renderer.unwrap_or_default(),
@@ -263,7 +265,11 @@ fn build_child_config() -> RenderConfiguration {
             .as_ref()
             .map(|x| x.fullscreen)
             .unwrap_or_default(),
-        is_right: this_screen.as_ref().map(|x| x.is_right).unwrap_or_default(),
+        is_right: this_screen
+            .as_ref()
+            .map(|x| x.is_right)
+            .or(mono_override)
+            .unwrap_or_default(),
         display_name: this_screen.and_then(|x| x.x_display),
         display_physical: this_display
             .map(|x| DisplayPhysical {
