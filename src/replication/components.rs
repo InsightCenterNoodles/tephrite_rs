@@ -19,7 +19,7 @@ use bevy::{app::Propagate, camera::visibility::*, ecs::bundle::Bundle, prelude::
 /// # }
 /// ```
 /// TODO: move to HierarchyPropagatePlugin
-#[derive(Component, Debug, Clone, Copy, PartialEq)]
+#[derive(Component, Debug, Default, Clone, Copy, PartialEq)]
 #[component(immutable)]
 #[require(Visibility, InheritedVisibility)]
 pub struct Replicated;

@@ -209,6 +209,7 @@ impl FastRead for Entity {
     }
 }
 
+// ==================================================================
 // MARK: Client side
 
 /// An instruction where a component has been added to an entity.

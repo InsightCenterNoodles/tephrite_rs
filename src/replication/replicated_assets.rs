@@ -6,8 +6,6 @@ use bevy::prelude::*;
 
 use crate::serialize::create_serialize_enum;
 
-// TODO: The standard mat makes the enum explode in size
-
 macro_rules! make_change_detection {
     ($app:ident, $A:tt, $P:expr) => {
         $app.add_systems(
@@ -64,7 +62,7 @@ macro_rules! make_change_detection {
                         AssetEvent::Unused { id: _ } => {
                             // handled
                         }
-                        AssetEvent::LoadedWithDependencies { id } => {
+                        AssetEvent::LoadedWithDependencies { id: _ } => {
                             //warn!("COMPLETE ASSET {id:?}");
                             // let asset = assets.get(*id).expect("obtaining changed asset");
 

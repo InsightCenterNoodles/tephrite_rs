@@ -5,7 +5,10 @@
 //! computed or overwritten by Bevy at runtime.
 use bevy::prelude::*;
 
-use crate::{common::Head, serialize::*};
+use crate::{
+    common::{Head, SimulatorCamera3d},
+    serialize::*,
+};
 
 // =============================================================================
 
@@ -38,21 +41,7 @@ impl FastRead for Head {
 
 // =============================================================================
 
-// UNNEEDED??
-
-// impl FastWrite for GlobalTransform {
-//     unsafe fn write_fast(&self, w: &mut crate::serialize::fast_io::ByteWriter) {
-//         self.affine().serialize(w);
-//     }
-// }
-// impl FastRead for GlobalTransform {
-//     type Ret = Self;
-//     unsafe fn read_fast(r: &mut crate::serialize::fast_io::ByteReader) -> Self {
-//         // we read BUT DO NOT USE. Bevy will overwrite
-//         let _: Affine3A = deserialize(r);
-//         GlobalTransform::IDENTITY
-//     }
-// }
+impl_fast_raw_item!(SimulatorCamera3d);
 
 // =============================================================================
 

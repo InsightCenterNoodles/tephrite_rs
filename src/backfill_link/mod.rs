@@ -7,6 +7,7 @@ pub(crate) mod lighting;
 pub(crate) mod mesh_mat_bind;
 pub(crate) mod resources;
 pub(crate) mod sets;
+pub(crate) mod simulator;
 pub(crate) mod transform;
 
 use bevy::prelude::*;

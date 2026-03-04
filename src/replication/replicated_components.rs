@@ -5,6 +5,7 @@ use bevy::prelude::*;
 
 use crate::common::Head;
 
+use crate::common::SimulatorCamera3d;
 use crate::serialize::transcript_writer::*;
 use crate::serialize::*;
 
@@ -168,5 +169,6 @@ detect_component_changes!(
     (5, SpotLight),
     (6, Mesh3d),
     (7, StandardMatComponent),
-    (8, InheritedVisibility)
+    (8, InheritedVisibility),
+    (9, SimulatorCamera3d)
 );

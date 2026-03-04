@@ -306,7 +306,7 @@ pub fn get_logic_configuration() -> &'static LogicConfiguration {
             screens,
         } = file::load_config()
             .inspect_err(|x| warn!("Unable to load configuration file: {x}"))
-            .ok()?;
+            .unwrap_or_default();
 
         Some(LogicConfiguration {
             debug_renderer: debug_renderer.unwrap_or_default(),

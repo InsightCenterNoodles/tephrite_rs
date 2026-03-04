@@ -5,7 +5,7 @@
 //! implicit asset loads in the receiving process.
 use std::fmt::Debug;
 
-use bevy::{asset::uuid::Uuid, platform::collections::HashMap, prelude::*};
+use bevy::{platform::collections::HashMap, prelude::*};
 
 use crate::serialize::*;
 
