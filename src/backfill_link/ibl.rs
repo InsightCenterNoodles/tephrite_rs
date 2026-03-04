@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use crate::{
     backfill,
-    backfill_link::{assets::AssetCache, resources::Session},
+    backfill_link::{assets::AssetCache, resources::Session, sets::RenderableSet},
     common::EnvironmentLighting,
 };
 
@@ -12,8 +12,10 @@ impl Plugin for EnvironmentLightPlugin {
     fn build(&self, app: &mut App) {
         app.init_non_send_resource::<IBLResource>();
         app.add_systems(
-            Update,
-            (watch_for_ibl_updates, watch_for_ibl_remove).chain(),
+            PostUpdate,
+            (watch_for_ibl_updates, watch_for_ibl_remove)
+                .chain()
+                .in_set(RenderableSet::Refresh),
         );
     }
 }
@@ -35,9 +37,11 @@ fn watch_for_ibl_updates(
 
     if !ftex_assets.contains(&query.equirect) {
         error!("Environment map is not available");
+        return;
     }
 
     let Some(asset) = cache.textures.get(&query.equirect.id()) else {
+        error!("Environment map is not mapped");
         return;
     };
 
