@@ -22,6 +22,7 @@ fn watch_for_ibl_updates(
     query: Option<Res<EnvironmentLighting>>,
     cache: NonSend<AssetCache>,
     session: NonSend<Session>,
+    ftex_assets: Res<Assets<Image>>,
     mut ibl: NonSendMut<IBLResource>,
 ) {
     let Some(query) = query else {
@@ -30,6 +31,10 @@ fn watch_for_ibl_updates(
 
     if !query.is_changed() {
         return;
+    }
+
+    if !ftex_assets.contains(&query.equirect) {
+        error!("Environment map is not available");
     }
 
     let Some(asset) = cache.textures.get(&query.equirect.id()) else {
