@@ -14,6 +14,7 @@ pub mod prelude {
     pub use super::run;
     pub use crate::common::EnvironmentLighting;
     pub use crate::common::Head;
+    pub use crate::common::SimulatorCamera3d;
     pub use crate::replication::components::PropagateReplication;
     pub use crate::replication::components::Replicated;
 

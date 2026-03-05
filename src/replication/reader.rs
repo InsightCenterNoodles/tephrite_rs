@@ -34,6 +34,10 @@ impl EntityMap {
         *self.0.get(&foreign).expect("unknown entity")
     }
 
+    fn map_opt(&self, foreign: Entity) -> Option<Entity> {
+        self.0.get(&foreign).copied()
+    }
+
     fn map_remove(&mut self, foreign: Entity) -> Entity {
         self.0.remove(&foreign).expect("unknown entity")
     }
@@ -160,8 +164,15 @@ fn consume_buffer(
                 let child_local = map.map(item.child);
                 match item.new_parent {
                     Some(parent) => {
-                        let parent_local = map.map(parent);
-                        commands.entity(parent_local).add_child(child_local);
+                        if let Some(parent_local) = map.map_opt(parent) {
+                            commands.entity(parent_local).add_child(child_local);
+                        } else {
+                            warn!(
+                                "Skipping hierarchy parent {:?} for child {:?}: parent not mapped",
+                                parent, item.child
+                            );
+                            commands.entity(child_local).remove::<ChildOf>();
+                        }
                     }
                     None => {
                         commands.entity(child_local).remove::<ChildOf>();
