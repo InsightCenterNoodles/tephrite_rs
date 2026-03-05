@@ -1,22 +1,32 @@
+use bevy::app::{HierarchyPropagatePlugin, Inherited, Propagate, PropagateSet};
 use bevy::prelude::*;
 
 use super::components::*;
 use crate::backfill;
 
-// --- plugin to register systems ---
-// TODO: Move to HierarchyPropagatePlugin
 pub struct ReplicationPlugin;
 
 impl Plugin for ReplicationPlugin {
     fn build(&self, app: &mut App) {
+        app.add_plugins(HierarchyPropagatePlugin::<BReplicate>::new(PostUpdate));
+
+        app.configure_sets(
+            PostUpdate,
+            super::sets::ReplicateSet::Entity.before(PropagateSet::<BReplicate>::default()),
+        );
+        app.configure_sets(
+            PostUpdate,
+            super::sets::ReplicateSet::Propagate.after(PropagateSet::<BReplicate>::default()),
+        );
+
         app.add_systems(
             PostUpdate,
-            (
-                on_breplicate_added_propagate_to_children,
-                on_childof_added_inherit_breplicate,
-            )
-                .chain()
-                .in_set(super::sets::ReplicateSet::Entity),
+            mark_explicit_breplicate_sources.in_set(super::sets::ReplicateSet::Entity),
+        );
+
+        app.add_systems(
+            PostUpdate,
+            on_breplicate_added_ensure_bentity.in_set(super::sets::ReplicateSet::Propagate),
         );
 
         app.add_observer(on_remove);
@@ -38,117 +48,47 @@ fn on_remove(
     backfill::destroy_entity(&session.0, q.0);
 }
 
-// ---- system #1: react to Added<BReplicate> on any entity ----
-
-fn on_breplicate_added_propagate_to_children(
+// Keep existing API ergonomics: adding BReplicate directly marks this entity
+// as a propagation source for descendants.
+fn mark_explicit_breplicate_sources(
     mut commands: Commands,
-    // entities that *just* got BReplicate
+    newly_replicated: Query<
+        Entity,
+        (
+            Added<BReplicate>,
+            Without<Propagate<BReplicate>>,
+            Without<Inherited<BReplicate>>,
+        ),
+    >,
+) {
+    for entity in newly_replicated.iter() {
+        commands.entity(entity).insert(Propagate(BReplicate));
+    }
+}
+
+fn on_breplicate_added_ensure_bentity(
+    mut commands: Commands,
     newly_replicated: Query<Entity, Added<BReplicate>>,
-    // read-only access to hierarchy
-    children_q: Query<&Children>,
-    // quick presence checks
-    has_breplicate: Query<(), With<BReplicate>>,
     has_bentity: Query<(), With<BEntity>>,
     session: NonSend<super::resources::Session>,
 ) {
     let mut next_id = || backfill::new_entity(&session.0);
-    on_breplicate_added_propagate_to_children_with_allocator(
+    on_breplicate_added_ensure_bentity_with_allocator(
         &mut commands,
         &newly_replicated,
-        &children_q,
-        &has_breplicate,
         &has_bentity,
         &mut next_id,
     );
 }
 
-// ---- system #2: react to Added<ChildOf> so late-added children inherit ----
-
-fn on_childof_added_inherit_breplicate(
-    mut commands: Commands,
-    // (child, parent) edges that *just* appeared
-    added_edges: Query<(Entity, &ChildOf), Added<ChildOf>>,
-    // for looking up siblings/descendants once child is known
-    children_q: Query<&Children>,
-    // presence checks
-    has_breplicate: Query<(), With<BReplicate>>,
-    has_bentity: Query<(), With<BEntity>>,
-    session: NonSend<super::resources::Session>,
-) {
-    let mut next_id = || backfill::new_entity(&session.0);
-    on_childof_added_inherit_breplicate_with_allocator(
-        &mut commands,
-        &added_edges,
-        &children_q,
-        &has_breplicate,
-        &has_bentity,
-        &mut next_id,
-    );
-}
-
-fn on_breplicate_added_propagate_to_children_with_allocator(
+fn on_breplicate_added_ensure_bentity_with_allocator(
     commands: &mut Commands,
     newly_replicated: &Query<Entity, Added<BReplicate>>,
-    children_q: &Query<&Children>,
-    has_breplicate: &Query<(), With<BReplicate>>,
     has_bentity: &Query<(), With<BEntity>>,
     next_id: &mut impl FnMut() -> backfill::EntityId,
 ) {
-    for root in newly_replicated.iter() {
-        // ensure the root also has a BEntity
-        ensure_bentity(commands, root, has_bentity, next_id);
-
-        // recursively push BReplicate (and BEntity) to all descendants
-        propagate_down(
-            root,
-            commands,
-            children_q,
-            has_breplicate,
-            has_bentity,
-            next_id,
-        );
-    }
-}
-
-fn on_childof_added_inherit_breplicate_with_allocator(
-    commands: &mut Commands,
-    added_edges: &Query<(Entity, &ChildOf), Added<ChildOf>>,
-    children_q: &Query<&Children>,
-    has_breplicate: &Query<(), With<BReplicate>>,
-    has_bentity: &Query<(), With<BEntity>>,
-    next_id: &mut impl FnMut() -> backfill::EntityId,
-) {
-    for (child, rel) in added_edges.iter() {
-        let parent = rel.parent(); // the parent Entity
-
-        // if parent is replicated, ensure child (and its subtree) inherits
-        if has_breplicate.contains(parent) {
-            // add to this child
-            ensure_breplicate(commands, child, has_breplicate);
-            ensure_bentity(commands, child, has_bentity, next_id);
-
-            // then propagate further down from that child
-            propagate_down(
-                child,
-                commands,
-                children_q,
-                has_breplicate,
-                has_bentity,
-                next_id,
-            );
-        }
-    }
-}
-
-// ---- helpers ----
-
-fn ensure_breplicate(
-    commands: &mut Commands,
-    entity: Entity,
-    has_breplicate: &Query<(), With<BReplicate>>,
-) {
-    if !has_breplicate.contains(entity) {
-        commands.entity(entity).insert(BReplicate);
+    for entity in newly_replicated.iter() {
+        ensure_bentity(commands, entity, has_bentity, next_id);
     }
 }
 
@@ -165,36 +105,6 @@ fn ensure_bentity(
     }
 }
 
-/// Depth-first walk from `start`, adding `BReplicate` and `BEntity` to all descendants.
-/// Uses `Children` to find descendants; safe if there are none.
-fn propagate_down(
-    start: Entity,
-    commands: &mut Commands,
-    children_q: &Query<&Children>,
-    has_breplicate: &Query<(), With<BReplicate>>,
-    has_bentity: &Query<(), With<BEntity>>,
-    next_id: &mut impl FnMut() -> backfill::EntityId,
-) {
-    // iterative DFS to avoid deep recursion on big trees
-    let mut stack = Vec::new();
-
-    // seed stack with direct children of `start`
-    if let Ok(children) = children_q.get(start) {
-        stack.extend(children.iter());
-    }
-
-    while let Some(e) = stack.pop() {
-        // ensure both components
-        ensure_breplicate(commands, e, has_breplicate);
-        ensure_bentity(commands, e, has_bentity, next_id);
-
-        // push this entity's children
-        if let Ok(children) = children_q.get(e) {
-            stack.extend(children.iter());
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -208,37 +118,31 @@ mod tests {
         out
     }
 
-    fn test_on_breplicate_added_propagate_to_children(
+    fn test_mark_explicit_breplicate_sources(
         mut commands: Commands,
-        newly_replicated: Query<Entity, Added<BReplicate>>,
-        children_q: Query<&Children>,
-        has_breplicate: Query<(), With<BReplicate>>,
-        has_bentity: Query<(), With<BEntity>>,
-        mut ids: ResMut<TestIdSource>,
+        newly_replicated: Query<
+            Entity,
+            (
+                Added<BReplicate>,
+                Without<Propagate<BReplicate>>,
+                Without<Inherited<BReplicate>>,
+            ),
+        >,
     ) {
-        on_breplicate_added_propagate_to_children_with_allocator(
-            &mut commands,
-            &newly_replicated,
-            &children_q,
-            &has_breplicate,
-            &has_bentity,
-            &mut || next_id(&mut ids),
-        );
+        for entity in newly_replicated.iter() {
+            commands.entity(entity).insert(Propagate(BReplicate));
+        }
     }
 
-    fn test_on_childof_added_inherit_breplicate(
+    fn test_on_breplicate_added_ensure_bentity(
         mut commands: Commands,
-        added_edges: Query<(Entity, &ChildOf), Added<ChildOf>>,
-        children_q: Query<&Children>,
-        has_breplicate: Query<(), With<BReplicate>>,
+        newly_replicated: Query<Entity, Added<BReplicate>>,
         has_bentity: Query<(), With<BEntity>>,
         mut ids: ResMut<TestIdSource>,
     ) {
-        on_childof_added_inherit_breplicate_with_allocator(
+        on_breplicate_added_ensure_bentity_with_allocator(
             &mut commands,
-            &added_edges,
-            &children_q,
-            &has_breplicate,
+            &newly_replicated,
             &has_bentity,
             &mut || next_id(&mut ids),
         );
@@ -247,13 +151,14 @@ mod tests {
     fn app_with_test_systems() -> App {
         let mut app = App::new();
         app.insert_resource(TestIdSource::default());
+        app.add_plugins(HierarchyPropagatePlugin::<BReplicate>::new(PostUpdate));
         app.add_systems(
             PostUpdate,
-            (
-                test_on_breplicate_added_propagate_to_children,
-                test_on_childof_added_inherit_breplicate,
-            )
-                .chain(),
+            test_mark_explicit_breplicate_sources.before(PropagateSet::<BReplicate>::default()),
+        );
+        app.add_systems(
+            PostUpdate,
+            test_on_breplicate_added_ensure_bentity.after(PropagateSet::<BReplicate>::default()),
         );
         app
     }
@@ -307,5 +212,24 @@ mod tests {
         let world = app.world();
         assert!(!world.entity(child).contains::<BReplicate>());
         assert!(!world.entity(child).contains::<BEntity>());
+    }
+
+    #[test]
+    fn reparented_entity_out_of_tree_loses_breplicate() {
+        let mut app = app_with_test_systems();
+
+        let replicated_root = app.world_mut().spawn(BReplicate).id();
+        let other_root = app.world_mut().spawn_empty().id();
+        let child = app.world_mut().spawn(ChildOf(replicated_root)).id();
+
+        app.update();
+        assert!(app.world().entity(child).contains::<BReplicate>());
+
+        app.world_mut()
+            .entity_mut(child)
+            .insert(ChildOf(other_root));
+        app.update();
+
+        assert!(!app.world().entity(child).contains::<BReplicate>());
     }
 }
