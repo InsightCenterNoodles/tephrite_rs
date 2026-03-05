@@ -25,6 +25,8 @@ pub(crate) fn setup() -> App {
 
     app.add_plugins(crate::vrpn::VRPNPlugin);
 
+    app.add_plugins(crate::remote_control::RemoteControlPlugin::default());
+
     app.add_plugins(crate::replication::ReplicationWriterPlugin::new(
         child_count,
     ));
