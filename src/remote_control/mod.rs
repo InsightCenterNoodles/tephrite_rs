@@ -1,13 +1,46 @@
-//! Minimal in-process remote control webserver.
+//! Minimal in-process remote control webserver for Bevy apps.
 //!
-//! This module is intentionally barebones for internal tooling:
-//! - no authentication
-//! - static control list configured at startup
-//! - updates are forwarded over an `mpsc` channel
+//! 1. Add [`RemoteControlPlugin`]. This is usually done automatically by Tephrite.
+//! 2. Initialize or fetch [`RemoteControlDefinitions`].
+//! 3. Push one [`PropertyDefinition`] per controllable property.
+//! 4. Observe [`RemoteControlEvent`] on those property entities.
+//! 5. In the observer, mutate your world state/components based on `event.value`.
 //!
-//! The caller supplies a list of properties keyed by `Entity` handles.
-//! A control web page is served, and user interactions produce
-//! [`RemoteControlEvent`] values.
+//! # Example
+//! ```ignore
+//! use bevy::prelude::*;
+//! use tephrite_rs::remote_control::prelude::*;
+//!
+//! fn setup(mut commands: Commands, mut defs: ResMut<RemoteControlDefinitions>) {
+//!     let speed_property = commands.spawn_empty().id();
+//!     defs.push(PropertyDefinition {
+//!         id: speed_property,
+//!         label: "Speed".into(),
+//!         control: PropertyControl::Slider {
+//!             min: 0.0,
+//!             max: 20.0,
+//!             step: 0.1,
+//!             initial: 5.0,
+//!         },
+//!     });
+//!
+//!     commands
+//!         .entity(speed_property)
+//!         .observe(|trigger: On<RemoteControlEvent>, mut query: Query<&mut Transform>| {
+//!             if let Ok(mut tf) = query.get_mut(trigger.entity()) {
+//!                 if let PropertyValue::Float(v) = trigger.event().value {
+//!                     tf.translation.x = v;
+//!                 }
+//!             }
+//!         });
+//! }
+//!
+//! App::new()
+//!     .add_plugins(DefaultPlugins)
+//!     .init_resource::<RemoteControlDefinitions>()
+//!     .add_plugins(RemoteControlPlugin::default())
+//!     .add_systems(Startup, setup);
+//! ```
 
 pub(crate) mod common;
 pub(crate) mod content;
@@ -21,15 +54,39 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 
-use crate::remote_control::property::parse_property_value;
+use crate::remote_control::events::{RemoteControlEvent, RemoteControlEventInternal};
+use crate::remote_control::property::{PropertyDefinition, parse_property_value};
 
+/// Startup definitions consumed by [`RemoteControlPlugin`] to build the control page.
+///
+/// Typical setup:
+/// - call `app.init_resource::<RemoteControlDefinitions>()`
+/// - in startup systems, push [`PropertyDefinition`] entries into this resource
+/// - add observers on each property entity for [`events::RemoteControlEvent`]
 #[derive(Debug, Default, Resource)]
-pub struct RemoteControlDefinitions(pub Vec<property::PropertyDefinition>);
+pub struct RemoteControlDefinitions(pub Vec<PropertyDefinition>);
+
+impl RemoteControlDefinitions {
+    /// Add one property definition to be exposed on the remote control page.
+    pub fn push(&mut self, definition: PropertyDefinition) {
+        self.0.push(definition);
+    }
+
+    /// Extend the exposed property list.
+    pub fn extend(&mut self, definitions: impl IntoIterator<Item = PropertyDefinition>) {
+        self.0.extend(definitions);
+    }
+}
 
 #[derive(Debug, Default, Resource)]
 pub struct RemoteControlOpts(String);
 
+/// Bevy plugin that hosts the local remote-control HTTP endpoint.
+///
+/// The plugin snapshots [`RemoteControlDefinitions`] during `PostStartup`.
+/// Definitions added after startup are not reflected until next app launch.
 pub struct RemoteControlPlugin {
+    /// HTTP bind address for the control page (for example `127.0.0.1:8081`).
     pub bind_addr: String,
 }
 
@@ -43,10 +100,10 @@ impl Default for RemoteControlPlugin {
 
 impl Plugin for RemoteControlPlugin {
     fn build(&self, app: &mut bevy::app::App) {
-        app.add_message::<events::RemoteControlMessage>();
         app.insert_resource(RemoteControlOpts(self.bind_addr.clone()));
         app.add_systems(PostStartup, post_start);
         app.add_systems(Update, server_poll);
+        app.add_observer(bounce);
     }
 }
 
@@ -72,11 +129,11 @@ pub struct RemoteControlServer {
     server: TcpListener,
 
     index_page: String,
-    property_lookup: HashMap<String, property::PropertyDefinition>,
+    property_lookup: HashMap<String, PropertyDefinition>,
 }
 
 impl RemoteControlServer {
-    fn new(bind_addr: &str, properties: Vec<property::PropertyDefinition>) -> Result<Self> {
+    fn new(bind_addr: &str, properties: Vec<PropertyDefinition>) -> Result<Self> {
         let listener = TcpListener::bind(&bind_addr)?;
         listener.set_nonblocking(true)?;
 
@@ -92,10 +149,7 @@ impl RemoteControlServer {
     }
 }
 
-fn server_poll(
-    server: ResMut<RemoteControlServer>,
-    mut writer: MessageWriter<events::RemoteControlMessage>,
-) {
+fn server_poll(server: ResMut<RemoteControlServer>, mut commands: Commands) {
     match server.server.accept() {
         Ok((mut stream, _addr)) => {
             // This intentionally handles one request per accepted connection.
@@ -103,7 +157,7 @@ fn server_poll(
                 &mut stream,
                 &server.index_page,
                 &server.property_lookup,
-                &mut writer,
+                &mut commands,
             );
         }
         Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
@@ -115,12 +169,24 @@ fn server_poll(
     }
 }
 
+fn bounce(trigger: On<RemoteControlEventInternal>, mut commands: Commands) {
+    match trigger.event() {
+        RemoteControlEventInternal::PropertyChanged { property, value } => {
+            commands.trigger(RemoteControlEvent {
+                entity: *property,
+                value: value.clone(),
+            })
+        }
+        RemoteControlEventInternal::QuitRequested => {}
+    }
+}
+
 /// Parse and serve a single HTTP request.
 fn handle_connection(
     stream: &mut TcpStream,
     index_page: &str,
-    property_lookup: &HashMap<String, property::PropertyDefinition>,
-    writer: &mut MessageWriter<events::RemoteControlMessage>,
+    property_lookup: &HashMap<String, PropertyDefinition>,
+    commands: &mut Commands,
 ) {
     let Ok(request) = read_http_request(stream) else {
         respond(
@@ -157,7 +223,7 @@ fn handle_connection(
             };
 
             if id == QUIT_ID {
-                writer.write(events::RemoteControlMessage::QuitRequested);
+                commands.trigger(events::RemoteControlEventInternal::QuitRequested);
                 respond(stream, "200 OK", "text/plain; charset=utf-8", "ok");
                 return;
             }
@@ -174,7 +240,7 @@ fn handle_connection(
 
             match parse_property_value(&property.control, pairs.get("value")) {
                 Ok(value) => {
-                    writer.write(events::RemoteControlMessage::PropertyChanged {
+                    commands.trigger(events::RemoteControlEventInternal::PropertyChanged {
                         property: property.id,
                         value,
                     });
@@ -202,9 +268,7 @@ fn handle_connection(
 }
 
 /// Maps URL IDs (`Entity::to_bits`) back to caller property definitions.
-fn build_property_lookup(
-    properties: &[property::PropertyDefinition],
-) -> HashMap<String, property::PropertyDefinition> {
+fn build_property_lookup(properties: &[PropertyDefinition]) -> HashMap<String, PropertyDefinition> {
     let mut map = HashMap::with_capacity(properties.len());
     for property in properties {
         map.insert(property.id.to_bits().to_string(), property.clone());
@@ -354,4 +418,11 @@ fn respond(stream: &mut TcpStream, status: &str, content_type: &str, body: impl 
     let _ = stream.write_all(body);
     let _ = stream.flush();
     let _ = stream.shutdown(Shutdown::Both);
+}
+
+pub mod prelude {
+    pub use super::RemoteControlDefinitions;
+    pub use super::RemoteControlPlugin;
+    pub use super::events::RemoteControlEvent;
+    pub use super::property::PropertyDefinition;
 }
