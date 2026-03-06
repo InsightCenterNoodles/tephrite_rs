@@ -38,19 +38,63 @@ fn watch_for_ibl_updates(
         return;
     }
 
+    debug!(
+        "IBL refresh attempt: equirect_id={:?}, intensity={}, resource_changed={}, has_existing_env={}",
+        query.equirect.id(),
+        query.intensity,
+        query.is_changed(),
+        ibl.fenv.is_some(),
+    );
+
     if !ftex_assets.contains(&query.equirect) {
+        debug!(
+            "IBL blocked: image asset not present yet for equirect_id={:?}",
+            query.equirect.id()
+        );
         return;
     }
 
+    if let Some(img) = ftex_assets.get(&query.equirect) {
+        debug!(
+            "IBL source image ready: id={:?}, size={}x{}, format={:?}, bytes={}",
+            query.equirect.id(),
+            img.width(),
+            img.height(),
+            img.texture_descriptor.format,
+            img.data.as_ref().map(|x| x.len()).unwrap_or(0)
+        );
+    }
+
     let Some(asset) = cache.textures.get(&query.equirect.id()) else {
+        debug!(
+            "IBL blocked: backfill texture not cached yet for equirect_id={:?}",
+            query.equirect.id()
+        );
         return;
     };
+
+    debug!(
+        "IBL init call: equirect_id={:?}, backfill_tex_ptr={:p}",
+        query.equirect.id(),
+        asset.0.as_ptr()
+    );
 
     let handle = backfill::env_light_from_equirect(&session.0, &asset.0).ok();
 
     if let Some(h) = &handle {
+        info!(
+            "IBL init success: equirect_id={:?}, env_light_ptr={:p}",
+            query.equirect.id(),
+            h.as_ptr()
+        );
         backfill::set_environment_light(&session.0, h);
         h.set_intensity(query.intensity);
+    } else {
+        warn!(
+            "IBL init failed (null env handle): equirect_id={:?}, backfill_tex_ptr={:p}",
+            query.equirect.id(),
+            asset.0.as_ptr()
+        );
     }
 
     ibl.fenv = handle;

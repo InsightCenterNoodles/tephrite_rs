@@ -51,6 +51,13 @@ fn watch_image_change(
                         .map(|bytes| !bytes.is_empty())
                         .unwrap_or(false);
                     if !has_bytes || asset.width() == 0 || asset.height() == 0 {
+                        debug!(
+                            "Skip image conversion: id={id:?}, size={}x{}, bytes={}, format={:?}",
+                            asset.width(),
+                            asset.height(),
+                            asset.data.as_ref().map(|x| x.len()).unwrap_or(0),
+                            asset.texture_descriptor.format
+                        );
                         continue;
                     }
 
@@ -62,18 +69,31 @@ fn watch_image_change(
                     //         .map(|x| x.iter().take(25).collect::<Vec<_>>())
                     // );
                     if let Some(converted) = convert_texture(&session.0, asset) {
-                        // debug!("Converted new image {id} {:?}", converted.as_ptr());
+                        debug!(
+                            "Image converted: id={id:?}, size={}x{}, format={:?}, tex_ptr={:p}",
+                            asset.width(),
+                            asset.height(),
+                            asset.texture_descriptor.format,
+                            converted.as_ptr()
+                        );
                         cache
                             .textures
                             .insert(*id, (converted, asset.sampler.clone()));
                     } else {
-                        warn!("Image {id} unsupported for conversion; skipping");
+                        warn!(
+                            "Image conversion failed/unsupported: id={id:?}, size={}x{}, bytes={}, format={:?}",
+                            asset.width(),
+                            asset.height(),
+                            asset.data.as_ref().map(|x| x.len()).unwrap_or(0),
+                            asset.texture_descriptor.format
+                        );
                     }
                 } else {
                     // debug!("Image {id} is placeholder...")
                 }
             }
             AssetEvent::Removed { id } => {
+                debug!("Image removed; dropping cached backfill texture id={id:?}");
                 cache.textures.remove(id);
             }
             _ => {}
