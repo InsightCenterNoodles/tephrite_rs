@@ -156,9 +156,11 @@ pub struct RemoteControlServer {
 }
 
 impl RemoteControlServer {
-    fn new(bind_addr: &str, properties: Vec<PropertyDefinition>) -> Result<Self> {
+    fn new(bind_addr: &str, mut properties: Vec<PropertyDefinition>) -> Result<Self> {
         let listener = TcpListener::bind(&bind_addr)?;
         listener.set_nonblocking(true)?;
+
+        properties.sort_by_key(|x| x.id);
 
         let rendered_controls = content::render_controls(&properties);
         let index_page = content::render_index_page(&rendered_controls);
@@ -171,7 +173,9 @@ impl RemoteControlServer {
         })
     }
 
-    fn update(&mut self, properties: Vec<PropertyDefinition>) {
+    fn update(&mut self, mut properties: Vec<PropertyDefinition>) {
+        properties.sort_by_key(|x| x.id);
+
         let rendered_controls = content::render_controls(&properties);
         let index_page = content::render_index_page(&rendered_controls);
         let property_lookup = build_property_lookup(&properties);
