@@ -6,15 +6,78 @@ use bevy::{
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
 
+/// Styling options used when rasterizing text into an RGBA image.
+///
+/// Defaults are tuned for short labels with transparent backgrounds.
 #[derive(Debug, Clone, Copy)]
 pub struct TextStyle {
+    /// Font size in pixels.
     pub font_size: f32,
+    /// Line height in pixels.
     pub line_height: f32,
+    /// Optional layout width (before padding) in pixels.
+    ///
+    /// If `None`, width is derived from shaped glyph bounds.
     pub width: Option<f32>,
+    /// Optional layout height (before padding) in pixels.
+    ///
+    /// If `None`, height is derived from layout runs.
     pub height: Option<f32>,
+    /// Uniform outer padding in pixels.
     pub padding: u32,
+    /// Text color in RGBA8.
     pub text_color: [u8; 4],
+    /// Background color in RGBA8.
     pub background_color: [u8; 4],
+}
+
+impl TextStyle {
+    /// Creates a style with the provided font size.
+    ///
+    /// `line_height` is initialized to `font_size * 1.1`.
+    pub fn new(font_size: f32) -> Self {
+        Self {
+            font_size,
+            line_height: font_size * 1.1,
+            ..Self::default()
+        }
+    }
+
+    /// Creates a style with explicit font size and line height.
+    pub fn with_metrics(font_size: f32, line_height: f32) -> Self {
+        Self::new(font_size).with_line_height(line_height)
+    }
+
+    /// Returns a copy with the provided line height.
+    pub fn with_line_height(mut self, line_height: f32) -> Self {
+        self.line_height = line_height;
+        self
+    }
+
+    /// Returns a copy with layout bounds (before padding).
+    pub fn with_bounds(mut self, width: Option<f32>, height: Option<f32>) -> Self {
+        self.width = width;
+        self.height = height;
+        self
+    }
+
+    /// Returns a copy with uniform outer padding.
+    pub fn with_padding(mut self, padding: u32) -> Self {
+        self.padding = padding;
+        self
+    }
+
+    /// Returns a copy with text color in RGBA8.
+    pub fn with_text_color(mut self, text_color: [u8; 4]) -> Self {
+        self.text_color = text_color;
+        self
+    }
+
+    /// Returns a copy with background color in RGBA8.
+    pub fn with_background_color(mut self, background_color: [u8; 4]) -> Self {
+        self.background_color = background_color;
+        self
+    }
 }
 
 impl Default for TextStyle {
@@ -44,6 +107,7 @@ pub struct CpuTextBaker {
 }
 
 impl CpuTextBaker {
+    /// Creates a CPU text baker with internal `cosmic_text` state.
     pub fn new() -> Self {
         Self {
             font_system: FontSystem::new(),
@@ -51,6 +115,10 @@ impl CpuTextBaker {
         }
     }
 
+    /// Rasterizes `text` into a Bevy `Image` using the supplied `style`.
+    ///
+    /// Output format is `Rgba8UnormSrgb`. Padding is applied uniformly around
+    /// the shaped text.
     pub fn bake_rgba8(&mut self, text: &str, style: TextStyle) -> Result<Image> {
         let metrics = Metrics::new(style.font_size, style.line_height);
         let mut buffer = Buffer::new(&mut self.font_system, metrics);

@@ -33,10 +33,7 @@ fn setup(
         make_label(
             &mut baker,
             "Hello",
-            TextStyle {
-                font_size: 64.0,
-                ..Default::default()
-            },
+            TextStyle::new(64.0).with_background_color([0, 0, 0, 255]),
             &mut images,
             &mut meshes,
             &mut materials,

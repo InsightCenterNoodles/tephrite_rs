@@ -383,6 +383,10 @@ pub fn convert_material(
         _ => {}
     }
 
+    if material.unlit {
+        config.set_option(backfill::ffi::FMatOption_UNLIT, true);
+    }
+
     set_texture(
         &mut config,
         bffi::FMatTexSemantic_BASE_COLOR_TEX,
