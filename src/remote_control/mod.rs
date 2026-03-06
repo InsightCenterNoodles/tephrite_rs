@@ -101,20 +101,25 @@ impl Default for RemoteControlPlugin {
 impl Plugin for RemoteControlPlugin {
     fn build(&self, app: &mut bevy::app::App) {
         app.insert_resource(RemoteControlOpts(self.bind_addr.clone()));
-        app.add_systems(PostStartup, post_start);
-        app.add_systems(Update, server_poll);
+
+        app.world_mut()
+            .get_resource_or_init::<RemoteControlDefinitions>();
+        app.add_systems(Update, (check_updates, server_poll).chain());
         app.add_observer(bounce);
     }
 }
 
-fn post_start(
+fn check_updates(
     mut commands: Commands,
     opts: Res<RemoteControlOpts>,
-    defs: Option<Res<RemoteControlDefinitions>>,
+    defs: Res<RemoteControlDefinitions>,
 ) {
-    let Some(defs) = defs else {
+    if !defs.is_changed() {
         return;
-    };
+    }
+
+    info!("Remote control definitions changed, restarting server...");
+    // println!("Definitions: {:?}", defs);
 
     let Ok(server) = RemoteControlServer::new(&opts.0, defs.0.clone()) else {
         return;
@@ -149,7 +154,13 @@ impl RemoteControlServer {
     }
 }
 
-fn server_poll(server: ResMut<RemoteControlServer>, mut commands: Commands) {
+fn server_poll(server: Option<ResMut<RemoteControlServer>>, mut commands: Commands) {
+    let Some(server) = server else {
+        return;
+    };
+
+    //println!("Polling server {server:?}");
+
     match server.server.accept() {
         Ok((mut stream, _addr)) => {
             // This intentionally handles one request per accepted connection.
@@ -199,6 +210,9 @@ fn handle_connection(
     };
 
     use common::*;
+
+    //println!("Properties {property_lookup:?}");
+    //println!("Request {:?}", request.path);
 
     match (request.method.as_str(), request.path.as_str()) {
         ("GET", INDEX_PATH) => {
@@ -420,9 +434,422 @@ fn respond(stream: &mut TcpStream, status: &str, content_type: &str, body: impl 
     let _ = stream.shutdown(Shutdown::Both);
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::remote_control::common::{EVENT_PATH, PropertyValue};
+    use crate::remote_control::property::PropertyControl;
+    use std::io::{Read, Write};
+    use std::net::{SocketAddr, TcpListener};
+
+    #[derive(Component, Debug, Clone, Copy)]
+    struct AppliedFloat(f32);
+
+    fn make_entity(id: u32) -> Entity {
+        Entity::from_bits(id as u64)
+    }
+
+    fn make_request(method: &str, path: &str, body: &str) -> String {
+        format!(
+            "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        )
+    }
+
+    fn app_with_server(definitions: Option<Vec<PropertyDefinition>>) -> App {
+        let mut app = App::new();
+        app.add_plugins(RemoteControlPlugin {
+            bind_addr: "127.0.0.1:0".into(),
+        });
+        if let Some(definitions) = definitions {
+            let mut defs = app.world_mut().resource_mut::<RemoteControlDefinitions>();
+            defs.0 = definitions;
+        }
+        app.update();
+        app.update();
+        app
+    }
+
+    fn server_addr(app: &App) -> SocketAddr {
+        app.world()
+            .resource::<RemoteControlServer>()
+            .server
+            .local_addr()
+            .expect("listener should be bound")
+    }
+
+    fn send_request(app: &mut App, request: &str) -> String {
+        let mut client = TcpStream::connect(server_addr(app)).expect("connect");
+        client.write_all(request.as_bytes()).expect("write request");
+        client.shutdown(Shutdown::Write).expect("shutdown write");
+        app.update();
+
+        let mut response = String::new();
+        client
+            .read_to_string(&mut response)
+            .expect("read response body");
+        response
+    }
+
+    fn with_stream_pair(f: impl FnOnce(&mut TcpStream, &mut TcpStream)) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("local_addr");
+        let mut client = TcpStream::connect(addr).expect("connect");
+        let (mut server, _) = listener.accept().expect("accept");
+        f(&mut client, &mut server);
+    }
+
+    #[test]
+    fn parse_property_value_accepts_all_control_variants() {
+        assert_eq!(
+            property::parse_property_value(
+                &PropertyControl::Slider {
+                    min: 0.0,
+                    max: 10.0,
+                    step: 0.1,
+                    initial: 1.0,
+                },
+                Some(&"2.5".to_string()),
+            ),
+            Ok(PropertyValue::Float(2.5))
+        );
+
+        assert_eq!(
+            property::parse_property_value(
+                &PropertyControl::Toggle { initial: false },
+                Some(&"true".to_string()),
+            ),
+            Ok(PropertyValue::Bool(true))
+        );
+
+        assert_eq!(
+            property::parse_property_value(
+                &PropertyControl::Select {
+                    options: vec!["a".into(), "b".into()],
+                    initial: 0,
+                },
+                Some(&"b".to_string()),
+            ),
+            Ok(PropertyValue::Choice("b".into()))
+        );
+
+        assert_eq!(
+            property::parse_property_value(
+                &PropertyControl::String {
+                    initial: "hi".into(),
+                },
+                Some(&"hello".to_string()),
+            ),
+            Ok(PropertyValue::Text("hello".into()))
+        );
+
+        assert_eq!(
+            property::parse_property_value(
+                &PropertyControl::Vector3 {
+                    initial: Vec3::ZERO,
+                    step: 0.1,
+                },
+                Some(&"1.0,2.0,3.0".to_string()),
+            ),
+            Ok(PropertyValue::Vec3(Vec3::new(1.0, 2.0, 3.0)))
+        );
+
+        assert_eq!(
+            property::parse_property_value(&PropertyControl::Button, None),
+            Ok(PropertyValue::Triggered)
+        );
+    }
+
+    #[test]
+    fn parse_property_value_rejects_invalid_inputs() {
+        assert!(
+            property::parse_property_value(
+                &PropertyControl::Slider {
+                    min: 0.0,
+                    max: 10.0,
+                    step: 0.1,
+                    initial: 1.0,
+                },
+                None,
+            )
+            .is_err()
+        );
+        assert!(
+            property::parse_property_value(
+                &PropertyControl::Slider {
+                    min: 0.0,
+                    max: 10.0,
+                    step: 0.1,
+                    initial: 1.0,
+                },
+                Some(&"abc".to_string()),
+            )
+            .is_err()
+        );
+
+        assert!(
+            property::parse_property_value(
+                &PropertyControl::Toggle { initial: false },
+                Some(&"maybe".to_string()),
+            )
+            .is_err()
+        );
+
+        assert!(
+            property::parse_property_value(
+                &PropertyControl::Select {
+                    options: vec!["a".into()],
+                    initial: 0,
+                },
+                Some(&"z".to_string()),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn parse_property_value_vec3_is_strict() {
+        let control = PropertyControl::Vector3 {
+            initial: Vec3::ZERO,
+            step: 0.1,
+        };
+
+        assert!(property::parse_property_value(&control, Some(&"1,2".to_string())).is_err());
+        assert!(property::parse_property_value(&control, Some(&"1,x,3".to_string())).is_err());
+    }
+
+    #[test]
+    fn render_controls_contains_controls_and_quit() {
+        let defs = vec![
+            PropertyDefinition {
+                id: make_entity(1),
+                label: "slider".into(),
+                control: PropertyControl::Slider {
+                    min: 0.0,
+                    max: 1.0,
+                    step: 0.1,
+                    initial: 0.5,
+                },
+            },
+            PropertyDefinition {
+                id: make_entity(2),
+                label: "toggle".into(),
+                control: PropertyControl::Toggle { initial: true },
+            },
+            PropertyDefinition {
+                id: make_entity(3),
+                label: "select".into(),
+                control: PropertyControl::Select {
+                    options: vec!["A".into(), "B".into()],
+                    initial: 1,
+                },
+            },
+            PropertyDefinition {
+                id: make_entity(4),
+                label: "string".into(),
+                control: PropertyControl::String {
+                    initial: "hello".into(),
+                },
+            },
+            PropertyDefinition {
+                id: make_entity(5),
+                label: "vec3".into(),
+                control: PropertyControl::Vector3 {
+                    initial: Vec3::new(1.0, 2.0, 3.0),
+                    step: 0.1,
+                },
+            },
+            PropertyDefinition {
+                id: make_entity(6),
+                label: "button".into(),
+                control: PropertyControl::Button,
+            },
+        ];
+
+        let html = content::render_controls(&defs);
+        assert!(html.contains("type=\"range\""));
+        assert!(html.contains("type=\"checkbox\""));
+        assert!(html.contains("<select"));
+        assert!(html.contains("type=\"text\""));
+        assert!(html.contains("sendVec3"));
+        assert!(html.contains("Quit</button>"));
+        assert!(html.contains(&format!("value-{}", defs[0].id.to_bits())));
+    }
+
+    #[test]
+    fn render_index_page_contains_expected_js_wiring() {
+        let html = content::render_index_page("<div>controls</div>");
+        assert!(html.contains(EVENT_PATH));
+        assert!(html.contains("sendUpdate"));
+        assert!(html.contains("sendVec3"));
+        assert!(html.contains("quitApp"));
+    }
+
+    #[test]
+    fn parse_form_urlencoded_decodes_plus_and_percent() {
+        let map = parse_form_urlencoded(b"id=abc%2B123&value=hello+world%2C42");
+        assert_eq!(map.get("id").map(String::as_str), Some("abc+123"));
+        assert_eq!(map.get("value").map(String::as_str), Some("hello world,42"));
+    }
+
+    #[test]
+    fn read_http_request_parses_get() {
+        with_stream_pair(|client, server| {
+            client
+                .write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+                .expect("write request");
+            client.shutdown(Shutdown::Write).expect("shutdown");
+
+            let req = read_http_request(server).expect("request should parse");
+            assert_eq!(req.method, "GET");
+            assert_eq!(req.path, "/");
+            assert!(req.body.is_empty());
+        });
+    }
+
+    #[test]
+    fn read_http_request_parses_post_body() {
+        with_stream_pair(|client, server| {
+            let body = "id=123&value=4.5";
+            let request = make_request("POST", EVENT_PATH, body);
+            client
+                .write_all(request.as_bytes())
+                .expect("write request bytes");
+            client.shutdown(Shutdown::Write).expect("shutdown");
+
+            let req = read_http_request(server).expect("request should parse");
+            assert_eq!(req.method, "POST");
+            assert_eq!(req.path, EVENT_PATH);
+            assert_eq!(req.body, body.as_bytes());
+        });
+    }
+
+    #[test]
+    fn server_returns_expected_status_codes() {
+        let property = PropertyDefinition {
+            id: make_entity(100),
+            label: "speed".into(),
+            control: PropertyControl::Slider {
+                min: 0.0,
+                max: 10.0,
+                step: 0.1,
+                initial: 1.0,
+            },
+        };
+
+        let mut app = app_with_server(Some(vec![property]));
+
+        let root = send_request(&mut app, &make_request("GET", "/", ""));
+        assert!(root.starts_with("HTTP/1.1 200 OK"));
+
+        let missing = send_request(&mut app, &make_request("POST", EVENT_PATH, "value=1.0"));
+        assert!(missing.starts_with("HTTP/1.1 400 Bad Request"));
+
+        let unknown = send_request(
+            &mut app,
+            &make_request("POST", EVENT_PATH, "id=99999&value=1.0"),
+        );
+        assert!(unknown.starts_with("HTTP/1.1 404 Not Found"));
+
+        let bad_path = send_request(&mut app, &make_request("GET", "/nope", ""));
+        assert!(bad_path.starts_with("HTTP/1.1 404 Not Found"));
+    }
+
+    #[test]
+    fn valid_property_update_triggers_entity_observer_and_updates_world() {
+        let mut app = App::new();
+        let property = app.world_mut().spawn_empty().id();
+
+        app.insert_resource(RemoteControlDefinitions(vec![PropertyDefinition {
+            id: property,
+            label: "speed".into(),
+            control: PropertyControl::Slider {
+                min: 0.0,
+                max: 10.0,
+                step: 0.1,
+                initial: 1.0,
+            },
+        }]));
+
+        app.world_mut().entity_mut(property).observe(
+            |trigger: On<RemoteControlEvent>, mut commands: Commands| {
+                if let PropertyValue::Float(v) = trigger.event().value {
+                    commands.entity(trigger.entity).insert(AppliedFloat(v));
+                }
+            },
+        );
+
+        app.add_plugins(RemoteControlPlugin {
+            bind_addr: "127.0.0.1:0".into(),
+        });
+
+        app.update();
+        app.update();
+        app.update();
+
+        let body = format!("id={}&value=3.5", property.to_bits());
+        let response = send_request(&mut app, &make_request("POST", EVENT_PATH, &body));
+        //println!("Response: {response}");
+        assert!(response.starts_with("HTTP/1.1 200 OK"));
+
+        // Apply deferred observer commands.
+        app.update();
+
+        let applied = app
+            .world()
+            .entity(property)
+            .get::<AppliedFloat>()
+            .expect("observer should update entity");
+        assert_eq!(applied.0, 3.5);
+    }
+
+    #[test]
+    fn updating_definitions_inserts_server() {
+        let mut app = app_with_server(Some(vec![PropertyDefinition {
+            id: make_entity(200),
+            label: "button".into(),
+            control: PropertyControl::Button,
+        }]));
+
+        assert!(app.world().contains_resource::<RemoteControlServer>());
+
+        // Exercise quit path to ensure endpoint is reachable.
+        let response = send_request(
+            &mut app,
+            &make_request("POST", EVENT_PATH, "id=__tephrite_quit"),
+        );
+        assert!(response.starts_with("HTTP/1.1 200 OK"));
+    }
+
+    #[test]
+    fn updating_definitions_replaces_server_resource() {
+        let mut app = app_with_server(Some(vec![PropertyDefinition {
+            id: make_entity(300),
+            label: "first".into(),
+            control: PropertyControl::Button,
+        }]));
+        let first_addr = server_addr(&app);
+
+        {
+            let mut defs = app.world_mut().resource_mut::<RemoteControlDefinitions>();
+            defs.0 = vec![PropertyDefinition {
+                id: make_entity(301),
+                label: "second".into(),
+                control: PropertyControl::Button,
+            }];
+        }
+        app.update();
+        app.update();
+
+        let second_addr = server_addr(&app);
+        assert_ne!(first_addr, second_addr);
+    }
+}
+
 pub mod prelude {
     pub use super::RemoteControlDefinitions;
     pub use super::RemoteControlPlugin;
     pub use super::events::RemoteControlEvent;
+    pub use super::property::PropertyControl;
     pub use super::property::PropertyDefinition;
 }

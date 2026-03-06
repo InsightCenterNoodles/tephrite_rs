@@ -7,6 +7,7 @@ pub mod multiprocess;
 pub mod remote_control;
 pub mod replication;
 pub(crate) mod serialize;
+pub(crate) mod simulator;
 pub(crate) mod vrpn;
 
 use bevy::app::Plugin;
@@ -15,7 +16,6 @@ pub mod prelude {
     pub use super::run;
     pub use crate::common::EnvironmentLighting;
     pub use crate::common::Head;
-    pub use crate::common::SimulatorCamera3d;
     pub use crate::replication::components::PropagateReplication;
     pub use crate::replication::components::Replicated;
 

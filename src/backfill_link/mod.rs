@@ -11,7 +11,7 @@ pub(crate) mod transform;
 
 use bevy::prelude::*;
 
-use crate::common::{Head, SimulatorCamera3d};
+use crate::common::Head;
 
 use super::backfill;
 use super::backfill::ffi as bffi;
@@ -20,7 +20,7 @@ pub struct BackfillPlugin;
 
 impl Plugin for BackfillPlugin {
     fn build(&self, app: &mut App) {
-        let use_sim = setup_session(app);
+        setup_session(app);
 
         app.add_plugins(sets::PipelineOrderPlugin);
         app.add_plugins(breplicate::ReplicationPlugin);
@@ -29,15 +29,11 @@ impl Plugin for BackfillPlugin {
         app.add_plugins(lighting::LightBindingPlugin);
         app.add_plugins(ibl::EnvironmentLightPlugin);
 
-        if use_sim {
-            app.add_systems(Last, (run_frame_simulator, teardown).chain());
-        } else {
-            app.add_systems(Last, (run_frame, teardown).chain());
-        }
+        app.add_systems(Last, (run_frame, teardown).chain());
     }
 }
 
-fn setup_session(app: &mut App) -> bool {
+fn setup_session(app: &mut App) {
     debug!("Session setup");
 
     let session = {
@@ -125,37 +121,12 @@ fn setup_session(app: &mut App) -> bool {
     }
 
     app.insert_non_send_resource(resources::Session(session));
-
-    //println!("Session setup done");
-    !crate::config::get_render_configuration().use_offaxis
 }
 
 fn run_frame(
     session: NonSend<resources::Session>,
     mut writer: MessageWriter<AppExit>,
     head_ent: Query<&Transform, With<Head>>,
-) {
-    // update head
-
-    if let Ok(x) = head_ent.single() {
-        backfill::update_head(&session.0, x.translation, x.rotation);
-        //println!("{} HEAD {}", std::process::id(), x.translation);
-    }
-
-    let should_exit = backfill::frame(&session.0);
-
-    //println!("{} FRAME", std::process::id());
-
-    if !should_exit {
-        info!("Exiting...");
-        writer.write(AppExit::Success);
-    }
-}
-
-fn run_frame_simulator(
-    session: NonSend<resources::Session>,
-    mut writer: MessageWriter<AppExit>,
-    head_ent: Query<&Transform, With<SimulatorCamera3d>>,
 ) {
     // update head
 

@@ -15,7 +15,7 @@ macro_rules! make_change_detection {
               mut writer: NonSendMut<TranscriptWriteStateResource>| {
                 //println!("Checking for deltas to {}", stringify!($A));
                 for e in ev_asset.read() {
-                    debug!("EVENT {e:?}");
+                    // debug!("EVENT {e:?}");
                     match e {
                         AssetEvent::Added { id } => {
                             let dest: &mut TranscriptWriteStateResource = &mut writer;

@@ -127,20 +127,16 @@ fn hierarchy_change_listener(
             Some(parent.0)
         } else {
             // Parent is outside the replicated set; keep child rooted on readers.
-            debug!(
-                "HCHANGE {child} has non-replicated parent {}, replicating as root",
-                parent.0
-            );
+            // debug!(
+            //     "HCHANGE {child} has non-replicated parent {}, replicating as root",
+            //     parent.0
+            // );
             None
         };
 
         let dest: &mut TranscriptWriteStateResource = &mut transcript;
         unsafe {
-            ServerInstruction::HChange(HierarchyChange {
-                new_parent,
-                child,
-            })
-            .write_fast(dest)
+            ServerInstruction::HChange(HierarchyChange { new_parent, child }).write_fast(dest)
         };
     }
 }

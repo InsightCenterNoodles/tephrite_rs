@@ -281,7 +281,7 @@ impl RawBackfillImage {
 }
 
 fn convert_image(texture: &Image) -> Option<RawBackfillImage> {
-    debug!("Converting image to bffi image...");
+    // debug!("Converting image to bffi image...");
 
     let desc = bffi::FImageRawDesc {
         width: texture.width(),
@@ -300,7 +300,7 @@ fn convert_image(texture: &Image) -> Option<RawBackfillImage> {
         },
     };
 
-    debug!("Built description {:?}", desc);
+    // debug!("Built description {:?}", desc);
 
     let blob = backfill::blob_from_slice(texture.data.as_deref()?).ok()?;
 
@@ -320,10 +320,10 @@ pub fn convert_texture(
     session: &backfill::FSessionHandle,
     texture: &Image,
 ) -> Option<backfill::FTextureHandle> {
-    debug!("Converting image to bffi texture...");
+    // debug!("Converting image to bffi texture...");
     let image = convert_image(texture)?;
 
-    debug!("Image ready, creating texture...");
+    // debug!("Image ready, creating texture...");
 
     use bevy::render::render_resource::TextureFormat;
 
@@ -340,10 +340,10 @@ pub fn convert_texture(
         TextureFormat::Rgba32Float => FTextureFormat_FMT_RGBA32F,
         TextureFormat::Rg11b10Ufloat => FTextureFormat_FMT_R11F_G11F_B10F,
         _ => {
-            debug!(
-                "Unable to match texture format {:?}",
-                texture.texture_descriptor.format
-            );
+            // debug!(
+            //     "Unable to match texture format {:?}",
+            //     texture.texture_descriptor.format
+            // );
             return None;
         }
     };
@@ -485,14 +485,14 @@ fn set_texture(
     channel: &bevy::pbr::UvChannel,
     map: &super::assets::TextureMap,
 ) {
-    debug!("set texture for material semantic {}", semantic);
+    // debug!("set texture for material semantic {}", semantic);
 
     let Some(handle) = handle else {
-        debug!("handle is none");
+        // debug!("handle is none");
         return;
     };
 
-    debug!("Handle is {}", handle.id());
+    // debug!("Handle is {}", handle.id());
 
     let Some((tex, sampler)) = map.get(&handle.id()) else {
         warn!("handle {} referencing unknown image", handle.id());
@@ -540,7 +540,7 @@ fn set_texture(
         s
     };
 
-    debug!("installing texture to ffi mat config");
+    // debug!("installing texture to ffi mat config");
 
     config.set_texture(semantic, slot, tex, sampler);
 }

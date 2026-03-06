@@ -5,10 +5,7 @@
 //! computed or overwritten by Bevy at runtime.
 use bevy::prelude::*;
 
-use crate::{
-    common::{Head, SimulatorCamera3d},
-    serialize::*,
-};
+use crate::{common::Head, serialize::*};
 
 // =============================================================================
 
@@ -38,10 +35,6 @@ impl FastRead for Head {
         Self
     }
 }
-
-// =============================================================================
-
-impl_fast_raw_item!(SimulatorCamera3d);
 
 // =============================================================================
 

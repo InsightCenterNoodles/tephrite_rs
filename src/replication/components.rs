@@ -6,7 +6,7 @@ use bevy::{app::Propagate, camera::visibility::*, ecs::bundle::Bundle, prelude::
 /// replicated to all children processes. At the moment, this must be manually
 /// added to your entities:
 ///
-/// ```
+/// ```ignore
 /// # use bevy::prelude::*;
 /// # use tephrite_rs::prelude::*;
 /// # fn comp(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
@@ -15,7 +15,7 @@ use bevy::{app::Propagate, camera::visibility::*, ecs::bundle::Bundle, prelude::
 ///     MeshMaterial3d(materials.add(Color::WHITE)),
 ///     Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
 ///     Replicated, // <-- Add this component!
-///     PropagateReplication // <-- Add this if you want children to be replicated as well!
+///     PropagateReplication::default(), // <-- Add this if you want children to be replicated as well!
 /// ));
 /// # }
 /// ```
@@ -112,7 +112,9 @@ mod tests {
         app.update();
         assert!(app.world().entity(child).contains::<Replicated>());
 
-        app.world_mut().entity_mut(child).insert(ChildOf(other_root));
+        app.world_mut()
+            .entity_mut(child)
+            .insert(ChildOf(other_root));
         app.update();
 
         assert!(!app.world().entity(child).contains::<Replicated>());

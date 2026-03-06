@@ -18,6 +18,8 @@ pub(crate) fn setup() -> App {
 
     // only now are logs enabled!
 
+    let use_simulator_mode = get_logic_configuration().child_count == 0;
+
     // Having zero children makes no sense
     let child_count = get_logic_configuration().child_count.max(1);
 
@@ -40,6 +42,10 @@ pub(crate) fn setup() -> App {
 
     if get_logic_configuration().vrpn_config.debug_head {
         app.add_systems(Update, debug_head);
+    }
+
+    if use_simulator_mode {
+        app.add_plugins(crate::simulator::SimulatorPlugin);
     }
 
     // set up children
@@ -88,16 +94,27 @@ fn setup_tracked_head(mut commands: Commands) {
 
     if let Some(h) = config.vrpn_config.head.clone() {
         commands.spawn((Replicated, Transform::default(), Head, VRPNObject(vec![h])));
-    } else if config.vrpn_config.debug_head {
+    } else {
         commands.spawn((Replicated, Transform::default(), Head));
     }
+
+    // TODO we should reconsider our config with a dedicated sim mode flag or something.
+    // but we need to be smart; if no config, auto sim mode?
 
     if let Some(js) = &config.vrpn_config.joystick {
         commands.spawn((
             Transform::default(),
             Interactor,
             InteractorState::default(),
+            Name::new("Joystick"),
             VRPNObject(js.clone()),
+        ));
+    } else {
+        commands.spawn((
+            Transform::default(),
+            Interactor,
+            InteractorState::default(),
+            Name::new("Joystick"),
         ));
     }
 }
