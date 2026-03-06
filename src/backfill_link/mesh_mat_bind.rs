@@ -51,7 +51,7 @@ fn watch_image_change(
                         .map(|bytes| !bytes.is_empty())
                         .unwrap_or(false);
                     if !has_bytes || asset.width() == 0 || asset.height() == 0 {
-                        debug!(
+                        warn!(
                             "Skip image conversion: id={id:?}, size={}x{}, bytes={}, format={:?}",
                             asset.width(),
                             asset.height(),
@@ -69,7 +69,7 @@ fn watch_image_change(
                     //         .map(|x| x.iter().take(25).collect::<Vec<_>>())
                     // );
                     if let Some(converted) = convert_texture(&session.0, asset) {
-                        debug!(
+                        warn!(
                             "Image converted: id={id:?}, size={}x{}, format={:?}, tex_ptr={:p}",
                             asset.width(),
                             asset.height(),
@@ -93,7 +93,7 @@ fn watch_image_change(
                 }
             }
             AssetEvent::Removed { id } => {
-                debug!("Image removed; dropping cached backfill texture id={id:?}");
+                warn!("Image removed; dropping cached backfill texture id={id:?}");
                 cache.textures.remove(id);
             }
             _ => {}

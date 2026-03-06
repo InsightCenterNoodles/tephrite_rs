@@ -38,7 +38,7 @@ fn watch_for_ibl_updates(
         return;
     }
 
-    debug!(
+    warn!(
         "IBL refresh attempt: equirect_id={:?}, intensity={}, resource_changed={}, has_existing_env={}",
         query.equirect.id(),
         query.intensity,
@@ -47,7 +47,7 @@ fn watch_for_ibl_updates(
     );
 
     if !ftex_assets.contains(&query.equirect) {
-        debug!(
+        warn!(
             "IBL blocked: image asset not present yet for equirect_id={:?}",
             query.equirect.id()
         );
@@ -55,7 +55,7 @@ fn watch_for_ibl_updates(
     }
 
     if let Some(img) = ftex_assets.get(&query.equirect) {
-        debug!(
+        warn!(
             "IBL source image ready: id={:?}, size={}x{}, format={:?}, bytes={}",
             query.equirect.id(),
             img.width(),
@@ -66,14 +66,14 @@ fn watch_for_ibl_updates(
     }
 
     let Some(asset) = cache.textures.get(&query.equirect.id()) else {
-        debug!(
+        warn!(
             "IBL blocked: backfill texture not cached yet for equirect_id={:?}",
             query.equirect.id()
         );
         return;
     };
 
-    debug!(
+    warn!(
         "IBL init call: equirect_id={:?}, backfill_tex_ptr={:p}",
         query.equirect.id(),
         asset.0.as_ptr()
