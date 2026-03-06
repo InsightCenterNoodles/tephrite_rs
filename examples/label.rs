@@ -7,6 +7,7 @@ struct MyPlugin;
 impl Plugin for MyPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup);
+        app.add_plugins(BillboardPlugin);
     }
 }
 
@@ -26,7 +27,6 @@ fn setup(
     ));
 
     // label
-
     let mut baker = CpuTextBaker::new();
 
     commands.spawn((
@@ -39,7 +39,8 @@ fn setup(
             &mut materials,
         )?,
         Replicated,
-        Transform::from_xyz(0.0, 1.0, 0.0), //.with_rotation(Quat::from_rotation_y(f32::consts::PI)),
+        Transform::from_xyz(0.0, 1.0, 0.0),
+        Billboard::FullGimbal,
     ));
 
     // light

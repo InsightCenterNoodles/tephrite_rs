@@ -31,17 +31,18 @@ fn watch_for_ibl_updates(
         return;
     };
 
-    if !query.is_changed() {
+    // Retry until env-light creation succeeds; resource changes may happen before
+    // replicated/streamed image assets are fully ready.
+    let should_refresh = query.is_changed() || ibl.fenv.is_none();
+    if !should_refresh {
         return;
     }
 
     if !ftex_assets.contains(&query.equirect) {
-        error!("Environment map is not available");
         return;
     }
 
     let Some(asset) = cache.textures.get(&query.equirect.id()) else {
-        error!("Environment map is not mapped");
         return;
     };
 

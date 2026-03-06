@@ -43,6 +43,17 @@ fn watch_image_change(
         match e {
             AssetEvent::Added { id } | AssetEvent::Modified { id } => {
                 if let Some(asset) = assets.get(*id) {
+                    // Ignore placeholder/partially loaded images. Converting these can produce
+                    // invalid backfill textures that later crash env-light setup.
+                    let has_bytes = asset
+                        .data
+                        .as_ref()
+                        .map(|bytes| !bytes.is_empty())
+                        .unwrap_or(false);
+                    if !has_bytes || asset.width() == 0 || asset.height() == 0 {
+                        continue;
+                    }
+
                     // debug!(
                     //     "QUICK DUMP {id:?} bytes {:?}",
                     //     asset
@@ -61,6 +72,9 @@ fn watch_image_change(
                 } else {
                     // debug!("Image {id} is placeholder...")
                 }
+            }
+            AssetEvent::Removed { id } => {
+                cache.textures.remove(id);
             }
             _ => {}
         }

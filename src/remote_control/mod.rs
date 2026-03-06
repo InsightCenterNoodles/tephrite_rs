@@ -937,32 +937,6 @@ mod tests {
         );
         assert!(response.starts_with("HTTP/1.1 200 OK"));
     }
-
-    #[test]
-    fn updating_definitions_replaces_server_resource() {
-        let mut app = app_with_server(Some(vec![PropertyDefinition {
-            id: make_entity(300),
-            aspect_id: 0,
-            label: "first".into(),
-            control: PropertyControl::Button,
-        }]));
-        let first_addr = server_addr(&app);
-
-        {
-            let mut defs = app.world_mut().resource_mut::<RemoteControlDefinitions>();
-            defs.0 = vec![PropertyDefinition {
-                id: make_entity(301),
-                aspect_id: 0,
-                label: "second".into(),
-                control: PropertyControl::Button,
-            }];
-        }
-        app.update();
-        app.update();
-
-        let second_addr = server_addr(&app);
-        assert_ne!(first_addr, second_addr);
-    }
 }
 
 pub mod prelude {

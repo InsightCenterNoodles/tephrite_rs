@@ -189,6 +189,10 @@ VRPN is optional:
 - Starter: `cargo run --example mesh`
 - Also included: `basic_animation`, `load_mesh`, `image_based_lighting`
 
+## Testing
+
+Use `cargo test -- --test-threads=1` to avoid some tests deadlocking.
+
 ## License
 
 MIT. See `LICENSE`.
