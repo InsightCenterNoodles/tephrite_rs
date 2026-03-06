@@ -8,6 +8,7 @@ pub mod remote_control;
 pub mod replication;
 pub(crate) mod serialize;
 pub(crate) mod simulator;
+pub mod ui;
 pub(crate) mod vrpn;
 
 use bevy::app::Plugin;
