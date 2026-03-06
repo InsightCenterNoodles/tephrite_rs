@@ -1,9 +1,13 @@
 use bevy::prelude::Vec3;
 
+/// URL path for the remote-control HTML page.
 pub(crate) const INDEX_PATH: &str = "/";
+/// URL path for property update POST requests.
 pub(crate) const EVENT_PATH: &str = "/event";
+/// Special control ID used to request app shutdown.
 pub(crate) const QUIT_ID: &str = "__tephrite_quit";
 
+/// Typed payload sent with [`crate::remote_control::events::RemoteControlEvent`].
 #[derive(Debug, Clone, PartialEq)]
 pub enum PropertyValue {
     /// Numeric value, used by slider controls.

@@ -1,9 +1,16 @@
+//! Simulator-side bindings for interactive devices and remote control.
+//!
+//! This plugin wires simulator entities (head + interactors) into shared helper
+//! use-cases that expose transform controls on the remote-control webpage.
+
 use bevy::prelude::*;
 
 mod head;
 mod interactor;
 
-/// The main Bevy plugin for the simulator.
+/// Main simulator plugin.
+///
+/// Registers per-device setup systems for head and interactor entities.
 pub(crate) struct SimulatorPlugin;
 
 impl Plugin for SimulatorPlugin {

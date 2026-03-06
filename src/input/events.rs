@@ -4,7 +4,7 @@ use crate::input::{JoystickAxis, JoystickButton};
 
 /// A raw event for joystick button messages
 #[derive(Message, Debug)]
-pub struct ButtonEvent {
+pub struct ButtonMessage {
     /// The joystick this event came from
     pub from: Entity,
     pub kind: ButtonEventKind,
@@ -12,7 +12,7 @@ pub struct ButtonEvent {
 
 /// A raw event for joystick axis messages
 #[derive(Message, Debug)]
-pub struct AxisEvent {
+pub struct AxisMessage {
     /// The joystick this event came from
     pub from: Entity,
     pub axis: JoystickAxis,

@@ -9,7 +9,7 @@ mod common;
 use bevy::{platform::collections::HashMap, prelude::*};
 
 use crate::{
-    input::{AxisEvent, ButtonEvent, ButtonEventKind, JoystickAxis, JoystickButton},
+    input::{AxisMessage, ButtonEventKind, ButtonMessage, JoystickAxis, JoystickButton},
     vrpn::common::SharedItemState,
 };
 
@@ -162,8 +162,8 @@ fn map_button(button_index: u8) -> JoystickButton {
 /// System that applies the latest VRPN-derived transform to entities.
 fn service_vrpn(
     mut query: Query<(Entity, &VRPNLinkConnected, &mut Transform)>,
-    mut writer: MessageWriter<ButtonEvent>,
-    mut axis_writer: MessageWriter<AxisEvent>,
+    mut writer: MessageWriter<ButtonMessage>,
+    mut axis_writer: MessageWriter<AxisMessage>,
 ) {
     for (e, c, mut tf) in query.iter_mut() {
         // some funky optimization here. we dont want to always hold a write lock
@@ -180,7 +180,7 @@ fn service_vrpn(
                 // TODO: sensitivity config
                 if x.1.abs() > 0.00001 {
                     //debug!("Send axis event: {x:?}");
-                    Some(AxisEvent {
+                    Some(AxisMessage {
                         from: e,
                         axis: (AXIS_MAP.get(x.0 as usize)).cloned().unwrap_or_default(),
                         value: (*x.1) as f32,
@@ -204,7 +204,7 @@ fn service_vrpn(
                     ButtonEventKind::ButtonReleased(map_button(x.0))
                 };
 
-                ButtonEvent { from: e, kind }
+                ButtonMessage { from: e, kind }
             }));
         }
     }
@@ -241,7 +241,7 @@ pub struct VRPNPlugin;
 
 impl Plugin for VRPNPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<ButtonEvent>();
+        app.add_message::<ButtonMessage>();
         app.insert_resource(VRPNResource {
             shutdown: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
             vrpn_threads: vec![],

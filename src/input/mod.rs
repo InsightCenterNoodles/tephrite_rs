@@ -31,8 +31,8 @@ pub(crate) struct InputPlugin;
 
 impl Plugin for InputPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<ButtonEvent>();
-        app.add_message::<AxisEvent>();
+        app.add_message::<ButtonMessage>();
+        app.add_message::<AxisMessage>();
 
         app.add_plugins(interactor::InteractorPlugin);
     }

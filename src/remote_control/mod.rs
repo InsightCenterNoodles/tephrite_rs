@@ -3,8 +3,13 @@
 //! 1. Add [`RemoteControlPlugin`]. This is usually done automatically by Tephrite.
 //! 2. Initialize or fetch [`RemoteControlDefinitions`].
 //! 3. Push one [`PropertyDefinition`] per controllable property.
-//! 4. Observe [`RemoteControlEvent`] on those property entities.
+//! 4. Observe [`RemoteControlEvent`] on those property entities (or use
+//!    [`use_cases::RemoteControlTransform`] for common transform controls).
 //! 5. In the observer, mutate your world state/components based on `event.value`.
+//!
+//! Property routing uses `(entity, aspect_id)` as a composite identifier. This
+//! allows multiple controls to target one entity without allocating helper
+//! entities just to disambiguate callbacks.
 //!
 //! # Example
 //! ```ignore
@@ -113,6 +118,7 @@ impl Plugin for RemoteControlPlugin {
     }
 }
 
+/// Rebuild server-rendered control state when definitions change.
 fn check_updates(
     mut commands: Commands,
     opts: Res<RemoteControlOpts>,
@@ -175,6 +181,7 @@ impl RemoteControlServer {
     }
 }
 
+/// Poll for one HTTP request and handle it synchronously.
 fn server_poll(server: Option<ResMut<RemoteControlServer>>, mut commands: Commands) {
     let Some(server) = server else {
         return;
@@ -201,11 +208,13 @@ fn server_poll(server: Option<ResMut<RemoteControlServer>>, mut commands: Comman
     }
 }
 
+/// Translate internal remote-control events into public Bevy entity events.
 fn bounce(
     trigger: On<RemoteControlEventInternal>,
     mut commands: Commands,
     mut writer: MessageWriter<AppExit>,
 ) {
+    info!("Handling remote control event {:?}", trigger.event());
     match trigger.event() {
         RemoteControlEventInternal::PropertyChanged {
             property,

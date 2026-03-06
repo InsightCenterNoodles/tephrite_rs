@@ -1,3 +1,8 @@
+//! Reusable remote-control patterns built on top of raw property definitions.
+//!
+//! The primary use-case in this module is [`RemoteControlTransform`], which
+//! exposes position/look-at/scale controls for any tagged entity.
+
 use bevy::prelude::*;
 
 use crate::remote_control::{
@@ -11,8 +16,11 @@ use crate::remote_control::{
 #[derive(Debug, Component)]
 #[component(immutable)]
 pub struct RemoteControlTransform {
+    /// Expose translation controls.
     pub position: bool,
+    /// Expose look-at controls (vector interpreted as world-space target).
     pub rotation: bool,
+    /// Expose scale controls.
     pub scale: bool,
 }
 
@@ -29,25 +37,32 @@ impl Default for RemoteControlTransform {
 #[derive(Debug, Component)]
 struct RemoteControlTransformManaged;
 
+/// Target position received from remote control.
 #[derive(Debug, Component)]
 struct RemoteControlPositionDestination {
     world_pos: Vec3,
 }
 
+/// Target orientation received from remote control.
 #[derive(Debug, Component)]
 struct RemoteControlOrientationDestination {
     world_rot: Quat,
 }
 
+/// Target scale received from remote control.
 #[derive(Debug, Component)]
 struct RemoteControlScaleDestination {
     world_scale: Vec3,
 }
 
+/// Aspect ID for translation controls.
 const POSITION_ASPECT: u32 = 0;
+/// Aspect ID for look-at controls.
 const LOOK_AT_ASPECT: u32 = 1;
+/// Aspect ID for scale controls.
 const SCALE_ASPECT: u32 = 2;
 
+/// Plugin registering built-in remote-control use cases.
 pub(super) struct UseCasesPlugin;
 
 impl Plugin for UseCasesPlugin {
@@ -136,6 +151,7 @@ fn setup(
     }
 }
 
+/// Smoothly move entities toward remote-controlled transform destinations.
 fn move_items(
     mut query: Query<
         (
@@ -183,6 +199,7 @@ fn move_items(
     }
 }
 
+/// Route incoming transform property events by `aspect_id`.
 fn control_observer(
     trigger: On<RemoteControlEvent>,
     mut commands: Commands,

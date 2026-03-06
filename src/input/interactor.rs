@@ -112,8 +112,8 @@ fn reset_current_states(all_buttons: Query<&mut InteractorState>) {
 }
 
 fn update_current_states(
-    mut button_reader: MessageReader<ButtonEvent>,
-    mut axis_reader: MessageReader<AxisEvent>,
+    mut button_reader: MessageReader<ButtonMessage>,
+    mut axis_reader: MessageReader<AxisMessage>,
     mut states: Query<&mut InteractorState>,
 ) {
     for event in button_reader.read() {
@@ -160,7 +160,7 @@ fn update_current_states(
 // TODO: use something better than the global transform? itll be a frame out of date.
 // TODO: we are just picking our first intersection
 fn read_events(
-    mut reader: MessageReader<ButtonEvent>,
+    mut reader: MessageReader<ButtonMessage>,
     mut root_query: Query<(
         Entity,
         &InteractionBounds,
