@@ -93,9 +93,15 @@ fn setup_tracked_head(mut commands: Commands) {
     let config = get_logic_configuration();
 
     if let Some(h) = config.vrpn_config.head.clone() {
-        commands.spawn((Replicated, Transform::default(), Head, VRPNObject(vec![h])));
+        commands.spawn((
+            Replicated,
+            Transform::default(),
+            Head,
+            VRPNObject(vec![h]),
+            Name::new("Head"),
+        ));
     } else {
-        commands.spawn((Replicated, Transform::default(), Head));
+        commands.spawn((Replicated, Transform::default(), Head, Name::new("Head")));
     }
 
     // TODO we should reconsider our config with a dedicated sim mode flag or something.

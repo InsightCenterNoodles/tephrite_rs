@@ -23,7 +23,7 @@ fn escape_html(input: &str) -> String {
 pub(crate) fn render_controls(properties: &[PropertyDefinition]) -> String {
     let mut out = String::new();
     for property in properties {
-        let prop_id = property.id.to_bits().to_string();
+        let prop_id = property.lookup_id();
         let label = escape_html(&property.label);
 
         match property.control {

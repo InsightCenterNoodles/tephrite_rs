@@ -50,10 +50,19 @@ pub enum PropertyControl {
 pub struct PropertyDefinition {
     /// Caller-provided property identifier.
     pub id: Entity,
+    /// Secondary per-entity discriminator, allowing multiple controls per entity.
+    pub aspect_id: u32,
     /// Human-readable label displayed on the page.
     pub label: String,
     /// Control type and configuration.
     pub control: PropertyControl,
+}
+
+impl PropertyDefinition {
+    /// Stable URL-safe identifier used by the remote control form post payload.
+    pub(crate) fn lookup_id(&self) -> String {
+        format!("{}:{}", self.id.to_bits(), self.aspect_id)
+    }
 }
 
 /// Convert a raw form value to the typed property payload expected by a control.

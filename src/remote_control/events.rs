@@ -9,6 +9,8 @@ pub struct RemoteControlEvent {
     ///
     /// Attach an observer to this entity to handle updates for that specific property.
     pub entity: Entity,
+    /// Secondary per-entity discriminator from the matching property definition.
+    pub aspect_id: u32,
     /// The latest value submitted by the webpage.
     pub value: PropertyValue,
 }
@@ -19,6 +21,8 @@ pub(crate) enum RemoteControlEventInternal {
     PropertyChanged {
         /// The property handle defined in [`crate::remote_control::property::PropertyDefinition`].
         property: Entity,
+        /// Secondary per-entity discriminator from the matching property definition.
+        aspect_id: u32,
         /// The latest value submitted by the webpage.
         value: PropertyValue,
     },

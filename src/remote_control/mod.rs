@@ -15,6 +15,7 @@
 //!     let speed_property = commands.spawn_empty().id();
 //!     defs.push(PropertyDefinition {
 //!         id: speed_property,
+//!         aspect_id: 0, // Multiple definitions can refer to the same entity; use this to discriminate between them.
 //!         label: "Speed".into(),
 //!         control: PropertyControl::Slider {
 //!             min: 0.0,
@@ -46,6 +47,7 @@ pub(crate) mod common;
 pub(crate) mod content;
 pub mod events;
 pub mod property;
+pub mod use_cases;
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -106,6 +108,8 @@ impl Plugin for RemoteControlPlugin {
             .get_resource_or_init::<RemoteControlDefinitions>();
         app.add_systems(Update, (check_updates, server_poll).chain());
         app.add_observer(bounce);
+
+        app.add_plugins(use_cases::UseCasesPlugin);
     }
 }
 
@@ -113,19 +117,27 @@ fn check_updates(
     mut commands: Commands,
     opts: Res<RemoteControlOpts>,
     defs: Res<RemoteControlDefinitions>,
+    server: Option<ResMut<RemoteControlServer>>,
 ) {
     if !defs.is_changed() {
         return;
     }
 
     info!("Remote control definitions changed, restarting server...");
-    // println!("Definitions: {:?}", defs);
+    //println!("Definitions: {:?}", defs);
 
-    let Ok(server) = RemoteControlServer::new(&opts.0, defs.0.clone()) else {
-        return;
-    };
-
-    commands.insert_resource(server);
+    if let Some(mut server) = server {
+        server.update(defs.0.clone());
+    } else {
+        match RemoteControlServer::new(&opts.0, defs.0.clone()) {
+            Ok(server) => {
+                commands.insert_resource(server);
+            }
+            Err(err) => {
+                error!("Unable to start remote control server! Error: {err:?}");
+            }
+        }
+    }
 }
 
 /// Handle to the running remote control server thread.
@@ -151,6 +163,15 @@ impl RemoteControlServer {
             index_page,
             property_lookup,
         })
+    }
+
+    fn update(&mut self, properties: Vec<PropertyDefinition>) {
+        let rendered_controls = content::render_controls(&properties);
+        let index_page = content::render_index_page(&rendered_controls);
+        let property_lookup = build_property_lookup(&properties);
+
+        self.index_page = index_page;
+        self.property_lookup = property_lookup;
     }
 }
 
@@ -180,15 +201,24 @@ fn server_poll(server: Option<ResMut<RemoteControlServer>>, mut commands: Comman
     }
 }
 
-fn bounce(trigger: On<RemoteControlEventInternal>, mut commands: Commands) {
+fn bounce(
+    trigger: On<RemoteControlEventInternal>,
+    mut commands: Commands,
+    mut writer: MessageWriter<AppExit>,
+) {
     match trigger.event() {
-        RemoteControlEventInternal::PropertyChanged { property, value } => {
-            commands.trigger(RemoteControlEvent {
-                entity: *property,
-                value: value.clone(),
-            })
+        RemoteControlEventInternal::PropertyChanged {
+            property,
+            aspect_id,
+            value,
+        } => commands.trigger(RemoteControlEvent {
+            entity: *property,
+            aspect_id: *aspect_id,
+            value: value.clone(),
+        }),
+        RemoteControlEventInternal::QuitRequested => {
+            writer.write(AppExit::Success);
         }
-        RemoteControlEventInternal::QuitRequested => {}
     }
 }
 
@@ -224,7 +254,7 @@ fn handle_connection(
             );
         }
         ("POST", EVENT_PATH) => {
-            // Form body is expected as `id=<entity_bits>&value=<encoded>`.
+            // Form body is expected as `id=<entity_bits>:<aspect_id>&value=<encoded>`.
             let pairs = parse_form_urlencoded(&request.body);
             let Some(id) = pairs.get("id") else {
                 respond(
@@ -256,6 +286,7 @@ fn handle_connection(
                 Ok(value) => {
                     commands.trigger(events::RemoteControlEventInternal::PropertyChanged {
                         property: property.id,
+                        aspect_id: property.aspect_id,
                         value,
                     });
                     respond(stream, "200 OK", "text/plain; charset=utf-8", "ok");
@@ -281,11 +312,11 @@ fn handle_connection(
     }
 }
 
-/// Maps URL IDs (`Entity::to_bits`) back to caller property definitions.
+/// Maps URL IDs (`<entity_bits>:<aspect_id>`) back to caller property definitions.
 fn build_property_lookup(properties: &[PropertyDefinition]) -> HashMap<String, PropertyDefinition> {
     let mut map = HashMap::with_capacity(properties.len());
     for property in properties {
-        map.insert(property.id.to_bits().to_string(), property.clone());
+        map.insert(property.lookup_id(), property.clone());
     }
     map
 }
@@ -444,6 +475,8 @@ mod tests {
 
     #[derive(Component, Debug, Clone, Copy)]
     struct AppliedFloat(f32);
+    #[derive(Component, Debug, Clone, Copy)]
+    struct AppliedAspect(u32);
 
     fn make_entity(id: u32) -> Entity {
         Entity::from_bits(id as u64)
@@ -623,6 +656,7 @@ mod tests {
         let defs = vec![
             PropertyDefinition {
                 id: make_entity(1),
+                aspect_id: 0,
                 label: "slider".into(),
                 control: PropertyControl::Slider {
                     min: 0.0,
@@ -633,11 +667,13 @@ mod tests {
             },
             PropertyDefinition {
                 id: make_entity(2),
+                aspect_id: 0,
                 label: "toggle".into(),
                 control: PropertyControl::Toggle { initial: true },
             },
             PropertyDefinition {
                 id: make_entity(3),
+                aspect_id: 0,
                 label: "select".into(),
                 control: PropertyControl::Select {
                     options: vec!["A".into(), "B".into()],
@@ -646,6 +682,7 @@ mod tests {
             },
             PropertyDefinition {
                 id: make_entity(4),
+                aspect_id: 0,
                 label: "string".into(),
                 control: PropertyControl::String {
                     initial: "hello".into(),
@@ -653,6 +690,7 @@ mod tests {
             },
             PropertyDefinition {
                 id: make_entity(5),
+                aspect_id: 0,
                 label: "vec3".into(),
                 control: PropertyControl::Vector3 {
                     initial: Vec3::new(1.0, 2.0, 3.0),
@@ -661,6 +699,7 @@ mod tests {
             },
             PropertyDefinition {
                 id: make_entity(6),
+                aspect_id: 0,
                 label: "button".into(),
                 control: PropertyControl::Button,
             },
@@ -673,7 +712,7 @@ mod tests {
         assert!(html.contains("type=\"text\""));
         assert!(html.contains("sendVec3"));
         assert!(html.contains("Quit</button>"));
-        assert!(html.contains(&format!("value-{}", defs[0].id.to_bits())));
+        assert!(html.contains(&format!("value-{}", defs[0].lookup_id())));
     }
 
     #[test]
@@ -728,6 +767,7 @@ mod tests {
     fn server_returns_expected_status_codes() {
         let property = PropertyDefinition {
             id: make_entity(100),
+            aspect_id: 0,
             label: "speed".into(),
             control: PropertyControl::Slider {
                 min: 0.0,
@@ -762,6 +802,7 @@ mod tests {
 
         app.insert_resource(RemoteControlDefinitions(vec![PropertyDefinition {
             id: property,
+            aspect_id: 0,
             label: "speed".into(),
             control: PropertyControl::Slider {
                 min: 0.0,
@@ -787,7 +828,7 @@ mod tests {
         app.update();
         app.update();
 
-        let body = format!("id={}&value=3.5", property.to_bits());
+        let body = format!("id={}:0&value=3.5", property.to_bits());
         let response = send_request(&mut app, &make_request("POST", EVENT_PATH, &body));
         //println!("Response: {response}");
         assert!(response.starts_with("HTTP/1.1 200 OK"));
@@ -804,9 +845,72 @@ mod tests {
     }
 
     #[test]
+    fn same_entity_multiple_aspects_dispatches_with_aspect_id() {
+        let mut app = App::new();
+        let property = app.world_mut().spawn_empty().id();
+
+        app.insert_resource(RemoteControlDefinitions(vec![
+            PropertyDefinition {
+                id: property,
+                aspect_id: 0,
+                label: "speed".into(),
+                control: PropertyControl::Slider {
+                    min: 0.0,
+                    max: 10.0,
+                    step: 0.1,
+                    initial: 1.0,
+                },
+            },
+            PropertyDefinition {
+                id: property,
+                aspect_id: 1,
+                label: "alt speed".into(),
+                control: PropertyControl::Slider {
+                    min: 0.0,
+                    max: 10.0,
+                    step: 0.1,
+                    initial: 1.0,
+                },
+            },
+        ]));
+
+        app.world_mut().entity_mut(property).observe(
+            |trigger: On<RemoteControlEvent>, mut commands: Commands| {
+                if matches!(trigger.event().value, PropertyValue::Float(_)) {
+                    commands
+                        .entity(trigger.entity)
+                        .insert(AppliedAspect(trigger.event().aspect_id));
+                }
+            },
+        );
+
+        app.add_plugins(RemoteControlPlugin {
+            bind_addr: "127.0.0.1:0".into(),
+        });
+
+        app.update();
+        app.update();
+        app.update();
+
+        let body = format!("id={}:1&value=3.5", property.to_bits());
+        let response = send_request(&mut app, &make_request("POST", EVENT_PATH, &body));
+        assert!(response.starts_with("HTTP/1.1 200 OK"));
+
+        app.update();
+
+        let applied = app
+            .world()
+            .entity(property)
+            .get::<AppliedAspect>()
+            .expect("observer should get aspect id");
+        assert_eq!(applied.0, 1);
+    }
+
+    #[test]
     fn updating_definitions_inserts_server() {
         let mut app = app_with_server(Some(vec![PropertyDefinition {
             id: make_entity(200),
+            aspect_id: 0,
             label: "button".into(),
             control: PropertyControl::Button,
         }]));
@@ -825,6 +929,7 @@ mod tests {
     fn updating_definitions_replaces_server_resource() {
         let mut app = app_with_server(Some(vec![PropertyDefinition {
             id: make_entity(300),
+            aspect_id: 0,
             label: "first".into(),
             control: PropertyControl::Button,
         }]));
@@ -834,6 +939,7 @@ mod tests {
             let mut defs = app.world_mut().resource_mut::<RemoteControlDefinitions>();
             defs.0 = vec![PropertyDefinition {
                 id: make_entity(301),
+                aspect_id: 0,
                 label: "second".into(),
                 control: PropertyControl::Button,
             }];
@@ -852,4 +958,6 @@ pub mod prelude {
     pub use super::events::RemoteControlEvent;
     pub use super::property::PropertyControl;
     pub use super::property::PropertyDefinition;
+
+    pub use super::use_cases::*;
 }
