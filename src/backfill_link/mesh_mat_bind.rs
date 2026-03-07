@@ -25,7 +25,7 @@ fn watch_mesh_change(
                         warn!("Mesh {id} unsupported for conversion; skipping");
                     }
                 } else {
-                    // debug!("Mesh {id} is placeholder...")
+                    panic!("Mesh {id} is placeholder...")
                 }
             }
             _ => {}
@@ -89,7 +89,7 @@ fn watch_image_change(
                         );
                     }
                 } else {
-                    // debug!("Image {id} is placeholder...")
+                    panic!("Image {id} is placeholder...")
                 }
             }
             AssetEvent::Removed { id } => {
@@ -118,7 +118,7 @@ fn watch_material_change(
                         warn!("Material {id} failed conversion; skipping");
                     }
                 } else {
-                    // debug!("Material {id} is placeholder...")
+                    panic!("Material {id} is placeholder...")
                 }
             }
             _ => {}
