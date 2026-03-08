@@ -19,13 +19,13 @@ fn watch_mesh_change(
             AssetEvent::Added { id } | AssetEvent::Modified { id } => {
                 if let Some(asset) = meshes.get(*id) {
                     if let Some(converted) = convert_mesh(&session.0, asset) {
-                        debug!("Converted new mesh {id} {:?}", converted.as_ptr());
+                        // debug!("Converted new mesh {id} {:?}", converted.as_ptr());
                         cache.meshes.insert(*id, converted);
                     } else {
                         warn!("Mesh {id} unsupported for conversion; skipping");
                     }
                 } else {
-                    debug!("Mesh {id} is placeholder...")
+                    panic!("Mesh {id} is placeholder...")
                 }
             }
             _ => {}
@@ -43,6 +43,24 @@ fn watch_image_change(
         match e {
             AssetEvent::Added { id } | AssetEvent::Modified { id } => {
                 if let Some(asset) = assets.get(*id) {
+                    // Ignore placeholder/partially loaded images. Converting these can produce
+                    // invalid backfill textures that later crash env-light setup.
+                    let has_bytes = asset
+                        .data
+                        .as_ref()
+                        .map(|bytes| !bytes.is_empty())
+                        .unwrap_or(false);
+                    if !has_bytes || asset.width() == 0 || asset.height() == 0 {
+                        warn!(
+                            "Skip image conversion: id={id:?}, size={}x{}, bytes={}, format={:?}",
+                            asset.width(),
+                            asset.height(),
+                            asset.data.as_ref().map(|x| x.len()).unwrap_or(0),
+                            asset.texture_descriptor.format
+                        );
+                        continue;
+                    }
+
                     // debug!(
                     //     "QUICK DUMP {id:?} bytes {:?}",
                     //     asset
@@ -51,16 +69,32 @@ fn watch_image_change(
                     //         .map(|x| x.iter().take(25).collect::<Vec<_>>())
                     // );
                     if let Some(converted) = convert_texture(&session.0, asset) {
-                        debug!("Converted new image {id} {:?}", converted.as_ptr());
+                        warn!(
+                            "Image converted: id={id:?}, size={}x{}, format={:?}, tex_ptr={:p}",
+                            asset.width(),
+                            asset.height(),
+                            asset.texture_descriptor.format,
+                            converted.as_ptr()
+                        );
                         cache
                             .textures
                             .insert(*id, (converted, asset.sampler.clone()));
                     } else {
-                        warn!("Image {id} unsupported for conversion; skipping");
+                        warn!(
+                            "Image conversion failed/unsupported: id={id:?}, size={}x{}, bytes={}, format={:?}",
+                            asset.width(),
+                            asset.height(),
+                            asset.data.as_ref().map(|x| x.len()).unwrap_or(0),
+                            asset.texture_descriptor.format
+                        );
                     }
                 } else {
-                    debug!("Image {id} is placeholder...")
+                    panic!("Image {id} is placeholder...")
                 }
+            }
+            AssetEvent::Removed { id } => {
+                warn!("Image removed; dropping cached backfill texture id={id:?}");
+                cache.textures.remove(id);
             }
             _ => {}
         }
@@ -78,13 +112,13 @@ fn watch_material_change(
             AssetEvent::Added { id } | AssetEvent::Modified { id } => {
                 if let Some(asset) = materials.get(*id) {
                     if let Some(converted) = convert_material(&session.0, asset, &cache.textures) {
-                        debug!("Converted new material {id} {:?}", converted.as_ptr());
+                        // debug!("Converted new material {id} {:?}", converted.as_ptr());
                         cache.materials.insert(*id, converted);
                     } else {
                         warn!("Material {id} failed conversion; skipping");
                     }
                 } else {
-                    debug!("Material {id} is placeholder...")
+                    panic!("Material {id} is placeholder...")
                 }
             }
             _ => {}
@@ -115,10 +149,10 @@ fn build_binding_for(
         &material_handle_ffi,
     );
 
-    debug!(
-        "Installing new renderable to {:?}: mesh {} and mat {} ",
-        bentity.0, mesh_handle, mat_handle,
-    );
+    // debug!(
+    //     "Installing new renderable to {:?}: mesh {} and mat {} ",
+    //     bentity.0, mesh_handle, mat_handle,
+    // );
 
     BRenderBinding {
         mesh_handle,
@@ -262,12 +296,12 @@ fn sync_binding_on_renderability_and_asset_changes(
             || is_renderable_but_no_binding;
 
         if needs_refresh {
-            debug!(
-                "Needs refresh, bindings changed, {} {} {}",
-                handle_changed_for_this_entity,
-                asset_changed_for_this_entity,
-                is_renderable_but_no_binding
-            );
+            // debug!(
+            //     "Needs refresh, bindings changed, {} {} {}",
+            //     handle_changed_for_this_entity,
+            //     asset_changed_for_this_entity,
+            //     is_renderable_but_no_binding
+            // );
             let new_binding = build_binding_for(bentity, mesh_h, mat_h, &mut cache, &session);
             commands.entity(entity).insert(new_binding);
         }
@@ -294,7 +328,7 @@ fn on_bentity_added_attach_binding_if_renderable(
         if let Some((mesh_h, mat_h)) = is_renderable(mesh_opt, mat_opt)
             && existing_binding.is_none()
         {
-            debug!("Add new bindings");
+            // debug!("Add new bindings");
             let new_binding = build_binding_for(bentity, mesh_h, mat_h, &mut cache, &session);
             commands.entity(entity).insert(new_binding);
         }

@@ -5,14 +5,14 @@
 //! implicit asset loads in the receiving process.
 use std::fmt::Debug;
 
-use bevy::{asset::uuid::Uuid, platform::collections::HashMap, prelude::*};
+use bevy::{platform::collections::HashMap, prelude::*};
 
 use crate::serialize::*;
 
 impl<A: Asset> FastWrite for AssetId<A> {
     /// Serialize an `AssetId` by its raw bytes.
     unsafe fn write_fast(&self, w: &mut impl ByteSink) {
-        debug!("Write asset ID {}", self);
+        //debug!("Write asset ID {}", self);
         unsafe { byte_serialize(self, w) };
     }
 }
@@ -114,7 +114,7 @@ impl<A: Asset + RemappableAsset> FastRead for Handle<A> {
         match A::remap_to_local(id) {
             Some(x) => x,
             None => {
-                panic!("Using made up asset!");
+                panic!("Using made up {} asset {id}!", std::any::type_name::<A>());
             }
         }
     }

@@ -3,10 +3,11 @@ use bevy::prelude::*;
 /// Orderable sets that multiple plugins can target.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ReplicateSet {
+    /// Mark explicit `BReplicate` entities as propagation sources.
     Entity,
-    /// React to Added<BReplicate>, propagate to descendants, and assign BEntity.
+    /// Assign `BEntity` after hierarchy propagation settles for this frame.
     Propagate,
-    /// React to Added<ChildOf> edges so new children inherit BReplicate/BEntity.
+    /// Hierarchy-driven updates that depend on parent/child links and BEntity.
     InheritOnChildLink,
 }
 

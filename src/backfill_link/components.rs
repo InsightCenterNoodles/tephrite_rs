@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use crate::backfill;
 
 /// Should this entity be replicated to the render plugin?
-#[derive(Component)]
+#[derive(Component, Clone, Copy, PartialEq, Eq)]
 #[component(immutable)]
 pub(crate) struct BReplicate;
 

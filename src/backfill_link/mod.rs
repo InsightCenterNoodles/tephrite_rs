@@ -20,7 +20,7 @@ pub struct BackfillPlugin;
 
 impl Plugin for BackfillPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(setup_session);
+        setup_session(app);
 
         app.add_plugins(sets::PipelineOrderPlugin);
         app.add_plugins(breplicate::ReplicationPlugin);
@@ -29,7 +29,6 @@ impl Plugin for BackfillPlugin {
         app.add_plugins(lighting::LightBindingPlugin);
         app.add_plugins(ibl::EnvironmentLightPlugin);
 
-        //app.add_systems(FixedLast, run_frame);
         app.add_systems(Last, (run_frame, teardown).chain());
     }
 }
@@ -122,8 +121,6 @@ fn setup_session(app: &mut App) {
     }
 
     app.insert_non_send_resource(resources::Session(session));
-
-    //println!("Session setup done");
 }
 
 fn run_frame(

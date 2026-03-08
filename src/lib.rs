@@ -4,8 +4,11 @@ pub(crate) mod common;
 pub(crate) mod config;
 pub mod input;
 pub mod multiprocess;
+pub mod remote_control;
 pub mod replication;
 pub(crate) mod serialize;
+pub(crate) mod simulator;
+pub mod ui;
 pub(crate) mod vrpn;
 
 use bevy::app::Plugin;

@@ -2,7 +2,13 @@ use std::{
     ffi::OsString, marker::PhantomData, path::PathBuf, ptr::NonNull, rc::Rc, sync::LazyLock,
 };
 
-#[allow(non_camel_case_types, non_upper_case_globals, non_snake_case, unused)]
+#[allow(
+    non_camel_case_types,
+    non_upper_case_globals,
+    non_snake_case,
+    unsafe_op_in_unsafe_fn,
+    unused
+)]
 pub(crate) mod backfill_sys;
 
 pub(crate) use backfill_sys as ffi;
@@ -252,18 +258,18 @@ impl FSessionHandle {
 /* ------------------------------------------------------------------------- */
 
 // Small helpers for by-value PODs coming from bindgen.
-#[inline]
-pub fn float3(x: f32, y: f32, z: f32) -> ffi::float3 {
-    ffi::float3 { x, y, z }
-}
-#[inline]
-pub fn float4(x: f32, y: f32, z: f32, w: f32) -> ffi::float4 {
-    ffi::float4 { x, y, z, w }
-}
-#[inline]
-pub fn color(r: f32, g: f32, b: f32, a: f32) -> ffi::FColor {
-    ffi::FColor { r, g, b, a }
-}
+// #[inline]
+// pub fn float3(x: f32, y: f32, z: f32) -> ffi::float3 {
+//     ffi::float3 { x, y, z }
+// }
+// #[inline]
+// pub fn float4(x: f32, y: f32, z: f32, w: f32) -> ffi::float4 {
+//     ffi::float4 { x, y, z, w }
+// }
+// #[inline]
+// pub fn color(r: f32, g: f32, b: f32, a: f32) -> ffi::FColor {
+//     ffi::FColor { r, g, b, a }
+// }
 
 // MARK: Blob
 
@@ -301,6 +307,7 @@ pub fn tex_config_from_image(
         .ok_or(BackfillError::EmptyPointer)
 }
 
+#[allow(unused)]
 pub fn texture_from_config(
     sess: &FSessionHandle,
     cfg: &FTextureConfigHandle,
@@ -477,14 +484,14 @@ pub fn material_set_rm(mat: &FMaterialHandle, roughness: f32, metallic: f32) {
 }
 
 // MARK: Light
-
+#[allow(unused)]
 pub fn light_config(ty: ffi::FLightType) -> BackfillResult<FLightConfigHandle> {
     let ptr = unsafe { DYN_LIBRARY.flightconfig_init(ty) };
     NonNull::new(ptr)
         .map(|p| unsafe { Handle::from_nonnull(p) })
         .ok_or(BackfillError::EmptyPointer)
 }
-
+#[allow(unused)]
 pub fn light_set_point_defaults(
     lc: &FLightConfigHandle,
     intensity: f32,

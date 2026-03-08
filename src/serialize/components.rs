@@ -38,24 +38,6 @@ impl FastRead for Head {
 
 // =============================================================================
 
-// UNNEEDED??
-
-// impl FastWrite for GlobalTransform {
-//     unsafe fn write_fast(&self, w: &mut crate::serialize::fast_io::ByteWriter) {
-//         self.affine().serialize(w);
-//     }
-// }
-// impl FastRead for GlobalTransform {
-//     type Ret = Self;
-//     unsafe fn read_fast(r: &mut crate::serialize::fast_io::ByteReader) -> Self {
-//         // we read BUT DO NOT USE. Bevy will overwrite
-//         let _: Affine3A = deserialize(r);
-//         GlobalTransform::IDENTITY
-//     }
-// }
-
-// =============================================================================
-
 // `Visibility` is treated as a raw POD value.
 impl_fast_raw_item!(Visibility);
 
