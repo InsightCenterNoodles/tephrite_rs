@@ -27,12 +27,11 @@ fn setup(mut commands: Commands, server: Res<AssetServer>, mut known: ResMut<Kno
         Replicated,
     ));
 
-    let env_map = server.load("ibl/workshop_4k_small.exr");
-
     commands.insert_resource(EnvironmentLighting {
-        //intensity: 15000.0,
+        diffuse: server.load("ibl/workshop_diffuse.ktx2"),
+        specular: server.load("ibl/workshop_specular.ktx2"),
         intensity: 5000.0,
-        equirect: env_map,
+        skybox_color: None,
     });
 
     let root = commands

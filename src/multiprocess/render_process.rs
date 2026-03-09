@@ -1,5 +1,5 @@
 use bevy::{
-    core_pipeline::tonemapping::Tonemapping,
+    core_pipeline::{Skybox, tonemapping::Tonemapping},
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     pbr::{DefaultOpaqueRendererMethod, ScreenSpaceAmbientOcclusion, ScreenSpaceReflections},
     prelude::*,
@@ -7,7 +7,7 @@ use bevy::{
     window::EnabledButtons,
 };
 
-use crate::config::get_render_configuration;
+use crate::{common::EnvironmentLighting, config::get_render_configuration};
 
 /// Function to run a render (or child) process
 pub(crate) fn run() -> AppExit {
@@ -35,10 +35,10 @@ pub(crate) fn run() -> AppExit {
     }));
     //info!("{rank}: Running render process {}", std::process::id());
 
-    if child_config.process_rank == 0 {
-        app.add_plugins(LogDiagnosticsPlugin::default())
-            .add_plugins(FrameTimeDiagnosticsPlugin::default());
-    }
+    // if child_config.process_rank == 0 {
+    //     app.add_plugins(LogDiagnosticsPlugin::default())
+    //         .add_plugins(FrameTimeDiagnosticsPlugin::default());
+    // }
 
     if child_config.use_offaxis {
         app.add_plugins(crate::render::OffAxisPlugin);
@@ -49,6 +49,8 @@ pub(crate) fn run() -> AppExit {
     //app.add_plugins(bevy::camera::visibility::VisibilityPlugin);
 
     app.add_systems(PreStartup, setup);
+
+    app.add_systems(Update, env_change_watch);
 
     // Add in replication components
     app.add_plugins(crate::replication::reader::ReplicationReaderPlugin);
@@ -74,7 +76,7 @@ fn sync_cam_to_head(
     for mut camera_xform in &mut proj_q {
         *camera_xform = *head_tf;
 
-        let testtf = Transform::from_xyz(5.0, 5.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y);
+        //let testtf = Transform::from_xyz(5.0, 5.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y);
     }
 }
 
@@ -88,24 +90,12 @@ fn setup(mut commands: Commands) {
             Tonemapping::AcesFitted,
             Hdr,
             Transform::default(),
-            //Transform::from_xyz(5.0, 5.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
             ScreenSpaceAmbientOcclusion {
                 quality_level: bevy::pbr::ScreenSpaceAmbientOcclusionQualityLevel::Medium,
                 constant_object_thickness: 0.25,
             },
             ScreenSpaceReflections::default(),
             TemporalJitter::default(),
-            // EnvironmentMapLight {
-            //     diffuse_map: assets.load("ibl/workshop_diffuse.ktx2"),
-            //     specular_map: assets.load("ibl/workshop_specular.ktx2"),
-            //     intensity: 5000.0,
-            //     ..Default::default()
-            // },
-            // Skybox {
-            //     image: assets.load("ibl/workshop_diffuse.ktx2"),
-            //     brightness: 5000.0,
-            //     ..default()
-            // },
         ))
         .id();
 
@@ -122,5 +112,40 @@ fn setup(mut commands: Commands) {
                 100.0,
             )),
         );
+    }
+}
+
+fn env_change_watch(
+    env: Option<Res<EnvironmentLighting>>,
+    mut cam_q: Query<Entity, With<Camera3d>>,
+    mut commands: Commands,
+    //assets: Res<Assets<Image>>,
+) {
+    let Some(env) = env else {
+        return;
+    };
+
+    if !env.is_changed() {
+        return;
+    }
+
+    for cam in cam_q.iter_mut() {
+        let mut ec = commands.entity(cam);
+        ec.insert(EnvironmentMapLight {
+            diffuse_map: env.diffuse.clone(),
+            specular_map: env.specular.clone(),
+            intensity: env.intensity,
+            ..Default::default()
+        });
+
+        if let Some(color) = env.skybox_color {
+            commands.insert_resource(ClearColor(color));
+        } else {
+            ec.insert(Skybox {
+                image: env.specular.clone(),
+                brightness: env.intensity,
+                ..Default::default()
+            });
+        }
     }
 }

@@ -116,7 +116,7 @@ fn consume_buffer(
                 item.component.remove_component(local, commands);
             }
             ClientInstruction::ResourceUpdate(item) => {
-                item.resouce.add_resource(commands);
+                item.resource.add_resource(commands);
             }
             ClientInstruction::ResourceDrop(item) => {
                 item.resource.remove_resource(commands);

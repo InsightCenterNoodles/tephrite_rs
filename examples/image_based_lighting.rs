@@ -110,19 +110,12 @@ fn setup(
         Replicated,
     ));
 
-    //let env_map = server.load("ibl/workshop_4k_small.exr");
-
     commands.insert_resource(EnvironmentLighting {
         diffuse: server.load("ibl/workshop_diffuse.ktx2"),
         specular: server.load("ibl/workshop_specular.ktx2"),
-        intensity: 20.0,
+        intensity: 5000.0,
+        skybox_color: None,
     });
-
-    // camera
-    commands.spawn((
-        //Camera3d::default(),
-        Transform::from_xyz(-2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
-    ));
 }
 
 #[derive(Debug, Component)]

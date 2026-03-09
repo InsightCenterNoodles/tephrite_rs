@@ -247,12 +247,12 @@ impl_fast_serialize!(ClientComponentRemoved,
 /// An instruction where a resource has been added.
 #[derive(Debug)]
 pub(crate) struct ClientResourceUpdate {
-    pub resouce: ReplicatedResource,
+    pub resource: ReplicatedResource,
 }
 
 impl_fast_serialize!(ClientResourceUpdate,
     keep: {
-        resouce
+        resource
     },
     skip: {
     }

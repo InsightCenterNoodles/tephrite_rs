@@ -51,6 +51,8 @@ pub trait RemappableAsset {
         Self::with_remapper_mut(|map| {
             map.insert(id, handle.clone());
         });
+
+        panic!("NOPE");
     }
 
     fn set_mapping(id: AssetId<Self>, asset: Self, assets: &mut Assets<Self>)

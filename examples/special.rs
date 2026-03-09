@@ -35,12 +35,11 @@ fn setup(
         Replicated,
     ));
 
-    let env_map = server.load("ibl/workshop_4k_small.exr");
-
     commands.insert_resource(EnvironmentLighting {
-        //intensity: 15000.0,
-        intensity: 10000.0,
-        equirect: env_map,
+        diffuse: server.load("ibl/workshop_diffuse.ktx2"),
+        specular: server.load("ibl/workshop_specular.ktx2"),
+        intensity: 5000.0,
+        skybox_color: None,
     });
 
     // Interactor light

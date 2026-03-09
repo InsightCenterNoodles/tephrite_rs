@@ -12,4 +12,5 @@ pub struct EnvironmentLighting {
     pub intensity: f32,
     pub diffuse: Handle<Image>,
     pub specular: Handle<Image>,
+    pub skybox_color: Option<Color>,
 }
