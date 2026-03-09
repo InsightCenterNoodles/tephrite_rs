@@ -33,8 +33,6 @@ pub(crate) fn setup() -> App {
         child_count,
     ));
 
-    app.add_plugins(crate::multiprocess::app::control_c_watcher);
-
     // this adds AABB calc, and visibility
     app.add_plugins(bevy::camera::visibility::VisibilityPlugin);
 

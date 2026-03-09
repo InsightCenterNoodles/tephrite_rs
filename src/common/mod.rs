@@ -5,9 +5,11 @@ use bevy::prelude::*;
 #[derive(Component, Debug)]
 pub struct Head;
 
-/// Add this resource to your scene to enable image based lighting
+/// Add this resource to your scene to enable image based lighting.
+/// We don't support multiple environments at the moment. And we don't support the bevy environment system yet.
 #[derive(Debug, Resource)]
 pub struct EnvironmentLighting {
     pub intensity: f32,
-    pub equirect: Handle<Image>,
+    pub diffuse: Handle<Image>,
+    pub specular: Handle<Image>,
 }

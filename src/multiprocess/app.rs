@@ -1,29 +1,11 @@
 use bevy::{
-    app::{App, PanicHandlerPlugin, ScheduleRunnerPlugin, TerminalCtrlCHandlerPlugin, ctrlc},
+    app::{App, PanicHandlerPlugin, ScheduleRunnerPlugin},
     diagnostic::DiagnosticsPlugin,
     image::{CompressedImageFormatSupport, CompressedImageFormats},
     log::LogPlugin,
     prelude::*,
     time::TimePlugin,
 };
-
-/// Watch for an interrupt signal, propagate to Bevy
-pub(crate) fn control_c_watcher(app: &mut App) {
-    ctrlc::set_handler(|| {
-        TerminalCtrlCHandlerPlugin::gracefully_exit();
-    })
-    .unwrap();
-
-    app.add_systems(PreUpdate, TerminalCtrlCHandlerPlugin::exit_on_flag);
-}
-
-/// Catch, and discard, an interrupt
-pub(crate) fn control_c_catch(_: &mut App) {
-    ctrlc::set_handler(|| {
-        debug!("{}: CAUGHT SHUTDOWN", std::process::id());
-    })
-    .unwrap();
-}
 
 pub(crate) fn make_common_app() -> App {
     // build bevy application

@@ -1,7 +1,6 @@
 use bevy::ecs::entity::EntityHashMap;
 use bevy::prelude::*;
 
-use crate::backfill_link::components::BReplicate;
 use crate::serialize::transcript_reader::TranscriptReaderResource;
 
 use super::instruction::*;
@@ -94,11 +93,7 @@ fn consume_buffer(
 
         match instruction {
             ClientInstruction::EAdd(entity) => {
-                let local = commands.spawn((
-                    BReplicate,
-                    InheritedVisibility::default(),
-                    Transform::default(),
-                ));
+                let local = commands.spawn((InheritedVisibility::default(), Transform::default()));
 
                 map.0.insert(entity, local.id());
                 // debug!("Mapping entity {:?} -> {:?}", entity, local.id());

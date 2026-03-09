@@ -102,7 +102,7 @@ fn setup(
     // light
     commands.spawn((
         DirectionalLight {
-            illuminance: 32000.0,
+            illuminance: 5000.0,
             shadows_enabled: true,
             ..default()
         },
@@ -110,16 +110,17 @@ fn setup(
         Replicated,
     ));
 
-    let env_map = server.load("ibl/workshop_4k_small.exr");
+    //let env_map = server.load("ibl/workshop_4k_small.exr");
 
     commands.insert_resource(EnvironmentLighting {
-        intensity: 30000.0,
-        equirect: env_map,
+        diffuse: server.load("ibl/workshop_diffuse.ktx2"),
+        specular: server.load("ibl/workshop_specular.ktx2"),
+        intensity: 20.0,
     });
 
     // camera
     commands.spawn((
-        Camera3d::default(),
+        //Camera3d::default(),
         Transform::from_xyz(-2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 }

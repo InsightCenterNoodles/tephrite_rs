@@ -1,10 +1,9 @@
-pub(crate) mod backfill;
-pub(crate) mod backfill_link;
 pub(crate) mod common;
 pub(crate) mod config;
 pub mod input;
 pub mod multiprocess;
 pub mod remote_control;
+mod render;
 pub mod replication;
 pub(crate) mod serialize;
 pub(crate) mod simulator;
