@@ -143,17 +143,6 @@ fn consume_buffer(
                     ReplicatedAssetID::Image(id) => Image::clear_mapping(id, images),
                 };
             }
-            ClientInstruction::CPrepAsset(item) => {
-                use crate::replication::replicated_assets::ReplicatedAssetID;
-
-                match item.id {
-                    ReplicatedAssetID::Mesh(id) => Mesh::reserve_mapping(id, meshes),
-                    ReplicatedAssetID::StandardMaterial(id) => {
-                        StandardMaterial::reserve_mapping(id, materials);
-                    }
-                    ReplicatedAssetID::Image(id) => Image::reserve_mapping(id, images),
-                };
-            }
             ClientInstruction::HChange(item) => {
                 // Remap foreign IDs to local before applying hierarchy changes
                 let child_local = map.map(item.child);

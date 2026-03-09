@@ -101,20 +101,6 @@ impl_fast_serialize_write_only!(ServerReplicateAsset<'a>,
     }
 );
 
-/// An instruction to reserve an asset handle
-#[derive(Debug)]
-pub(crate) struct ReserveAsset {
-    pub id: ReplicatedAssetID,
-}
-
-impl_fast_serialize!(ReserveAsset,
-    keep: {
-        id
-    },
-    skip: {
-    }
-);
-
 /// An instruction to remove an asset
 #[derive(Debug)]
 pub(crate) struct DropAsset {
@@ -187,11 +173,10 @@ create_serialize_enum_write_only!(
         (3, CRemove, ServerComponentRemoved),
         (4, CAsset, ServerReplicateAsset<'a>),
         (5, CDropAsset, DropAsset),
-        (6, CPrepAsset, ReserveAsset),
-        (7, ResourceUpdate, ServerResourceUpdate<'a>),
-        (8, ResourceDrop, ResourceDrop),
-        (9, HChange, HierarchyChange),
-        (10, EFrame, EndFrame),
+        (6, ResourceUpdate, ServerResourceUpdate<'a>),
+        (7, ResourceDrop, ResourceDrop),
+        (8, HChange, HierarchyChange),
+        (9, EFrame, EndFrame),
     }
 );
 
@@ -283,10 +268,9 @@ create_serialize_enum!(
         (3, CRemove, ClientComponentRemoved),
         (4, CAsset, ClientReplicateAsset),
         (5, CDropAsset, DropAsset),
-        (6, CPrepAsset, ReserveAsset),
-        (7, ResourceUpdate, ClientResourceUpdate),
-        (8, ResourceDrop, ResourceDrop),
-        (9, HChange, HierarchyChange),
-        (10, EFrame, EndFrame),
+        (6, ResourceUpdate, ClientResourceUpdate),
+        (7, ResourceDrop, ResourceDrop),
+        (8, HChange, HierarchyChange),
+        (9, EFrame, EndFrame),
     }
 );

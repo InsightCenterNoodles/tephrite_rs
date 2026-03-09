@@ -3,7 +3,7 @@
 //! `AssetId<A>` is serialized by raw bytes as POD. `Handle<A>` is serialized as
 //! its `AssetId`, and is reconstructed as a `Weak` handle on read to avoid
 //! implicit asset loads in the receiving process.
-use std::fmt::Debug;
+use std::{fmt::Debug, marker::PhantomData};
 
 use bevy::{platform::collections::HashMap, prelude::*};
 
@@ -39,19 +39,6 @@ impl<A: Asset> FastWrite for Handle<A> {
 pub trait RemappableAsset {
     fn with_remapper<F: FnOnce(&HashMap<AssetId<Self>, Handle<Self>>)>(func: F);
     fn with_remapper_mut<F: FnOnce(&mut HashMap<AssetId<Self>, Handle<Self>>)>(func: F);
-
-    fn reserve_mapping(id: AssetId<Self>, assets: &mut Assets<Self>)
-    where
-        Self: bevy::prelude::Asset,
-        Self: Sized + Debug,
-    {
-        debug!("Reserve asset {id}");
-        let handle = assets.reserve_handle();
-
-        Self::with_remapper_mut(|map| {
-            map.insert(id, handle.clone());
-        });
-    }
 
     fn set_mapping(id: AssetId<Self>, asset: Self, assets: &mut Assets<Self>)
     where
@@ -92,6 +79,30 @@ pub trait RemappableAsset {
         ret
     }
 
+    fn remap_to_local_or_reserve(id: AssetId<Self>) -> Handle<Self>
+    where
+        Self: bevy::prelude::Asset,
+        Self: Sized,
+    {
+        if let Some(handle) = Self::remap_to_local(id) {
+            return handle;
+        }
+
+        let local = Handle::Uuid(bevy::asset::uuid::Uuid::new_v4(), PhantomData);
+
+        warn!(
+            "Missing asset mapping for {} id {id}; reserving client-local placeholder {}",
+            std::any::type_name::<Self>(),
+            local.id()
+        );
+
+        Self::with_remapper_mut(|map| {
+            map.insert(id, local.clone());
+        });
+
+        local
+    }
+
     fn clear_mapping(id: AssetId<Self>, assets: &mut Assets<Self>)
     where
         Self: bevy::prelude::Asset,
@@ -111,12 +122,7 @@ impl<A: Asset + RemappableAsset> FastRead for Handle<A> {
     unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret {
         let id = unsafe { AssetId::<A>::read_fast(r) };
         debug!("Reading handle {}", id);
-        match A::remap_to_local(id) {
-            Some(x) => x,
-            None => {
-                panic!("Using made up {} asset {id}!", std::any::type_name::<A>());
-            }
-        }
+        A::remap_to_local_or_reserve(id)
     }
 }
 
@@ -135,6 +141,8 @@ impl_fast_newtype!(MeshMaterial3d<StandardMaterial>);
 #[cfg(test)]
 mod tests {
     use bevy::asset::AssetIndex;
+    use bevy::asset::RenderAssetUsages;
+    use bevy::mesh::PrimitiveTopology;
 
     use super::*;
 
@@ -154,5 +162,46 @@ mod tests {
         let h = a.clone();
 
         test_serialization(h, |x, y| x == y);
+    }
+
+    #[test]
+    fn unknown_remote_id_gets_stable_local_placeholder() {
+        let remote_id: AssetId<Mesh> = AssetId::Index {
+            index: AssetIndex::from_bits({
+                let generation = 9;
+                let index = 42;
+                ((generation as u64) << 32) | index as u64
+            }),
+            marker: Default::default(),
+        };
+
+        let local1 = Mesh::remap_to_local_or_reserve(remote_id);
+        let local2 = Mesh::remap_to_local_or_reserve(remote_id);
+
+        assert_eq!(local1.id(), local2.id());
+        assert_ne!(local1.id(), remote_id);
+    }
+
+    #[test]
+    fn placeholder_mapping_is_fulfilled_when_real_asset_arrives() {
+        let remote_id: AssetId<Mesh> = AssetId::Index {
+            index: AssetIndex::from_bits({
+                let generation = 11;
+                let index = 77;
+                ((generation as u64) << 32) | index as u64
+            }),
+            marker: Default::default(),
+        };
+
+        let local = Mesh::remap_to_local_or_reserve(remote_id);
+        assert!(matches!(local.id(), AssetId::Uuid { .. }));
+
+        let mut assets = Assets::<Mesh>::default();
+        let mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+
+        Mesh::set_mapping(remote_id, mesh, &mut assets);
+
+        assert!(assets.get(local.id()).is_some());
+        assert_eq!(Mesh::remap_to_local(remote_id).map(|h| h.id()), Some(local.id()));
     }
 }
