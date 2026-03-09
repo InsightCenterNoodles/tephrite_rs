@@ -52,6 +52,7 @@ pub trait RemappableAsset {
             map.insert(id, handle.clone());
         });
 
+        // This never fires. we never call this function, so we can probably remove it.
         panic!("NOPE");
     }
 
