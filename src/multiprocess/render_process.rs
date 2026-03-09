@@ -94,7 +94,14 @@ fn setup(mut commands: Commands) {
                 quality_level: bevy::pbr::ScreenSpaceAmbientOcclusionQualityLevel::Medium,
                 constant_object_thickness: 0.25,
             },
-            ScreenSpaceReflections::default(),
+            ScreenSpaceReflections {
+                perceptual_roughness_threshold: 0.25,
+                thickness: 0.08,
+                linear_steps: 32,
+                linear_march_exponent: 2.0,
+                bisection_steps: 5,
+                use_secant: true,
+            },
             TemporalJitter::default(),
         ))
         .id();

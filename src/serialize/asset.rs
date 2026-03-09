@@ -51,9 +51,6 @@ pub trait RemappableAsset {
         Self::with_remapper_mut(|map| {
             map.insert(id, handle.clone());
         });
-
-        // This never fires. we never call this function, so we can probably remove it.
-        panic!("NOPE");
     }
 
     fn set_mapping(id: AssetId<Self>, asset: Self, assets: &mut Assets<Self>)
@@ -61,17 +58,16 @@ pub trait RemappableAsset {
         Self: bevy::prelude::Asset,
         Self: Sized + Debug,
     {
-        //debug!("install asset: {} {:?}", id, asset);
-
         Self::with_remapper_mut(move |map| {
-            if map.contains_key(&id) {
-                // mapping exists, update asset
-                debug!("Update asset {id}");
-                assets.insert(id, asset).expect("insert should not fail");
+            if let Some(local) = map.get(&id).cloned() {
+                // Mapping exists: this asset is represented by a client-local ID.
+                // Always write to the local ID so deferred handles stay valid.
+                debug!("Update asset {id} (local {})", local.id());
+                assets.insert(local.id(), asset).expect("insert should not fail");
             } else {
-                // this is new
+                // New mapping: create a fresh local asset and remember the remote->local mapping.
                 let handle = assets.add(asset);
-                debug!("New asset {id} MAPPING TO {}", handle.id());
+                debug!("New asset {id} mapping to local {}", handle.id());
                 map.insert(id, handle.clone());
             }
         });
@@ -101,9 +97,10 @@ pub trait RemappableAsset {
         Self: bevy::prelude::Asset,
         Self: Sized,
     {
-        assets.remove(id);
         Self::with_remapper_mut(|map| {
-            map.remove(&id);
+            if let Some(local) = map.remove(&id) {
+                assets.remove(local.id());
+            }
         });
     }
 }

@@ -323,6 +323,7 @@ impl FastRead for Mesh {
             // This should be safe as we are just getting access to the internal wrapped usize
             let unsafe_id: usize = unsafe { std::mem::transmute(aid) };
 
+            // TODO: Custom mesh attributes will cause a crash
             let attrib = &ATTRIB_LOOKUP[unsafe_id];
             ret.insert_attribute(*attrib, data);
         }
