@@ -8,7 +8,7 @@ use std::time::Duration;
 use bevy::prelude::*;
 
 use crate::{
-    input::{ButtonMessage, Interactor, JoystickButton},
+    input::{AxisMessage, ButtonMessage, Interactor, JoystickAxis, JoystickButton},
     prelude::{PropagateReplication, Replicated},
     remote_control::{
         RemoteControlDefinitions,
@@ -48,6 +48,7 @@ fn setup_joystick(
             ..Default::default()
         });
         ec.observe(button_control_observer);
+        ec.observe(analog_control_observer);
 
         let axis_mesh = meshes.add(Cuboid::from_length(0.05));
         let arrow_mesh = meshes.add(Cuboid::from_length(0.035));
@@ -113,10 +114,28 @@ fn setup_joystick(
                 initial: Default::default(),
             },
         });
+        definitions.push(PropertyDefinition {
+            id: entity,
+            aspect_id: ANALOG_ASPECT,
+            label: format!("{label} Left Stick (x,y in [-1,1])"),
+            control: PropertyControl::Analog {
+                initial: Vec2::ZERO,
+            },
+        });
+        definitions.push(PropertyDefinition {
+            id: entity,
+            aspect_id: ANALOG_2_ASPECT,
+            label: format!("{label} Right Stick (x,y in [-1,1])"),
+            control: PropertyControl::Analog {
+                initial: Vec2::ZERO,
+            },
+        });
     }
 }
 
 const BUTTON_ASPECT: u32 = 10;
+const ANALOG_ASPECT: u32 = 11;
+const ANALOG_2_ASPECT: u32 = 12;
 
 #[derive(Debug, Component)]
 struct PendingReleases(Vec<(JoystickButton, f32)>);
@@ -206,4 +225,30 @@ fn release_system(
             }
         });
     }
+}
+
+fn analog_control_observer(
+    trigger: On<RemoteControlEvent>,
+    mut axis_writer: MessageWriter<AxisMessage>,
+) {
+    let (ax, ay) = match trigger.event().aspect_id {
+        ANALOG_ASPECT => (JoystickAxis::LeftX, JoystickAxis::LeftY),
+        ANALOG_2_ASPECT => (JoystickAxis::RightX, JoystickAxis::RightY),
+        _ => return,
+    };
+
+    let Ok(target): Result<Vec2, _> = trigger.value.clone().try_into() else {
+        return;
+    };
+
+    axis_writer.write(AxisMessage {
+        from: trigger.entity,
+        axis: ax,
+        value: target.x.clamp(-1.0, 1.0),
+    });
+    axis_writer.write(AxisMessage {
+        from: trigger.entity,
+        axis: ay,
+        value: target.y.clamp(-1.0, 1.0),
+    });
 }

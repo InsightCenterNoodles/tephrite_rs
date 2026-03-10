@@ -601,6 +601,16 @@ mod tests {
         );
 
         assert_eq!(
+            property::parse_property_value(
+                &PropertyControl::Analog {
+                    initial: Vec2::ZERO,
+                },
+                Some(&"0.5,-0.25".to_string()),
+            ),
+            Ok(PropertyValue::Vec2(Vec2::new(0.5, -0.25)))
+        );
+
+        assert_eq!(
             property::parse_property_value(&PropertyControl::Button, None),
             Ok(PropertyValue::Triggered)
         );
@@ -665,6 +675,16 @@ mod tests {
     }
 
     #[test]
+    fn parse_property_value_vec2_is_strict() {
+        let control = PropertyControl::Analog {
+            initial: Vec2::ZERO,
+        };
+
+        assert!(property::parse_property_value(&control, Some(&"1".to_string())).is_err());
+        assert!(property::parse_property_value(&control, Some(&"1,y".to_string())).is_err());
+    }
+
+    #[test]
     fn render_controls_contains_controls_and_quit() {
         let defs = vec![
             PropertyDefinition {
@@ -716,6 +736,14 @@ mod tests {
                 label: "button".into(),
                 control: PropertyControl::Button,
             },
+            PropertyDefinition {
+                id: make_entity(7),
+                aspect_id: 0,
+                label: "analog".into(),
+                control: PropertyControl::Analog {
+                    initial: Vec2::new(0.2, -0.4),
+                },
+            },
         ];
 
         let html = content::render_controls(&defs);
@@ -724,6 +752,7 @@ mod tests {
         assert!(html.contains("<select"));
         assert!(html.contains("type=\"text\""));
         assert!(html.contains("sendVec3"));
+        assert!(html.contains("class=\"analog\""));
         assert!(html.contains("Quit</button>"));
         assert!(html.contains(&format!("value-{}", defs[0].lookup_id())));
     }
@@ -734,6 +763,7 @@ mod tests {
         assert!(html.contains(EVENT_PATH));
         assert!(html.contains("sendUpdate"));
         assert!(html.contains("sendVec3"));
+        assert!(html.contains("setupAnalog"));
         assert!(html.contains("quitApp"));
     }
 

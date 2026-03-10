@@ -50,7 +50,9 @@ pub trait RemappableAsset {
                 // Mapping exists: this asset is represented by a client-local ID.
                 // Always write to the local ID so deferred handles stay valid.
                 debug!("Update asset {id} (local {})", local.id());
-                assets.insert(local.id(), asset).expect("insert should not fail");
+                assets
+                    .insert(local.id(), asset)
+                    .expect("insert should not fail");
             } else {
                 // New mapping: create a fresh local asset and remember the remote->local mapping.
                 let handle = assets.add(asset);
@@ -197,11 +199,17 @@ mod tests {
         assert!(matches!(local.id(), AssetId::Uuid { .. }));
 
         let mut assets = Assets::<Mesh>::default();
-        let mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+        let mesh = Mesh::new(
+            PrimitiveTopology::TriangleList,
+            RenderAssetUsages::default(),
+        );
 
         Mesh::set_mapping(remote_id, mesh, &mut assets);
 
         assert!(assets.get(local.id()).is_some());
-        assert_eq!(Mesh::remap_to_local(remote_id).map(|h| h.id()), Some(local.id()));
+        assert_eq!(
+            Mesh::remap_to_local(remote_id).map(|h| h.id()),
+            Some(local.id())
+        );
     }
 }
