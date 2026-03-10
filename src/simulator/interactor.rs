@@ -49,27 +49,52 @@ fn setup_joystick(
         });
         ec.observe(button_control_observer);
 
-        let mesh = meshes.add(Cuboid::from_length(0.05));
+        let axis_mesh = meshes.add(Cuboid::from_length(0.05));
+        let arrow_mesh = meshes.add(Cuboid::from_length(0.035));
 
-        // Add axis mesh to the joystick for easy identification.
+        // Add axis mesh and a forward arrow to the joystick for easy identification.
         ec.with_children(|parent| {
+            let axis_thickness = 0.35;
+
             // X-axis (red).
             parent.spawn((
-                Mesh3d(mesh.clone()),
+                Mesh3d(axis_mesh.clone()),
                 MeshMaterial3d(materials.add(Color::linear_rgb(1.0, 0.0, 0.0))),
-                Transform::from_scale(vec3(2.0, 1.0, 1.0)),
+                Transform::from_scale(vec3(2.0, axis_thickness, axis_thickness)),
             ));
             // Y-axis (green).
             parent.spawn((
-                Mesh3d(mesh.clone()),
+                Mesh3d(axis_mesh.clone()),
                 MeshMaterial3d(materials.add(Color::linear_rgb(0.0, 1.0, 0.0))),
-                Transform::from_scale(vec3(1.0, 2.0, 1.0)),
+                Transform::from_scale(vec3(axis_thickness, 2.0, axis_thickness)),
             ));
             // Z-axis (blue).
             parent.spawn((
-                Mesh3d(mesh.clone()),
+                Mesh3d(axis_mesh),
                 MeshMaterial3d(materials.add(Color::linear_rgb(0.0, 0.0, 1.0))),
-                Transform::from_scale(vec3(1.0, 1.0, 2.0)),
+                Transform::from_scale(vec3(axis_thickness, axis_thickness, 2.0)),
+            ));
+
+            // Forward arrow (+Z): shaft and two angled head segments.
+            let arrow_material = materials.add(Color::linear_rgb(1.0, 1.0, 1.0));
+            parent.spawn((
+                Mesh3d(arrow_mesh.clone()),
+                MeshMaterial3d(arrow_material.clone()),
+                Transform::from_xyz(0.0, 0.0, -0.065).with_scale(vec3(0.7, 0.7, 2.6)),
+            ));
+            parent.spawn((
+                Mesh3d(arrow_mesh.clone()),
+                MeshMaterial3d(arrow_material.clone()),
+                Transform::from_xyz(0.015, 0.0, -0.11)
+                    .with_rotation(Quat::from_rotation_y(0.65))
+                    .with_scale(vec3(0.55, 0.55, 1.2)),
+            ));
+            parent.spawn((
+                Mesh3d(arrow_mesh),
+                MeshMaterial3d(arrow_material),
+                Transform::from_xyz(-0.015, 0.0, -0.11)
+                    .with_rotation(Quat::from_rotation_y(-0.65))
+                    .with_scale(vec3(0.55, 0.55, 1.2)),
             ));
         });
 
