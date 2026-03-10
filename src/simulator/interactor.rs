@@ -81,7 +81,9 @@ fn setup_joystick(
         definitions.push(PropertyDefinition {
             id: entity,
             aspect_id: BUTTON_ASPECT,
-            label: format!("{label} (A, B, X, Y, BL, BR, TL, TR, Back, Start)"),
+            label: format!(
+                "{label} (A, B, X, Y, BL, BR, TL, TR, Back, Start)[:ms duration, default 500 ms]"
+            ),
             control: PropertyControl::String {
                 initial: Default::default(),
             },
@@ -110,9 +112,18 @@ fn button_control_observer(
     };
 
     let joystick = trigger.entity;
-    let target = target.to_lowercase();
+    let target_button = target.to_lowercase();
+    let mut target_button = target_button.as_str();
+    let mut duration = 500u64;
 
-    let button = match target.as_str() {
+    let parts = target_button.split_once(":");
+
+    if let Some((new_target, new_duration)) = parts {
+        target_button = new_target;
+        duration = new_duration.parse().unwrap_or(500).clamp(1, 10000);
+    }
+
+    let button = match target_button {
         "a" => JoystickButton::A,
         "b" => JoystickButton::B,
         "x" => JoystickButton::X,
@@ -135,7 +146,7 @@ fn button_control_observer(
         kind: crate::input::ButtonEventKind::ButtonPressed(button),
     });
 
-    let release_when = Duration::from_millis(500).as_secs_f32();
+    let release_when = Duration::from_millis(duration).as_secs_f32();
 
     match items.get_mut(trigger.entity).ok().and_then(|x| x) {
         Some(mut x) => {

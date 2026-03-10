@@ -1,6 +1,8 @@
 pub(crate) use super::components::Replicated;
 use super::instruction::*;
 use super::sets::*;
+use bevy::light::NotShadowCaster;
+use bevy::light::NotShadowReceiver;
 use bevy::prelude::*;
 
 use crate::common::Head;
@@ -168,5 +170,7 @@ detect_component_changes!(
     (5, SpotLight),
     (6, Mesh3d),
     (7, StandardMatComponent),
-    (8, InheritedVisibility)
+    (8, InheritedVisibility),
+    (9, NotShadowCaster),
+    (10, NotShadowReceiver)
 );
