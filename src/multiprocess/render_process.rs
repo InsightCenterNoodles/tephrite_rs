@@ -1,6 +1,7 @@
 use bevy::{
     core_pipeline::{Skybox, tonemapping::Tonemapping},
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
+    log::{Level, LogPlugin},
     pbr::{DefaultOpaqueRendererMethod, ScreenSpaceAmbientOcclusion, ScreenSpaceReflections},
     prelude::*,
     render::{camera::TemporalJitter, view::Hdr},
@@ -19,20 +20,47 @@ pub(crate) fn run() -> AppExit {
     let child_config = get_render_configuration();
     let rank = child_config.process_rank;
 
-    app.add_plugins(DefaultPlugins.set(WindowPlugin {
-        primary_window: Some(Window {
-            present_mode: bevy::window::PresentMode::Mailbox,
-            title: format!("Tephrite Window {}", std::process::id()),
-            resolution: (1920, 1200).into(),
-            enabled_buttons: EnabledButtons {
-                minimize: false,
-                maximize: false,
-                close: false,
-            },
-            ..Default::default()
-        }),
-        ..Default::default()
-    }));
+    if child_config.use_offaxis {
+        unsafe {
+            // try to set here
+            if let Some(index) = child_config.card_index {
+                let index = index.to_string();
+                std::env::set_var("ENABLE_DEVICE_CHOOSER_LAYER", "1");
+                std::env::set_var("VULKAN_DEVICE_INDEX", index);
+            }
+
+            if let Some(display) = &child_config.display_name {
+                std::env::set_var("DISPLAY", display);
+            }
+        }
+    }
+
+    app.add_plugins(
+        DefaultPlugins
+            .set(WindowPlugin {
+                primary_window: Some(Window {
+                    present_mode: bevy::window::PresentMode::Fifo,
+                    mode: if child_config.fullscreen {
+                        bevy::window::WindowMode::BorderlessFullscreen(MonitorSelection::Primary)
+                    } else {
+                        bevy::window::WindowMode::Windowed
+                    },
+                    title: format!("Tephrite Window {}", std::process::id()),
+                    resolution: (1920, 1200).into(),
+                    enabled_buttons: EnabledButtons {
+                        minimize: false,
+                        maximize: false,
+                        close: false,
+                    },
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })
+            .set(LogPlugin {
+                level: Level::WARN,
+                ..Default::default()
+            }),
+    );
     //info!("{rank}: Running render process {}", std::process::id());
 
     // if child_config.process_rank == 0 {
@@ -117,6 +145,7 @@ fn setup(mut commands: Commands) {
                 physical.upper_right.as_vec3(),
                 0.01,
                 100.0,
+                !child_config.is_right,
             )),
         );
     }

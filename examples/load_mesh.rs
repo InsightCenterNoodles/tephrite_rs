@@ -31,7 +31,7 @@ fn setup(mut commands: Commands, server: Res<AssetServer>, mut known: ResMut<Kno
         diffuse: server.load("ibl/workshop_diffuse.ktx2"),
         specular: server.load("ibl/workshop_specular.ktx2"),
         intensity: 5000.0,
-        skybox_color: None,
+        skybox_color: Color::srgb(0.5, 0.5, 1.0).into(),
     });
 
     let root = commands

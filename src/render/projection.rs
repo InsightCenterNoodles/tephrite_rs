@@ -13,6 +13,9 @@ pub struct OffAxisProjection {
     pub lower_right: Vec3,
     pub upper_right: Vec3,
 
+    // Is the eye left or right, for stereo applications.
+    pub is_left: bool,
+
     /// Near/far plane distances (positive).
     pub near: f32,
     pub far: f32,
@@ -33,6 +36,7 @@ impl OffAxisProjection {
         upper_right: Vec3,
         near: f32,
         far: f32,
+        is_left: bool,
     ) -> Self {
         assert!(near > 0.0, "near must be > 0");
         assert!(far > near, "far must be > near");
@@ -41,6 +45,7 @@ impl OffAxisProjection {
             lower_left,
             lower_right,
             upper_right,
+            is_left,
             near,
             far,
             proj: Mat4::IDENTITY,
@@ -55,7 +60,13 @@ impl OffAxisProjection {
     /// near: bottom-right, top-right, top-left, bottom-left
     /// far:  bottom-right, top-right, top-left, bottom-left
     fn frustum_corners_for_depths(&self, z_near: f32, z_far: f32) -> [Vec3A; 8] {
-        assert!(z_near > 0.0);
+        let z_near = z_near.max(0.0001);
+
+        let z_far = if z_far < z_near {
+            z_near + 100.0
+        } else {
+            z_near
+        };
         assert!(z_far > z_near);
 
         let inv_p = self.proj.inverse();
@@ -113,7 +124,7 @@ impl OffAxisProjection {
             &desc,
             head.as_dvec3(),
             head_rot.as_dquat(),
-            true,
+            self.is_left,
             self.near as f64,
             self.far as f64,
             &mut new_tf,
