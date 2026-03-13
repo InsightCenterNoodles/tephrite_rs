@@ -86,6 +86,8 @@ fn consume_buffer(
     use crate::serialize::*;
     let mut bytes = ByteReader::new(bytes);
 
+    let stopwatch = std::time::Instant::now();
+
     loop {
         let instruction = unsafe { ClientInstruction::read_fast(&mut bytes) };
 
@@ -164,6 +166,7 @@ fn consume_buffer(
                 }
             }
             ClientInstruction::EFrame(_) => {
+                dbg!(stopwatch.elapsed().as_millis());
                 return;
             }
         }
