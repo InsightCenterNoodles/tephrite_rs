@@ -3,8 +3,12 @@ use std::process::Child;
 use bevy::{app::App, prelude::*};
 
 use crate::{
-    common::Head, config::get_logic_configuration, input::Interactor, input::InteractorState,
-    multiprocess::app::make_common_app, prelude::Replicated, vrpn::VRPNObject,
+    common::Head,
+    config::{ENV_VAR_LOG_RENDERER, get_logic_configuration},
+    input::{Interactor, InteractorState},
+    multiprocess::app::make_common_app,
+    prelude::Replicated,
+    vrpn::VRPNObject,
 };
 
 pub(crate) fn setup() -> App {
@@ -68,7 +72,7 @@ pub(crate) fn setup() -> App {
             crate::multiprocess::install_ids(&mut command, &session_clone, i);
 
             if install_debug_env_var {
-                command.env("TEPH_DEBUG", "1");
+                command.env(ENV_VAR_LOG_RENDERER, "1");
             }
 
             command.spawn().expect("launching render process")

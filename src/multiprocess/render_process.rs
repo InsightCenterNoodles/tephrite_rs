@@ -63,10 +63,10 @@ pub(crate) fn run() -> AppExit {
     );
     //info!("{rank}: Running render process {}", std::process::id());
 
-    // if child_config.process_rank == 0 {
-    //     app.add_plugins(LogDiagnosticsPlugin::default())
-    //         .add_plugins(FrameTimeDiagnosticsPlugin::default());
-    // }
+    if child_config.process_rank == 0 && child_config.debug_renderer {
+        app.add_plugins(LogDiagnosticsPlugin::default())
+            .add_plugins(FrameTimeDiagnosticsPlugin::default());
+    }
 
     if child_config.use_offaxis {
         app.add_plugins(crate::render::OffAxisPlugin);

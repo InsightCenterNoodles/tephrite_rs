@@ -321,6 +321,8 @@ pub fn get_logic_configuration() -> &'static LogicConfiguration {
     HOST_CONFIG.get_or_init(|| build().unwrap_or_default())
 }
 
+pub(crate) const ENV_VAR_LOG_RENDERER: &str = "TEPH_LOG_RENDERER";
+
 #[cfg(test)]
 mod tests {
     use super::*;
