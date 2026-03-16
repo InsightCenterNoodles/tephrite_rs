@@ -41,7 +41,7 @@ pub fn compute_shmem_allocation_size(buf_count: usize, buf_size: usize) -> usize
 struct Padded64(AtomicU64);
 
 #[repr(C)]
-struct ControlBlock {
+pub(crate) struct ControlBlock {
     magic: AtomicU64,   // sanity check
     buf_count: u32,     // N buffers (>= 2, ideally 3+)
     buf_size: u64,      // bytes per buffer
@@ -60,6 +60,9 @@ struct ControlBlock {
     publish_idx: AtomicU32, // which buffer currently holds publish_gen
     _pad1: u32,
 
+    // Consumer side general barrier:
+    consumer_barrier: Barrier,
+
     // Per-consumer last seen/acked generation (one cache line each)
     consumer_gen: [Padded64; MAX_CONSUMERS],
     // (optional) stats/flags space you can extend later
@@ -76,6 +79,50 @@ impl ControlBlock {
             }
         }
         m
+    }
+
+    pub(crate) fn general_barrier(&self) {
+        self.consumer_barrier.wait();
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub(crate) struct CBWrapper(pub(crate) *const ControlBlock);
+
+unsafe impl Sync for CBWrapper {}
+unsafe impl Send for CBWrapper {}
+
+struct Barrier {
+    thread_count: u32,
+    state: AtomicU32,
+    generation: AtomicU64,
+}
+
+impl Barrier {
+    fn init(&mut self, child_count: u32) {
+        self.thread_count = child_count;
+        self.state = AtomicU32::new(0);
+        self.generation = AtomicU64::new(0);
+    }
+
+    fn wait(&self) {
+        use std::sync::atomic::Ordering;
+        // snapshot of state
+        let local_gen = self.generation.load(Ordering::Acquire);
+
+        // increment arrived
+        let arrived = self.state.fetch_add(1, Ordering::AcqRel);
+
+        if arrived + 1 == self.thread_count {
+            // reset count and bump
+            self.state.store(0, Ordering::Release);
+            self.generation.fetch_add(1, Ordering::Release);
+        } else {
+            // spin till generation changes
+            while self.generation.load(Ordering::Acquire) == local_gen {
+                std::hint::spin_loop();
+            }
+        }
     }
 }
 
@@ -159,6 +206,8 @@ impl Producer {
                 size_of::<ControlBlock>(),
             )
         };
+
+        cb.consumer_barrier.init(num_consumers as u32);
 
         cb.buf_count = num_buffers.try_into().unwrap();
         cb.buf_size = buffer_size.try_into().unwrap();
@@ -404,6 +453,10 @@ impl Consumer {
     fn control_block_mut(&mut self) -> &mut ControlBlock {
         // Safety: Self is always initialized with a valid pointer
         unsafe { &mut *self.cb }
+    }
+
+    pub(crate) fn control_block_ptr(&self) -> *const ControlBlock {
+        self.cb
     }
 
     /// Block (spin/backoff) until a new buffer is published. Runs given function on the provided buffer.
