@@ -12,7 +12,7 @@ anyhow = "1"
 [dependencies]
 dirs = "6"
 bitflags = "2"
-bevy = { version = "0.18.0", features = ["jpeg", "exr"] }
+bevy = { version = "0.18.1", features = ["jpeg", "exr"] }
 bytemuck = "1"
 itertools = "*"
 thiserror = "*"
