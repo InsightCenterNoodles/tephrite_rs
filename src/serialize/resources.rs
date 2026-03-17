@@ -1,4 +1,7 @@
-use crate::{common::EnvironmentLighting, serialize::*};
+use crate::{
+    common::{EnvironmentLighting, OrderIndependantTransparency},
+    serialize::*,
+};
 
 impl_fast_serialize!(
     EnvironmentLighting,
@@ -9,3 +12,5 @@ impl_fast_serialize!(
 
     }
 );
+
+impl_fast_raw_item!(OrderIndependantTransparency);

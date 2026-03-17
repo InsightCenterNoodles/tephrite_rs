@@ -1,5 +1,9 @@
 use bevy::{
-    core_pipeline::{Skybox, tonemapping::Tonemapping},
+    core_pipeline::{
+        Skybox,
+        oit::{OrderIndependentTransparencyPlugin, OrderIndependentTransparencySettings},
+        tonemapping::Tonemapping,
+    },
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     log::{Level, LogPlugin},
     pbr::{DefaultOpaqueRendererMethod, ScreenSpaceAmbientOcclusion, ScreenSpaceReflections},
@@ -8,7 +12,10 @@ use bevy::{
     window::EnabledButtons,
 };
 
-use crate::{common::EnvironmentLighting, config::get_render_configuration};
+use crate::{
+    common::{EnvironmentLighting, OrderIndependantTransparency},
+    config::get_render_configuration,
+};
 
 /// Function to run a render (or child) process
 pub(crate) fn run() -> AppExit {
@@ -61,6 +68,8 @@ pub(crate) fn run() -> AppExit {
                 ..Default::default()
             }),
     );
+
+    app.add_plugins(OrderIndependentTransparencyPlugin);
     //info!("{rank}: Running render process {}", std::process::id());
 
     if child_config.process_rank == 0 && child_config.debug_renderer {
@@ -79,6 +88,7 @@ pub(crate) fn run() -> AppExit {
     app.add_systems(PreStartup, setup);
 
     app.add_systems(Update, env_change_watch);
+    app.add_systems(Update, oit_resource_watch);
 
     // Add in replication components
     app.add_plugins(crate::replication::reader::ReplicationReaderPlugin);
@@ -183,5 +193,29 @@ fn env_change_watch(
                 ..Default::default()
             });
         }
+    }
+}
+
+fn oit_resource_watch(
+    oit: Option<Res<OrderIndependantTransparency>>,
+    mut cam_q: Query<Entity, With<Camera3d>>,
+    mut commands: Commands,
+) {
+    let Some(oit) = oit else {
+        return;
+    };
+
+    if !oit.is_changed() {
+        return;
+    }
+
+    let oit: &OrderIndependantTransparency = &oit;
+
+    for cam in cam_q.iter_mut() {
+        let mut ec = commands.entity(cam);
+        ec.insert(OrderIndependentTransparencySettings {
+            layer_count: oit.layer_count,
+            alpha_threshold: oit.alpha_threshold,
+        });
     }
 }

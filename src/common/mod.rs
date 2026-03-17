@@ -14,3 +14,20 @@ pub struct EnvironmentLighting {
     pub specular: Handle<Image>,
     pub skybox_color: Option<Color>,
 }
+
+/// Add this resource to enable the use of order independant transparency. This is useful for rendering
+/// transparent objects and can eliminate flickering. Comes at a high memory cost.
+#[derive(Debug, Resource)]
+pub struct OrderIndependantTransparency {
+    pub layer_count: i32,
+    pub alpha_threshold: f32,
+}
+
+impl Default for OrderIndependantTransparency {
+    fn default() -> Self {
+        Self {
+            layer_count: 8,
+            alpha_threshold: 0.0,
+        }
+    }
+}

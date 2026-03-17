@@ -3,6 +3,7 @@ use super::sets::*;
 use bevy::prelude::*;
 
 use crate::common::EnvironmentLighting;
+use crate::common::OrderIndependantTransparency;
 
 use crate::serialize::transcript_writer::*;
 use crate::serialize::*;
@@ -175,4 +176,4 @@ macro_rules! detect_resource_changes {
     }
 }
 
-detect_resource_changes!((0, EnvironmentLighting));
+detect_resource_changes!((0, EnvironmentLighting), (1, OrderIndependantTransparency));
