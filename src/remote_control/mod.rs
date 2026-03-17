@@ -48,7 +48,7 @@
 //!     .add_systems(Startup, setup);
 //! ```
 
-pub(crate) mod common;
+pub mod common;
 pub(crate) mod content;
 pub mod events;
 pub mod property;
