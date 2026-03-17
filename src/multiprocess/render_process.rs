@@ -69,7 +69,6 @@ pub(crate) fn run() -> AppExit {
             }),
     );
 
-    app.add_plugins(OrderIndependentTransparencyPlugin);
     //info!("{rank}: Running render process {}", std::process::id());
 
     if child_config.process_rank == 0 && child_config.debug_renderer {
