@@ -54,61 +54,30 @@ impl OffAxisProjection {
         }
     }
 
-    /// Compute frustum corners in VIEW SPACE for arbitrary near/far distances.
-    ///
-    /// Ordering matches Bevy's convention used by built-in projections:
-    /// near: bottom-right, top-right, top-left, bottom-left
-    /// far:  bottom-right, top-right, top-left, bottom-left
+    /// Compute frustum corners
     fn frustum_corners_for_depths(&self, z_near: f32, z_far: f32) -> [Vec3A; 8] {
-        let z_near = z_near.max(0.0001);
+        let inv = self.get_clip_from_view().inverse();
 
-        let z_far = if z_far < z_near {
-            z_near + 100.0
-        } else {
-            z_near
-        };
-        assert!(z_far > z_near);
-
-        let inv_p = self.proj.inverse();
-
-        let (zn, zf) = (1.0, 0.0);
-        // NDC corners:
-        // near: 0..3 = LL, LR, UR, UL
-        // far:  4..7 = LL, LR, UR, UL
-        let ndc: [Vec3; 8] = [
-            Vec3::new(-1.0, -1.0, zn),
-            Vec3::new(1.0, -1.0, zn),
-            Vec3::new(1.0, 1.0, zn),
-            Vec3::new(-1.0, 1.0, zn),
-            Vec3::new(-1.0, -1.0, zf),
-            Vec3::new(1.0, -1.0, zf),
-            Vec3::new(1.0, 1.0, zf),
-            Vec3::new(-1.0, 1.0, zf),
+        let ndc_corners = [
+            Vec3::new(1.0, -1.0, 1.0),  // bottom right
+            Vec3::new(1.0, 1.0, 1.0),   // top right
+            Vec3::new(-1.0, 1.0, 1.0),  // top left
+            Vec3::new(-1.0, -1.0, 1.0), // bottom left
         ];
 
-        let mut world: [Vec3A; 8] = [Vec3A::ZERO; 8];
+        let mut out = [Vec3A::ZERO; 8];
 
-        for (i, p) in ndc.iter().enumerate() {
-            // clip-space homogeneous point
-            let c = p.extend(1.0);
+        for (i, ndc) in ndc_corners.into_iter().enumerate() {
+            let p = inv.project_point3(ndc); // view-space point on that frustum edge ray
 
-            // clip -> view
-            let mut v = inv_p * c;
-            if v.w == 0.0 {
-                warn!("Invalid projection: w == 0 after inverse(P) * clip");
-            }
-            v /= v.w;
+            let near_p = p * (z_near / p.z);
+            let far_p = p * (z_far / p.z);
 
-            // view -> world
-            //let mut w = world_from_eye * v;
-            // if w.w != 0.0 {
-            //     w /= w.w;
-            // }
-
-            world[i] = v.truncate().into();
+            out[i] = near_p.into();
+            out[i + 4] = far_p.into();
         }
 
-        world
+        out
     }
 
     pub fn update_proj(&mut self, head: Vec3, head_rot: Quat) -> Transform {
