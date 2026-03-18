@@ -61,6 +61,7 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 
+use crate::common::TephExit;
 use crate::remote_control::events::{RemoteControlEvent, RemoteControlEventInternal};
 use crate::remote_control::property::{PropertyDefinition, parse_property_value};
 
@@ -213,11 +214,7 @@ fn server_poll(server: Option<ResMut<RemoteControlServer>>, mut commands: Comman
 }
 
 /// Translate internal remote-control events into public Bevy entity events.
-fn bounce(
-    trigger: On<RemoteControlEventInternal>,
-    mut commands: Commands,
-    mut writer: MessageWriter<AppExit>,
-) {
+fn bounce(trigger: On<RemoteControlEventInternal>, mut commands: Commands) {
     info!("Handling remote control event {:?}", trigger.event());
     match trigger.event() {
         RemoteControlEventInternal::PropertyChanged {
@@ -230,7 +227,7 @@ fn bounce(
             value: value.clone(),
         }),
         RemoteControlEventInternal::QuitRequested => {
-            writer.write(AppExit::Success);
+            commands.trigger(TephExit);
         }
     }
 }

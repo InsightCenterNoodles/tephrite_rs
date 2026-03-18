@@ -3,12 +3,6 @@ name = "tephrite_rs"
 version = "0.1.0"
 edition = "2024"
 
-[build-dependencies]
-dirs = "6"
-bindgen = "0.72"
-pkg-config = "0.3"
-anyhow = "1"
-
 [dependencies]
 dirs = "6"
 bitflags = "2"

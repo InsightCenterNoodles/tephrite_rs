@@ -3,11 +3,12 @@ use std::process::Child;
 use bevy::{app::App, prelude::*};
 
 use crate::{
-    common::Head,
+    common::{Head, TephExit},
     config::{ENV_VAR_LOG_RENDERER, get_logic_configuration},
     input::{Interactor, InteractorState},
     multiprocess::app::make_common_app,
     prelude::Replicated,
+    serialize::transcript_writer::TranscriptWriterResource,
     vrpn::VRPNObject,
 };
 
@@ -41,10 +42,6 @@ pub(crate) fn setup() -> App {
     app.add_plugins(bevy::camera::visibility::VisibilityPlugin);
 
     app.add_systems(Startup, setup_tracked_head);
-
-    if get_logic_configuration().vrpn_config.debug_head {
-        app.add_systems(Update, debug_head);
-    }
 
     if use_simulator_mode {
         app.add_plugins(crate::simulator::SimulatorPlugin);
@@ -80,6 +77,8 @@ pub(crate) fn setup() -> App {
         .collect();
 
     app.insert_resource(ChildProcessResource { children });
+
+    app.add_observer(on_exit);
 
     app
 }
@@ -127,22 +126,6 @@ fn setup_tracked_head(mut commands: Commands) {
     }
 }
 
-fn debug_head(
-    mut query: Query<&mut Transform, With<Head>>,
-    time: Res<Time>,
-    mut local: Local<f32>,
-) {
-    *local += 0.5 * time.delta_secs();
-
-    let new_head_x = (local).sin() * 2.0 - 1.0;
-
-    let head_pos = vec3(new_head_x, 1.5, 2.0);
-
-    for mut q in query.iter_mut() {
-        q.translation = head_pos;
-    }
-}
-
 fn destroy_child_process(mut child: Child) {
     let now = std::time::Instant::now();
 
@@ -187,4 +170,13 @@ pub(crate) fn cleanup(mut app: App) -> Option<()> {
     }
 
     Some(())
+}
+
+pub(crate) fn on_exit(
+    _on: On<TephExit>,
+    mut writer: NonSendMut<TranscriptWriterResource>,
+    mut exit_writer: MessageWriter<AppExit>,
+) {
+    writer.shutdown();
+    exit_writer.write(AppExit::Success);
 }
