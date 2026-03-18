@@ -31,3 +31,6 @@ impl Default for OrderIndependantTransparency {
         }
     }
 }
+
+#[derive(Debug, Event)]
+pub(crate) struct TephExit;

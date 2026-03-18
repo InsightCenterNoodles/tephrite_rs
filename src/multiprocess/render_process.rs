@@ -1,9 +1,5 @@
 use bevy::{
-    core_pipeline::{
-        Skybox,
-        oit::{OrderIndependentTransparencyPlugin, OrderIndependentTransparencySettings},
-        tonemapping::Tonemapping,
-    },
+    core_pipeline::{Skybox, oit::OrderIndependentTransparencySettings, tonemapping::Tonemapping},
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     log::{Level, LogPlugin},
     pbr::{DefaultOpaqueRendererMethod, ScreenSpaceAmbientOcclusion, ScreenSpaceReflections},
