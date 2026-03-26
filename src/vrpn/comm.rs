@@ -481,7 +481,7 @@ impl MessageState {
         //dbg!(pos, quat);
 
         if let Ok(item) = self.remote_sender_list.lookup(sender) {
-            let mut lock = item.write().unwrap();
+            let mut lock = item.lock().unwrap();
             lock.position = transform_position(pos);
             lock.rotation = transform_rotation(quat);
         }
@@ -505,7 +505,7 @@ impl MessageState {
         // read those into a vector
 
         if let Ok(item) = self.remote_sender_list.lookup(sender) {
-            let mut lock = item.write().unwrap();
+            let mut lock = item.lock().unwrap();
 
             read_be_f64_dyn(source, channel_count, &mut lock.analog_state)?;
         }
@@ -524,7 +524,7 @@ impl MessageState {
             .map_err(|_| std::io::Error::other("invalid button state"))?;
 
         if let Ok(item) = self.remote_sender_list.lookup(sender) {
-            let mut lock = item.write().unwrap();
+            let mut lock = item.lock().unwrap();
 
             // by the source, the max button index fits in a u8
 
@@ -781,14 +781,14 @@ mod test {
         output.clear();
 
         assert!(
-            head_state.read().unwrap().position.distance(dvec3(
+            head_state.lock().unwrap().position.distance(dvec3(
                 0.12531011353529492,
                 0.8024732135411116,
                 0.867021419799275,
             )) < 0.0001
         );
 
-        let head_rot: DVec4 = head_state.read().unwrap().rotation.into();
+        let head_rot: DVec4 = head_state.lock().unwrap().rotation.into();
 
         //dbg!(head_rot);
 
@@ -802,14 +802,14 @@ mod test {
         );
 
         assert!(
-            joy_state.read().unwrap().position.distance(dvec3(
+            joy_state.lock().unwrap().position.distance(dvec3(
                 -0.4458300779842322,
                 0.8178812792378916,
                 2.1620918226860906,
             )) < 0.0001
         );
 
-        let joy_rot: DVec4 = joy_state.read().unwrap().rotation.into();
+        let joy_rot: DVec4 = joy_state.lock().unwrap().rotation.into();
 
         //dbg!(joy_rot);
 

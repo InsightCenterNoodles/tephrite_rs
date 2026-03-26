@@ -173,7 +173,7 @@ fn service_vrpn(
         // some funky optimization here. we dont want to always hold a write lock
 
         let need_write = {
-            let new_pos = c.reader.read().unwrap();
+            let new_pos = c.reader.lock().unwrap();
 
             tf.translation = new_pos.position.as_vec3();
             tf.rotation = new_pos.rotation.as_quat().normalize();
@@ -198,7 +198,7 @@ fn service_vrpn(
         };
 
         if need_write {
-            let mut lock = c.reader.write().unwrap();
+            let mut lock = c.reader.lock().unwrap();
 
             writer.write_batch(lock.button_changes.drain(..).map(|x| {
                 //debug!("Send button event {x:?}");

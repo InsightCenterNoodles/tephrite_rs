@@ -2,10 +2,10 @@ use std::collections::VecDeque;
 
 use bevy::math::{DQuat, DVec3};
 
-pub(crate) type SharedItemState = std::sync::Arc<std::sync::RwLock<ItemState>>;
+pub(crate) type SharedItemState = std::sync::Arc<std::sync::Mutex<ItemState>>;
 
 pub(crate) fn new_shared_item_state() -> SharedItemState {
-    std::sync::Arc::new(std::sync::RwLock::new(ItemState::default()))
+    std::sync::Arc::new(std::sync::Mutex::new(ItemState::default()))
 }
 
 /// The last known state of a VRPN item.
