@@ -357,9 +357,13 @@ impl VRPNClient {
     pub(crate) fn run(&mut self, run: std::sync::Arc<std::sync::atomic::AtomicBool>) {
         let mut buffer = Vec::new();
 
-        let mut rounds = 1;
+        let mut rounds = 1u32;
+        let mut messages = 0u32;
+        let mut skips = 0u32;
         while run.load(std::sync::atomic::Ordering::Acquire) {
-            println!("Get message {rounds}");
+            if rounds.is_multiple_of(60) {
+                println!("Get message {rounds} {messages} {skips}");
+            }
             rounds += 1;
             match get_message(&mut self.remote, &mut buffer) {
                 Ok(header) => {
@@ -368,6 +372,7 @@ impl VRPNClient {
                         .handle_message(header, &buffer, &mut self.remote)
                         .is_err()
                     {
+                        messages += 1;
                         break;
                     }
                 }
@@ -375,6 +380,7 @@ impl VRPNClient {
                     if e.kind() == std::io::ErrorKind::WouldBlock
                         || e.kind() == std::io::ErrorKind::TimedOut =>
                 {
+                    skips += 1;
                     continue;
                 }
                 Err(_) => break,
