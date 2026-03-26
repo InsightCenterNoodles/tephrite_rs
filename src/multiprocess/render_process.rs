@@ -130,9 +130,9 @@ fn setup(mut commands: Commands) {
             ScreenSpaceReflections {
                 perceptual_roughness_threshold: 0.25,
                 thickness: 0.08,
-                linear_steps: 32,
-                linear_march_exponent: 2.0,
-                bisection_steps: 5,
+                linear_steps: 8,
+                linear_march_exponent: 1.0,
+                bisection_steps: 4,
                 use_secant: true,
             },
             TemporalJitter::default(),
