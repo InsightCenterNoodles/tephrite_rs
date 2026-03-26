@@ -168,6 +168,7 @@ fn service_vrpn(
     mut query: Query<(Entity, &VRPNLinkConnected, &mut Transform)>,
     mut writer: MessageWriter<ButtonMessage>,
     mut axis_writer: MessageWriter<AxisMessage>,
+    mut local: Local<u32>,
 ) {
     for (e, c, mut tf) in query.iter_mut() {
         // some funky optimization here. we dont want to always hold a write lock
@@ -177,6 +178,12 @@ fn service_vrpn(
 
             tf.translation = new_pos.position.as_vec3();
             tf.rotation = new_pos.rotation.as_quat().normalize();
+
+            *local += 1;
+
+            if (*local).is_multiple_of(120) {
+                println!("Update: {}", tf.translation);
+            }
 
             axis_writer.write_batch(new_pos.analog_state.iter().enumerate().filter_map(|x| {
                 // We restrict analog IDs to <= u8
