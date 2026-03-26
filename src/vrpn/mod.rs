@@ -19,6 +19,10 @@ fn vrpn_spinner(
     host_string: String,
     shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
 ) {
+    // Add a delay here before startup
+
+    std::thread::sleep(std::time::Duration::from_secs(10));
+
     let Ok(mut state) = comm::VRPNClient::new(to_watch, &host_string) else {
         error!("Unable to connect to {host_string}");
         return;
@@ -81,8 +85,6 @@ struct VRPNLinkConnected {
 ///
 /// Spawns one client thread per endpoint and associates a shared state reader
 /// with the entity via `VRPNLinkConnected`.
-///
-/// Adding a delay here helps systems to get settled before connecting.
 fn check_for_new_vrpn(
     trigger: On<Add, VRPNObject>,
     mut commands: Commands,
@@ -90,12 +92,6 @@ fn check_for_new_vrpn(
     mut res: ResMut<VRPNResource>,
     mut frame_count: Local<u32>,
 ) {
-    // wait for things to settle before connecting
-    if *frame_count < 60 {
-        *frame_count += 1;
-        return;
-    }
-
     let event = trigger.event();
     let entity = event.entity;
 
