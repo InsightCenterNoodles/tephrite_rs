@@ -90,7 +90,6 @@ fn check_for_new_vrpn(
     mut commands: Commands,
     query: Query<&VRPNObject, Without<VRPNLinkConnected>>,
     mut res: ResMut<VRPNResource>,
-    mut frame_count: Local<u32>,
 ) {
     let event = trigger.event();
     let entity = event.entity;
@@ -252,6 +251,6 @@ impl Plugin for VRPNPlugin {
             vrpn_threads: vec![],
         });
         app.add_observer(check_for_new_vrpn);
-        app.add_systems(FixedPreUpdate, service_vrpn);
+        app.add_systems(PreUpdate, service_vrpn);
     }
 }
