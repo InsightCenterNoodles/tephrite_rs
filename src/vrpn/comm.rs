@@ -357,7 +357,10 @@ impl VRPNClient {
     pub(crate) fn run(&mut self, run: std::sync::Arc<std::sync::atomic::AtomicBool>) {
         let mut buffer = Vec::new();
 
+        let mut rounds = 1;
         while run.load(std::sync::atomic::Ordering::Acquire) {
+            println!("Get message {rounds}");
+            rounds += 1;
             match get_message(&mut self.remote, &mut buffer) {
                 Ok(header) => {
                     if self
