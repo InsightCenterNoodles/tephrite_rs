@@ -360,9 +360,12 @@ impl VRPNClient {
         let mut rounds = 1u32;
         let mut messages = 0u32;
         let mut skips = 0u32;
-        while run.load(std::sync::atomic::Ordering::Acquire) {
+        while run.load(std::sync::atomic::Ordering::Relaxed) {
             if rounds.is_multiple_of(60) {
-                println!("Get message {rounds} {messages} {skips}");
+                println!(
+                    "Get message {rounds} {messages} {skips} {:?}",
+                    self.remote.peer_addr()
+                );
             }
             rounds += 1;
             match get_message(&mut self.remote, &mut buffer) {
@@ -372,9 +375,10 @@ impl VRPNClient {
                         .handle_message(header, &buffer, &mut self.remote)
                         .is_err()
                     {
-                        messages += 1;
                         break;
                     }
+
+                    messages += 1;
                 }
                 Err(ref e)
                     if e.kind() == std::io::ErrorKind::WouldBlock
