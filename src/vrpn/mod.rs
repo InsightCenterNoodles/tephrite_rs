@@ -81,12 +81,21 @@ struct VRPNLinkConnected {
 ///
 /// Spawns one client thread per endpoint and associates a shared state reader
 /// with the entity via `VRPNLinkConnected`.
+///
+/// Adding a delay here helps systems to get settled before connecting.
 fn check_for_new_vrpn(
     trigger: On<Add, VRPNObject>,
     mut commands: Commands,
     query: Query<&VRPNObject, Without<VRPNLinkConnected>>,
     mut res: ResMut<VRPNResource>,
+    mut frame_count: Local<u32>,
 ) {
+    // wait for things to settle before connecting
+    if *frame_count < 60 {
+        *frame_count += 1;
+        return;
+    }
+
     let event = trigger.event();
     let entity = event.entity;
 
