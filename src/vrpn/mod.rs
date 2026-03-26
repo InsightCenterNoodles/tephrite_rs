@@ -106,7 +106,7 @@ fn check_for_new_vrpn(
     // index by [endpoint][sender]
     let mut map: HashMap<String, HashMap<String, SharedItemState>> = HashMap::default();
 
-    let state = common::new_shared_item_state();
+    let state = SharedItemState::new();
 
     for ep in &link.0 {
         // Not very fast...
@@ -173,41 +173,37 @@ fn service_vrpn(
     for (e, c, mut tf) in query.iter_mut() {
         // some funky optimization here. we dont want to always hold a write lock
 
-        let need_write = {
-            let new_pos = c.reader.lock().unwrap();
+        let new_pos = c.reader.pose.lock().unwrap().clone();
 
-            tf.translation = new_pos.position.as_vec3();
-            tf.rotation = new_pos.rotation.as_quat().normalize();
+        tf.translation = new_pos.position;
+        tf.rotation = new_pos.rotation.normalize();
 
-            *local += 1;
+        *local += 1;
 
-            if (*local).is_multiple_of(120) {
-                println!("Update: {}", tf.translation);
+        if (*local).is_multiple_of(120) {
+            println!("Update: {}", tf.translation);
+        }
+
+        axis_writer.write_batch(c.reader.analog.iter().enumerate().filter_map(|x| {
+            // We restrict analog IDs to <= u8
+
+            let value = x.1.load(std::sync::atomic::Ordering::Relaxed);
+
+            // TODO: sensitivity config
+            if value > 0.00001 {
+                //debug!("Send axis event: {x:?}");
+                Some(AxisMessage {
+                    from: e,
+                    axis: (AXIS_MAP.get(x.0 as usize)).cloned().unwrap_or_default(),
+                    value,
+                })
+            } else {
+                None
             }
+        }));
 
-            axis_writer.write_batch(new_pos.analog_state.iter().enumerate().filter_map(|x| {
-                // We restrict analog IDs to <= u8
-
-                // TODO: sensitivity config
-                if x.1.abs() > 0.00001 {
-                    //debug!("Send axis event: {x:?}");
-                    Some(AxisMessage {
-                        from: e,
-                        axis: (AXIS_MAP.get(x.0 as usize)).cloned().unwrap_or_default(),
-                        value: (*x.1) as f32,
-                    })
-                } else {
-                    None
-                }
-            }));
-
-            new_pos.button_changes.len() > 0
-        };
-
-        if need_write {
-            let mut lock = c.reader.lock().unwrap();
-
-            writer.write_batch(lock.button_changes.drain(..).map(|x| {
+        while let Some(x) = c.reader.button_changes.pop() {
+            writer.write({
                 //debug!("Send button event {x:?}");
                 let kind = if x.1 > 0 {
                     ButtonEventKind::ButtonPressed(map_button(x.0))
@@ -216,7 +212,7 @@ fn service_vrpn(
                 };
 
                 ButtonMessage { from: e, kind }
-            }));
+            });
         }
     }
 }
