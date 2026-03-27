@@ -326,8 +326,6 @@ impl VRPNClient {
         trace!("Start connection...");
         let mut remote = TcpStream::connect_timeout(&conn_info.host, Duration::from_secs(10))?;
 
-        remote.set_read_timeout(Some(Duration::from_millis(100)))?;
-
         write_vrpn_cookie(&mut remote)?;
 
         let cookie = read_vrpn_cookie(&mut remote)?;
@@ -354,40 +352,34 @@ impl VRPNClient {
     ///
     /// Processes messages until `run` is cleared. Timeouts are expected and
     /// simply cause the loop to continue.
-    pub(crate) fn run(&mut self, run: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+    pub(crate) fn run(&mut self) -> Result<()> {
         let mut buffer = Vec::new();
 
-        let mut rounds = 1u32;
-        let mut messages = 0u32;
-        let mut skips = 0u32;
-        while run.load(std::sync::atomic::Ordering::Relaxed) {
-            if rounds.is_multiple_of(60) {
-                println!(
-                    "Get message {rounds} {messages} {skips} {:?}",
-                    self.remote.peer_addr()
-                );
-            }
-            rounds += 1;
+        let mut messages = 1u64;
+        loop {
             match get_message(&mut self.remote, &mut buffer) {
                 Ok(header) => {
-                    if self
+                    match self
                         .message_state
                         .handle_message(header, &buffer, &mut self.remote)
-                        .is_err()
                     {
-                        break;
+                        // message was handled correctly
+                        Ok(_) => {}
+                        // message parsing failed. fail, and return to caller for another try
+                        Err(e) => return Err(e),
+                    }
+
+                    if messages.is_multiple_of(1000) {
+                        debug!(
+                            "Processed {messages} messages from VRPN endpoint {:?}",
+                            self.remote.peer_addr()
+                        );
                     }
 
                     messages += 1;
                 }
-                Err(ref e)
-                    if e.kind() == std::io::ErrorKind::WouldBlock
-                        || e.kind() == std::io::ErrorKind::TimedOut =>
-                {
-                    skips += 1;
-                    continue;
-                }
-                Err(_) => break,
+                // Hard error. This is an error that we should log and stop processing.
+                Err(e) => return Err(e),
             }
         }
     }

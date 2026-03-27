@@ -1,19 +1,10 @@
-use std::{
-    collections::VecDeque,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicU32, Ordering},
-    },
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicU32, Ordering},
 };
 
 use bevy::math::{Quat, Vec3};
 use crossbeam_queue::SegQueue;
-
-// pub(crate) type SharedItemState = std::sync::Arc<std::sync::Mutex<ItemState>>;
-
-// pub(crate) fn new_shared_item_state() -> SharedItemState {
-//     std::sync::Arc::new(std::sync::Mutex::new(ItemState::default()))
-// }
 
 /// The last known state of a VRPN item.
 ///
@@ -46,6 +37,7 @@ pub struct AtomicF32 {
     storage: AtomicU32,
 }
 impl AtomicF32 {
+    #[allow(unused)]
     pub fn new(value: f32) -> Self {
         let as_u32 = value.to_bits();
         Self {
