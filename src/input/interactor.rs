@@ -70,9 +70,14 @@ impl InteractorState {
             JoystickType::DPad => (JoystickAxis::DPad, JoystickAxis::DPad),
         };
 
-        let ret = vec2(self.get_axis_value(a)?, self.get_axis_value(b)?);
+        // a stick is valid if either one of its axis is not null
 
-        Some(ret)
+        match (self.get_axis_value(a), self.get_axis_value(b)) {
+            (None, None) => None,
+            (None, Some(y)) => Some(vec2(0.0, y)),
+            (Some(x), None) => Some(vec2(x, 0.0)),
+            (Some(x), Some(y)) => Some(vec2(x, y)),
+        }
     }
 }
 
@@ -143,7 +148,7 @@ fn update_current_states(
             JoystickAxis::RightY,
         ] {
             if let Some(axis_value) = state.get_axis_value(axis) {
-                if axis_value.abs() < 0.05 {
+                if axis_value.abs() < 0.01 {
                     state.set_axis_value(axis, None);
                 }
             }
