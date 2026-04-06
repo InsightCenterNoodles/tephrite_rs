@@ -524,7 +524,7 @@ impl MessageState {
 
             // drain and write
 
-            for (src, dest) in local_cache.iter().zip(item.analog.as_slice()) {
+            for (src, dest) in local_cache.iter().zip(item.latest_analog.as_slice()) {
                 dest.store(*src as f32, std::sync::atomic::Ordering::Relaxed);
             }
         }

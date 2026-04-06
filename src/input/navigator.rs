@@ -94,7 +94,16 @@ fn on_tick(
 
             // left is 270 ish and right is 90 ish
 
-            let dir = match degrees {
+            // 15 degree bounds
+
+            let dir_x = match degrees {
+                0.0..15.0 => -1.0,
+                345.0..370.0 => -1.0,
+                165.0..195.0 => 1.0,
+                _ => 0.0,
+            };
+
+            let dir_y = match degrees {
                 255.0..285.0 => -1.0,
                 75.0..105.0 => 1.0,
                 _ => 0.0,
@@ -102,7 +111,12 @@ fn on_tick(
 
             target_tf.rotate_axis(
                 Dir3::Y,
-                (rotation_degrees_per_second * time.delta_secs() * dir).to_radians(),
+                (rotation_degrees_per_second * time.delta_secs() * dir_y).to_radians(),
+            );
+
+            target_tf.rotate_axis(
+                Dir3::X,
+                (rotation_degrees_per_second * time.delta_secs() * dir_x).to_radians(),
             );
         }
 

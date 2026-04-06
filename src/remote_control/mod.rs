@@ -33,7 +33,7 @@
 //!     commands
 //!         .entity(speed_property)
 //!         .observe(|trigger: On<RemoteControlEvent>, mut query: Query<&mut Transform>| {
-//!             if let Ok(mut tf) = query.get_mut(trigger.entity()) {
+//!             if let Ok(mut tf) = query.get_mut(trigger.entity) {
 //!                 if let PropertyValue::Float(v) = trigger.event().value {
 //!                     tf.translation.x = v;
 //!                 }

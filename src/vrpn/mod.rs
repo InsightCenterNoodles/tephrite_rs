@@ -189,23 +189,32 @@ fn service_vrpn(
         tf.translation = new_pos.position;
         tf.rotation = new_pos.rotation.normalize();
 
-        axis_writer.write_batch(c.reader.analog.iter().enumerate().filter_map(|x| {
-            // We restrict analog IDs to <= u8
+        axis_writer.write_batch(
+            c.reader
+                .previous_analog
+                .iter()
+                .zip(c.reader.latest_analog.iter())
+                .enumerate()
+                .filter_map(|(index, (prev, latest))| {
+                    // We restrict analog IDs to <= u8
 
-            let value = x.1.load(std::sync::atomic::Ordering::Relaxed);
+                    let p_value = prev.load(std::sync::atomic::Ordering::Relaxed);
+                    let value = latest.load(std::sync::atomic::Ordering::Relaxed);
 
-            // TODO: sensitivity config
-            if value.abs() > 0.00001 {
-                //debug!("Send axis event: {x:?}");
-                Some(AxisMessage {
-                    from: e,
-                    axis: (AXIS_MAP.get(x.0 as usize)).cloned().unwrap_or_default(),
-                    value,
-                })
-            } else {
-                None
-            }
-        }));
+                    // TODO: sensitivity config
+                    if p_value != value {
+                        prev.store(value, std::sync::atomic::Ordering::Relaxed);
+                        //debug!("Send axis event: {x:?}");
+                        Some(AxisMessage {
+                            from: e,
+                            axis: (AXIS_MAP.get(index as usize)).cloned().unwrap_or_default(),
+                            value,
+                        })
+                    } else {
+                        None
+                    }
+                }),
+        );
 
         while let Some(x) = c.reader.button_changes.pop() {
             writer.write({

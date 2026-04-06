@@ -49,12 +49,18 @@ pub struct Interactor;
 #[require(Interactor)]
 pub struct InteractorState {
     pub buttons: ButtonInput<JoystickButton>,
-    analogs: Vec<f32>,
+    analogs: Vec<Option<f32>>,
 }
 
 impl InteractorState {
-    fn get_axis_value(&self, axis: JoystickAxis) -> f32 {
-        self.analogs.get(axis as usize).cloned().unwrap_or_default()
+    fn get_axis_value(&self, axis: JoystickAxis) -> Option<f32> {
+        self.analogs.get(axis as usize).cloned().flatten()
+    }
+
+    fn set_axis_value(&mut self, axis: JoystickAxis, value: Option<f32>) {
+        if let Some(v) = self.analogs.get_mut(axis as usize) {
+            *v = value;
+        }
     }
 
     pub fn stick_state(&self, stick: JoystickType) -> Option<Vec2> {
@@ -64,13 +70,9 @@ impl InteractorState {
             JoystickType::DPad => (JoystickAxis::DPad, JoystickAxis::DPad),
         };
 
-        let ret = vec2(self.get_axis_value(a), self.get_axis_value(b));
+        let ret = vec2(self.get_axis_value(a)?, self.get_axis_value(b)?);
 
-        if ret.length() > 0.075 {
-            Some(ret)
-        } else {
-            None
-        }
+        Some(ret)
     }
 }
 
@@ -134,11 +136,16 @@ fn update_current_states(
 
     // add decay factor
     for mut state in &mut states {
-        for a in &mut state.analogs {
-            *a = *a * 0.9;
-
-            if *a < 0.01 {
-                *a = 0.0;
+        for axis in [
+            JoystickAxis::LeftX,
+            JoystickAxis::LeftY,
+            JoystickAxis::RightX,
+            JoystickAxis::RightY,
+        ] {
+            if let Some(axis_value) = state.get_axis_value(axis) {
+                if axis_value.abs() < 0.05 {
+                    state.set_axis_value(axis, None);
+                }
             }
         }
     }
@@ -151,9 +158,9 @@ fn update_current_states(
         let l = state.analogs.len();
 
         if l <= (event.axis as usize) {
-            state.analogs.resize((l * 2).max(32), 0.0);
+            state.analogs.resize((l * 2).max(32), None);
         }
-        state.analogs[event.axis as usize] = event.value;
+        state.analogs[event.axis as usize] = Some(event.value);
     }
 }
 

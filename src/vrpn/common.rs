@@ -12,7 +12,8 @@ use crossbeam_queue::SegQueue;
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SharedItemState {
     pub pose: Arc<Mutex<Pose>>,
-    pub analog: Arc<Vec<AtomicF32>>,
+    pub latest_analog: Arc<Vec<AtomicF32>>,
+    pub previous_analog: Arc<Vec<AtomicF32>>,
     pub button_changes: Arc<SegQueue<(u8, u8)>>,
 }
 
@@ -20,7 +21,8 @@ impl SharedItemState {
     pub(crate) fn new() -> Self {
         Self {
             pose: Arc::new(Mutex::new(Pose::default())),
-            analog: Arc::new(vec![AtomicF32::default(); 256]),
+            latest_analog: Arc::new(vec![AtomicF32::default(); 256]),
+            previous_analog: Arc::new(vec![AtomicF32::default(); 256]),
             button_changes: Arc::new(Default::default()),
         }
     }
