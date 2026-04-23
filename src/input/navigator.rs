@@ -4,7 +4,7 @@ use crate::input::{Interactor, InteractorState, common::map_point};
 
 use super::JoystickType;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NavigatorMode {
     ObjectCentric,
     JoyCentric,
@@ -109,9 +109,21 @@ fn on_tick(
                 _ => 0.0,
             };
 
+            let rotation_angle = (rotation_degrees_per_second * time.delta_secs() * dir_y).to_radians();
+
+            if (settings.mode == NavigatorMode::JoyCentric) {
+                let rotation = Quat::from_rotation_y(rotation_angle);
+                let parent_global_affine = target_parent
+                    .and_then(|parent| parents.get(parent.0).ok())
+                    .map(|parent_tf| parent_tf.affine())
+                    .unwrap_or_else(|| GlobalTransform::IDENTITY.affine());
+
+                let joystick_pivot = parent_global_affine.inverse().transform_point3(joy_world_position);
+                target_tf.translation = joystick_pivot + rotation * (target_tf.translation - joystick_pivot);
+            }
+            
             target_tf.rotate_axis(
-                Dir3::Y,
-                (rotation_degrees_per_second * time.delta_secs() * dir_y).to_radians(),
+                Dir3::Y, rotation_angle
             );
 
             target_tf.rotate_axis(
