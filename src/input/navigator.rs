@@ -4,8 +4,9 @@ use crate::input::{Interactor, InteractorState, common::map_point};
 
 use super::JoystickType;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum NavigatorMode {
+    #[default]
     ObjectCentric,
     JoyCentric,
 }
@@ -13,9 +14,10 @@ pub enum NavigatorMode {
 #[derive(Debug, Component)]
 pub struct NavigatorMarker;
 
-#[derive(Debug, Clone, Resource)]
+#[derive(Debug, Clone, Resource, Default)]
 struct NavigatorSettings {
     mode: NavigatorMode,
+    allow_x_rotation: bool,
 }
 
 #[derive(Debug)]
@@ -26,8 +28,13 @@ pub struct NavigationPlugin {
 impl NavigationPlugin {
     pub fn new(mode: NavigatorMode) -> Self {
         Self {
-            settings: NavigatorSettings { mode },
+            settings: NavigatorSettings { mode, allow_x_rotation: true },
         }
+    }
+    
+    pub fn with_x_rotation(mut self, allow: bool) -> Self {
+        self.settings.allow_x_rotation = allow;
+        self
     }
 }
 
@@ -109,15 +116,24 @@ fn on_tick(
                 _ => 0.0,
             };
 
-            target_tf.rotate_axis(
-                Dir3::Y,
-                (rotation_degrees_per_second * time.delta_secs() * dir_y).to_radians(),
-            );
+            let mut rotation = Quat::from_rotation_y((rotation_degrees_per_second * time.delta_secs() * dir_y).to_radians());
+            
+            if (settings.allow_x_rotation) {
+                rotation = rotation * Quat::from_rotation_x((rotation_degrees_per_second * time.delta_secs() * dir_x).to_radians());
+            } 
+            dbg!(settings.allow_x_rotation);
+            if (settings.mode == NavigatorMode::JoyCentric) {
+                let parent_global_affine = target_parent
+                    .and_then(|parent| parents.get(parent.0).ok())
+                    .map(|parent_tf| parent_tf.affine())
+                    .unwrap_or_else(|| GlobalTransform::IDENTITY.affine());
 
-            target_tf.rotate_axis(
-                Dir3::X,
-                (rotation_degrees_per_second * time.delta_secs() * dir_x).to_radians(),
-            );
+                let joystick_pivot = parent_global_affine.inverse().transform_point3(joy_world_position);
+                target_tf.translation = joystick_pivot + rotation * (target_tf.translation - joystick_pivot);
+            }
+            
+            target_tf.rotation = rotation * target_tf.rotation;
+   
         }
 
         const SCALE_FACTOR: f32 = 1.01;
