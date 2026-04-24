@@ -6,6 +6,8 @@
 mod comm;
 mod common;
 
+use std::time::Duration;
+
 use bevy::{platform::collections::HashMap, prelude::*};
 
 use crate::{
@@ -14,17 +16,37 @@ use crate::{
 };
 
 /// Worker thread entry point that services a single VRPN client.
-fn vrpn_spinner(
-    to_watch: HashMap<String, SharedItemState>,
-    host_string: String,
-    shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
-) {
-    let Ok(mut state) = comm::VRPNClient::new(to_watch, &host_string) else {
-        error!("Unable to connect to {host_string}");
-        return;
-    };
+fn vrpn_spinner(to_watch: HashMap<String, SharedItemState>, host_string: String) {
+    // try to connect, retrying if things go south
 
-    state.run(shutdown);
+    const MAX_RETRY: usize = 5;
+
+    for try_num in 0..MAX_RETRY {
+        if try_num > 0 {
+            // sleep if this is a retry
+            std::thread::sleep(Duration::from_secs(try_num as u64));
+        }
+
+        let Ok(mut state) = comm::VRPNClient::new(to_watch.clone(), &host_string) else {
+            error!("Unable to connect to {host_string}, attempts: {try_num}/{MAX_RETRY}");
+            continue;
+        };
+
+        // run the client service
+        match state.run() {
+            Ok(_) => {
+                debug!("VRPN client for {host_string} exited");
+                return;
+            }
+            Err(err) => {
+                error!("VRPN client for {host_string} exited with error: {err}");
+                error!("Attempting reconnect, attempts: {try_num}/{MAX_RETRY}");
+                continue;
+            }
+        }
+    }
+    // If we get here, that means we've failed to connect after MAX_RETRY attempts
+    error!("Unable to connect to {host_string}, your VRPN devices will not function properly!");
 }
 
 /// Start a VRPN client thread for `host_string` (`name_or_ip:port`).
@@ -35,10 +57,8 @@ fn start_vrpn_client(
 ) {
     let host_string = host_string.to_owned();
 
-    let sd = res.shutdown.clone();
-
     let handle = std::thread::spawn(move || {
-        vrpn_spinner(to_watch, host_string, sd);
+        vrpn_spinner(to_watch, host_string);
     });
 
     res.vrpn_threads.push(handle);
@@ -47,20 +67,16 @@ fn start_vrpn_client(
 /// Resource holding application-level VRPN state.
 #[derive(Resource)]
 pub struct VRPNResource {
-    shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
     vrpn_threads: Vec<std::thread::JoinHandle<()>>,
 }
 
 impl VRPNResource {
-    #[allow(unused)]
-    /// Signal network threads to stop and join them.
-    pub fn wait_for_shutdown(self) {
-        self.shutdown
-            .store(false, std::sync::atomic::Ordering::Release);
-        for t in self.vrpn_threads {
-            t.join().unwrap();
-        }
-    }
+    // TODO: proper shutdown
+    // pub fn wait_for_shutdown(self) {
+    //     for t in self.vrpn_threads {
+    //         t.join().unwrap();
+    //     }
+    // }
 }
 
 /// Connect this entity to a VRPN sender(s).
@@ -102,7 +118,7 @@ fn check_for_new_vrpn(
     // index by [endpoint][sender]
     let mut map: HashMap<String, HashMap<String, SharedItemState>> = HashMap::default();
 
-    let state = common::new_shared_item_state();
+    let state = SharedItemState::new();
 
     for ep in &link.0 {
         // Not very fast...
@@ -168,35 +184,40 @@ fn service_vrpn(
     for (e, c, mut tf) in query.iter_mut() {
         // some funky optimization here. we dont want to always hold a write lock
 
-        let need_write = {
-            let new_pos = c.reader.read().unwrap();
+        let new_pos = c.reader.pose.lock().unwrap().clone();
 
-            tf.translation = new_pos.position.as_vec3();
-            tf.rotation = new_pos.rotation.as_quat().normalize();
+        tf.translation = new_pos.position;
+        tf.rotation = new_pos.rotation.normalize();
 
-            axis_writer.write_batch(new_pos.analog_state.iter().enumerate().filter_map(|x| {
-                // We restrict analog IDs to <= u8
+        axis_writer.write_batch(
+            c.reader
+                .previous_analog
+                .iter()
+                .zip(c.reader.latest_analog.iter())
+                .enumerate()
+                .filter_map(|(index, (prev, latest))| {
+                    // We restrict analog IDs to <= u8
 
-                // TODO: sensitivity config
-                if x.1.abs() > 0.00001 {
-                    //debug!("Send axis event: {x:?}");
-                    Some(AxisMessage {
-                        from: e,
-                        axis: (AXIS_MAP.get(x.0 as usize)).cloned().unwrap_or_default(),
-                        value: (*x.1) as f32,
-                    })
-                } else {
-                    None
-                }
-            }));
+                    let p_value = prev.load(std::sync::atomic::Ordering::Relaxed);
+                    let value = latest.load(std::sync::atomic::Ordering::Relaxed);
 
-            new_pos.button_changes.len() > 0
-        };
+                    // TODO: sensitivity config
+                    if p_value != value {
+                        prev.store(value, std::sync::atomic::Ordering::Relaxed);
+                        //debug!("Send axis event: {x:?}");
+                        Some(AxisMessage {
+                            from: e,
+                            axis: (AXIS_MAP.get(index as usize)).cloned().unwrap_or_default(),
+                            value,
+                        })
+                    } else {
+                        None
+                    }
+                }),
+        );
 
-        if need_write {
-            let mut lock = c.reader.write().unwrap();
-
-            writer.write_batch(lock.button_changes.drain(..).map(|x| {
+        while let Some(x) = c.reader.button_changes.pop() {
+            writer.write({
                 //debug!("Send button event {x:?}");
                 let kind = if x.1 > 0 {
                     ButtonEventKind::ButtonPressed(map_button(x.0))
@@ -205,7 +226,7 @@ fn service_vrpn(
                 };
 
                 ButtonMessage { from: e, kind }
-            }));
+            });
         }
     }
 }
@@ -243,10 +264,9 @@ impl Plugin for VRPNPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<ButtonMessage>();
         app.insert_resource(VRPNResource {
-            shutdown: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
             vrpn_threads: vec![],
         });
         app.add_observer(check_for_new_vrpn);
-        app.add_systems(FixedPreUpdate, service_vrpn);
+        app.add_systems(PreUpdate, service_vrpn);
     }
 }

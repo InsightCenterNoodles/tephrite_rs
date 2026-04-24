@@ -20,19 +20,18 @@ fn setup(mut commands: Commands, server: Res<AssetServer>, mut known: ResMut<Kno
         DirectionalLight {
             color: Color::srgb_u8(255, 224, 141),
             shadows_enabled: true,
-            illuminance: 130000.0,
+            illuminance: 5000.0,
             ..default()
         },
         Transform::from_xyz(4.0, 4.0, 3.0).looking_at((0.0, 0.0, 0.0).into(), Dir3::Y),
         Replicated,
     ));
 
-    let env_map = server.load("ibl/workshop_4k_small.exr");
-
     commands.insert_resource(EnvironmentLighting {
-        //intensity: 15000.0,
+        diffuse: server.load("ibl/workshop_diffuse.ktx2"),
+        specular: server.load("ibl/workshop_specular.ktx2"),
         intensity: 5000.0,
-        equirect: env_map,
+        skybox_color: Color::srgb(0.5, 0.5, 1.0).into(),
     });
 
     let root = commands

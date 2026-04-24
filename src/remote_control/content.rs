@@ -105,6 +105,19 @@ pub(crate) fn render_controls(properties: &[PropertyDefinition]) -> String {
                     initial.x, initial.y, initial.z
                 );
             }
+            PropertyControl::Analog { initial } => {
+                let _ = write!(
+                    out,
+                    "<div class=\"control\">\
+                        <label>{label}: <span class=\"value\" id=\"analog-value-{prop_id}\">{:.2}, {:.2}</span></label>\
+                        <div class=\"analog\" id=\"analog-{prop_id}\" data-prop-id=\"{prop_id}\" data-x=\"{}\" data-y=\"{}\" tabindex=\"0\" role=\"slider\" aria-label=\"{label}\" aria-valuemin=\"-1\" aria-valuemax=\"1\" aria-valuetext=\"{:.2}, {:.2}\">\
+                            <div class=\"analog-cross\"></div>\
+                            <div class=\"analog-stick\" id=\"analog-stick-{prop_id}\"></div>\
+                        </div>\
+                    </div>",
+                    initial.x, initial.y, initial.x, initial.y, initial.x, initial.y
+                );
+            }
             PropertyControl::Button => {
                 let _ = write!(
                     out,
@@ -222,6 +235,42 @@ pub(crate) fn render_index_page(controls_html: &str) -> String {
                     grid-template-columns: repeat(3, minmax(0, 1fr)) auto;\
                     align-items: center;\
                 }}\
+                .analog {{\
+                    position: relative;\
+                    width: min(240px, 100%);\
+                    aspect-ratio: 1 / 1;\
+                    margin-top: 10px;\
+                    border-radius: 999px;\
+                    border: 2px solid #8ea6bb;\
+                    background: radial-gradient(circle at 30% 28%, #ffffff, #d6e4f0);\
+                    touch-action: none;\
+                    outline: none;\
+                }}\
+                .analog:focus-visible {{\
+                    box-shadow: 0 0 0 3px rgba(10, 122, 136, 0.35);\
+                }}\
+                .analog-cross {{\
+                    position: absolute;\
+                    inset: 0;\
+                    border-radius: 999px;\
+                    background:\
+                        linear-gradient(to right, transparent 49.2%, rgba(35, 68, 93, 0.25) 49.2%, rgba(35, 68, 93, 0.25) 50.8%, transparent 50.8%),\
+                        linear-gradient(to bottom, transparent 49.2%, rgba(35, 68, 93, 0.25) 49.2%, rgba(35, 68, 93, 0.25) 50.8%, transparent 50.8%);\
+                    pointer-events: none;\
+                }}\
+                .analog-stick {{\
+                    position: absolute;\
+                    width: 34px;\
+                    height: 34px;\
+                    border-radius: 999px;\
+                    left: 50%;\
+                    top: 50%;\
+                    transform: translate(-50%, -50%);\
+                    background: linear-gradient(160deg, #0a7a88, #0f5f7e);\
+                    border: 2px solid #ffffff;\
+                    box-shadow: 0 4px 16px rgba(7, 30, 48, 0.25);\
+                    pointer-events: none;\
+                }}\
                 button {{\
                     border: 1px solid #0d6975;\
                     border-radius: 9px;\
@@ -286,6 +335,159 @@ pub(crate) fn render_index_page(controls_html: &str) -> String {
                     const z = document.getElementById('vec3-' + id + '-z')?.value ?? '0';\
                     sendUpdate(id, x + ',' + y + ',' + z);\
                 }}\
+                function clampAnalog(v) {{\
+                    return Math.max(-1, Math.min(1, v));\
+                }}\
+                function analogValueToString(x, y) {{\
+                    return x.toFixed(3) + ',' + y.toFixed(3);\
+                }}\
+                function setAnalogVisual(id, x, y) {{\
+                    const stick = document.getElementById('analog-stick-' + id);\
+                    const root = document.getElementById('analog-' + id);\
+                    const label = document.getElementById('analog-value-' + id);\
+                    if (!stick || !root) return;\
+                    stick.style.left = (50 + x * 40) + '%';\
+                    stick.style.top = (50 - y * 40) + '%';\
+                    if (label) label.innerText = x.toFixed(2) + ', ' + y.toFixed(2);\
+                    root.setAttribute('aria-valuetext', x.toFixed(2) + ', ' + y.toFixed(2));\
+                }}\
+                function setupAnalog(root) {{\
+                    const id = root.dataset.propId;\
+                    if (!id) return;\
+                    let x = clampAnalog(parseFloat(root.dataset.x ?? '0') || 0);\
+                    let y = clampAnalog(parseFloat(root.dataset.y ?? '0') || 0);\
+                    let pointerId = null;\
+                    let activeTimer = null;\
+                    let keyboardTimer = null;\
+                    const keyboardState = {{ left: false, right: false, up: false, down: false }};\
+\
+                    function sendNow() {{\
+                        sendUpdate(id, analogValueToString(x, y));\
+                    }}\
+                    function ensureActiveSendLoop() {{\
+                        if (activeTimer !== null) return;\
+                        activeTimer = setInterval(() => {{\
+                            if (Math.abs(x) < 0.0001 && Math.abs(y) < 0.0001) {{\
+                                clearInterval(activeTimer);\
+                                activeTimer = null;\
+                                return;\
+                            }}\
+                            sendNow();\
+                        }}, 80);\
+                    }}\
+                    function stopActiveSendLoop() {{\
+                        if (activeTimer !== null) {{\
+                            clearInterval(activeTimer);\
+                            activeTimer = null;\
+                        }}\
+                    }}\
+                    function updateFromClientPoint(clientX, clientY) {{\
+                        const rect = root.getBoundingClientRect();\
+                        const cx = rect.left + rect.width * 0.5;\
+                        const cy = rect.top + rect.height * 0.5;\
+                        const dx = (clientX - cx) / (rect.width * 0.5);\
+                        const dy = (cy - clientY) / (rect.height * 0.5);\
+                        const len = Math.hypot(dx, dy);\
+                        if (len > 1) {{\
+                            x = dx / len;\
+                            y = dy / len;\
+                        }} else {{\
+                            x = dx;\
+                            y = dy;\
+                        }}\
+                        x = clampAnalog(x);\
+                        y = clampAnalog(y);\
+                        setAnalogVisual(id, x, y);\
+                        sendNow();\
+                        if (x !== 0 || y !== 0) ensureActiveSendLoop();\
+                    }}\
+                    function resetToCenter(send) {{\
+                        x = 0;\
+                        y = 0;\
+                        setAnalogVisual(id, x, y);\
+                        stopActiveSendLoop();\
+                        if (send) sendNow();\
+                    }}\
+                    function updateFromKeyboardState() {{\
+                        const tx = (keyboardState.right ? 1 : 0) - (keyboardState.left ? 1 : 0);\
+                        const ty = (keyboardState.up ? 1 : 0) - (keyboardState.down ? 1 : 0);\
+                        x = clampAnalog(tx);\
+                        y = clampAnalog(ty);\
+                        setAnalogVisual(id, x, y);\
+                        sendNow();\
+                        if (x !== 0 || y !== 0) ensureActiveSendLoop();\
+                    }}\
+\
+                    root.addEventListener('pointerdown', (e) => {{\
+                        pointerId = e.pointerId;\
+                        root.setPointerCapture(pointerId);\
+                        updateFromClientPoint(e.clientX, e.clientY);\
+                        root.focus();\
+                    }});\
+                    root.addEventListener('pointermove', (e) => {{\
+                        if (pointerId !== e.pointerId) return;\
+                        updateFromClientPoint(e.clientX, e.clientY);\
+                    }});\
+                    function finishPointer(e) {{\
+                        if (pointerId !== e.pointerId) return;\
+                        pointerId = null;\
+                        resetToCenter(true);\
+                    }}\
+                    root.addEventListener('pointerup', finishPointer);\
+                    root.addEventListener('pointercancel', finishPointer);\
+\
+                    root.addEventListener('keydown', (e) => {{\
+                        let consumed = true;\
+                        if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keyboardState.left = true;\
+                        else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keyboardState.right = true;\
+                        else if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') keyboardState.up = true;\
+                        else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') keyboardState.down = true;\
+                        else consumed = false;\
+                        if (!consumed) return;\
+                        e.preventDefault();\
+                        updateFromKeyboardState();\
+                        if (keyboardTimer === null) {{\
+                            keyboardTimer = setInterval(updateFromKeyboardState, 90);\
+                        }}\
+                    }});\
+                    root.addEventListener('keyup', (e) => {{\
+                        let consumed = true;\
+                        if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keyboardState.left = false;\
+                        else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keyboardState.right = false;\
+                        else if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') keyboardState.up = false;\
+                        else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') keyboardState.down = false;\
+                        else consumed = false;\
+                        if (!consumed) return;\
+                        e.preventDefault();\
+                        const anyDown = keyboardState.left || keyboardState.right || keyboardState.up || keyboardState.down;\
+                        if (anyDown) {{\
+                            updateFromKeyboardState();\
+                        }} else {{\
+                            if (keyboardTimer !== null) {{\
+                                clearInterval(keyboardTimer);\
+                                keyboardTimer = null;\
+                            }}\
+                            resetToCenter(true);\
+                        }}\
+                    }});\
+                    root.addEventListener('blur', () => {{\
+                        keyboardState.left = false;\
+                        keyboardState.right = false;\
+                        keyboardState.up = false;\
+                        keyboardState.down = false;\
+                        if (keyboardTimer !== null) {{\
+                            clearInterval(keyboardTimer);\
+                            keyboardTimer = null;\
+                        }}\
+                        resetToCenter(true);\
+                    }});\
+\
+                    setAnalogVisual(id, x, y);\
+                    if (x !== 0 || y !== 0) ensureActiveSendLoop();\
+                }}\
+                window.addEventListener('DOMContentLoaded', () => {{\
+                    document.querySelectorAll('.analog[data-prop-id]').forEach(setupAnalog);\
+                }});\
                 function quitApp() {{\
                     sendUpdate('{QUIT_ID}', '1');\
                 }}\

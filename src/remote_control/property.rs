@@ -41,6 +41,11 @@ pub enum PropertyControl {
         /// Per-axis increment.
         step: f32,
     },
+    /// A joystick-style analog pad editor (x, y).
+    Analog {
+        /// Initial analog value.
+        initial: Vec2,
+    },
     /// A push button that emits [`PropertyValue::Triggered`].
     Button,
 }
@@ -112,6 +117,20 @@ pub(crate) fn parse_property_value(
                 .ok_or("invalid vec3 value")?;
 
             Ok(PropertyValue::Vec3(parts.into()))
+        }
+        PropertyControl::Analog { .. } => {
+            let Some(raw) = provided_value else {
+                return Err("missing value");
+            };
+            let parts: [f32; 2] = raw
+                .split(',')
+                .map(str::trim)
+                .take(2)
+                .filter_map(|x| x.parse::<f32>().ok())
+                .next_array()
+                .ok_or("invalid vec2 value")?;
+
+            Ok(PropertyValue::Vec2(parts.into()))
         }
         PropertyControl::Button => Ok(PropertyValue::Triggered),
     }

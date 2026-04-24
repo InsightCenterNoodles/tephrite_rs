@@ -31,7 +31,6 @@ mod file {
     pub(crate) struct Vrpn {
         pub(crate) head: Option<String>,
         pub(crate) joystick: Option<String>,
-        pub(crate) debug_head: Option<bool>,
     }
 
     #[derive(Debug, Default, Deserialize)]
@@ -185,7 +184,6 @@ impl FromStr for VRPNAddress {
 pub struct VRPNConfig {
     pub head: Option<VRPNAddress>,
     pub joystick: Option<Vec<VRPNAddress>>,
-    pub debug_head: bool,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -313,13 +311,14 @@ pub fn get_logic_configuration() -> &'static LogicConfiguration {
             vrpn_config: VRPNConfig {
                 head: vrpn.head.and_then(|x| x.parse().ok()),
                 joystick: vrpn.joystick.map(|x| get_multiple_vrpn_addresses(&x)),
-                debug_head: vrpn.debug_head.unwrap_or_default(),
             },
             child_count: screens.len().try_into().unwrap(),
         })
     }
     HOST_CONFIG.get_or_init(|| build().unwrap_or_default())
 }
+
+pub(crate) const ENV_VAR_LOG_RENDERER: &str = "TEPH_LOG_RENDERER";
 
 #[cfg(test)]
 mod tests {

@@ -326,8 +326,6 @@ impl VRPNClient {
         trace!("Start connection...");
         let mut remote = TcpStream::connect_timeout(&conn_info.host, Duration::from_secs(10))?;
 
-        remote.set_read_timeout(Some(Duration::from_millis(100)))?;
-
         write_vrpn_cookie(&mut remote)?;
 
         let cookie = read_vrpn_cookie(&mut remote)?;
@@ -354,27 +352,34 @@ impl VRPNClient {
     ///
     /// Processes messages until `run` is cleared. Timeouts are expected and
     /// simply cause the loop to continue.
-    pub(crate) fn run(&mut self, run: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+    pub(crate) fn run(&mut self) -> Result<()> {
         let mut buffer = Vec::new();
 
-        while run.load(std::sync::atomic::Ordering::Acquire) {
+        let mut messages = 1u64;
+        loop {
             match get_message(&mut self.remote, &mut buffer) {
                 Ok(header) => {
-                    if self
+                    match self
                         .message_state
                         .handle_message(header, &buffer, &mut self.remote)
-                        .is_err()
                     {
-                        break;
+                        // message was handled correctly
+                        Ok(_) => {}
+                        // message parsing failed. fail, and return to caller for another try
+                        Err(e) => return Err(e),
                     }
+
+                    if messages.is_multiple_of(1000) {
+                        debug!(
+                            "Processed {messages} messages from VRPN endpoint {:?}",
+                            self.remote.peer_addr()
+                        );
+                    }
+
+                    messages += 1;
                 }
-                Err(ref e)
-                    if e.kind() == std::io::ErrorKind::WouldBlock
-                        || e.kind() == std::io::ErrorKind::TimedOut =>
-                {
-                    continue;
-                }
-                Err(_) => break,
+                // Hard error. This is an error that we should log and stop processing.
+                Err(e) => return Err(e),
             }
         }
     }
@@ -439,7 +444,7 @@ impl SenderList {
 
 // MARK: Message State
 
-type Handler = fn(&mut MessageState, usize, &mut Cursor<&[u8]>) -> Result<()>;
+type Handler = fn(&mut MessageState, usize, &mut Cursor<&[u8]>, &mut Vec<f64>) -> Result<()>;
 
 /// Per-connection protocol state used to dispatch and decode messages.
 struct MessageState {
@@ -471,7 +476,12 @@ impl MessageState {
     }
 
     /// Decode a `vrpn_Tracker Pos_Quat` message body and update shared state.
-    fn handle_pos_quat(&mut self, sender: usize, source: &mut Cursor<&[u8]>) -> Result<()> {
+    fn handle_pos_quat(
+        &mut self,
+        sender: usize,
+        source: &mut Cursor<&[u8]>,
+        _local_cache: &mut Vec<f64>,
+    ) -> Result<()> {
         // First double is a timestamp (seconds since server start). Skip it.
         let _dummy = read_be_f64(source)?;
 
@@ -481,15 +491,20 @@ impl MessageState {
         //dbg!(pos, quat);
 
         if let Ok(item) = self.remote_sender_list.lookup(sender) {
-            let mut lock = item.write().unwrap();
-            lock.position = transform_position(pos);
-            lock.rotation = transform_rotation(quat);
+            let mut lock = item.pose.lock().unwrap();
+            lock.position = transform_position(pos).as_vec3();
+            lock.rotation = transform_rotation(quat).as_quat();
         }
 
         Ok(())
     }
 
-    fn handle_analog(&mut self, sender: usize, source: &mut Cursor<&[u8]>) -> Result<()> {
+    fn handle_analog(
+        &mut self,
+        sender: usize,
+        source: &mut Cursor<&[u8]>,
+        local_cache: &mut Vec<f64>,
+    ) -> Result<()> {
         //debug!("Got analog update");
         // First is a 64 bit float(!!) which is the num of channels.
         // This is in the spec, dont blame me
@@ -505,15 +520,24 @@ impl MessageState {
         // read those into a vector
 
         if let Ok(item) = self.remote_sender_list.lookup(sender) {
-            let mut lock = item.write().unwrap();
+            read_be_f64_dyn(source, channel_count, local_cache)?;
 
-            read_be_f64_dyn(source, channel_count, &mut lock.analog_state)?;
+            // drain and write
+
+            for (src, dest) in local_cache.iter().zip(item.latest_analog.as_slice()) {
+                dest.store(*src as f32, std::sync::atomic::Ordering::Relaxed);
+            }
         }
 
         Ok(())
     }
 
-    fn handle_button_change(&mut self, sender: usize, source: &mut Cursor<&[u8]>) -> Result<()> {
+    fn handle_button_change(
+        &mut self,
+        sender: usize,
+        source: &mut Cursor<&[u8]>,
+        _local_cache: &mut Vec<f64>,
+    ) -> Result<()> {
         //debug!("Got button update");
         // Should be a pair of i32, button, then state
         let button: u8 = read_be_i32(source)?
@@ -524,17 +548,17 @@ impl MessageState {
             .map_err(|_| std::io::Error::other("invalid button state"))?;
 
         if let Ok(item) = self.remote_sender_list.lookup(sender) {
-            let mut lock = item.write().unwrap();
+            //let mut lock = item.lock().unwrap();
 
             // by the source, the max button index fits in a u8
 
-            if lock.button_changes.len() > 256 {
+            if item.button_changes.len() > 256 {
                 // uh oh, we dont want to overflow here.
                 warn!("Button change queue overflow!");
-                lock.button_changes.pop_front();
+                item.button_changes.pop();
             }
 
-            lock.button_changes.push_back((button, state));
+            item.button_changes.push((button, state));
         }
 
         Ok(())
@@ -614,10 +638,17 @@ impl MessageState {
                 .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "bad string"))
         }
 
+        let mut local_cache = Vec::<f64>::new();
+
         match header.ty() {
             v if v >= 0 => {
                 if let Some(Some(x)) = self.message_type_handlers.get(v as usize) {
-                    x(self, header.sender() as usize, &mut cursor)
+                    x(
+                        self,
+                        header.sender() as usize,
+                        &mut cursor,
+                        &mut local_cache,
+                    )
                 } else {
                     Ok(())
                 }
@@ -687,9 +718,9 @@ impl MessageState {
 mod test {
     use std::io::Cursor;
 
-    use bevy::math::{DVec4, dvec3, dvec4};
+    use bevy::math::{Vec4, vec3, vec4};
 
-    use crate::vrpn::common::new_shared_item_state;
+    use crate::vrpn::common::SharedItemState;
 
     use super::{MessageState, check_vrpn_cookie, get_message};
 
@@ -752,8 +783,8 @@ mod test {
         let to_read = data.len();
         let mut src_cursor = Cursor::new(data);
 
-        let head_state = new_shared_item_state();
-        let joy_state = new_shared_item_state();
+        let head_state = SharedItemState::new();
+        let joy_state = SharedItemState::new();
 
         let mut buffer = Vec::new();
         let mut state = MessageState::new(
@@ -781,19 +812,19 @@ mod test {
         output.clear();
 
         assert!(
-            head_state.read().unwrap().position.distance(dvec3(
+            head_state.pose.lock().unwrap().position.distance(vec3(
                 0.12531011353529492,
                 0.8024732135411116,
                 0.867021419799275,
             )) < 0.0001
         );
 
-        let head_rot: DVec4 = head_state.read().unwrap().rotation.into();
+        let head_rot: Vec4 = head_state.pose.lock().unwrap().rotation.into();
 
         //dbg!(head_rot);
 
         assert!(
-            head_rot.distance(dvec4(
+            head_rot.distance(vec4(
                 -0.020877551525891363,
                 0.47324795399249914,
                 0.01506643379176776,
@@ -802,19 +833,19 @@ mod test {
         );
 
         assert!(
-            joy_state.read().unwrap().position.distance(dvec3(
+            joy_state.pose.lock().unwrap().position.distance(vec3(
                 -0.4458300779842322,
                 0.8178812792378916,
                 2.1620918226860906,
             )) < 0.0001
         );
 
-        let joy_rot: DVec4 = joy_state.read().unwrap().rotation.into();
+        let joy_rot: Vec4 = joy_state.pose.lock().unwrap().rotation.into();
 
         //dbg!(joy_rot);
 
         assert!(
-            joy_rot.distance(dvec4(
+            joy_rot.distance(vec4(
                 -0.016291261755337204,
                 0.5886627161145235,
                 0.009137776752529683,

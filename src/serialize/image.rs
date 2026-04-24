@@ -8,7 +8,7 @@ use std::sync::{LazyLock, RwLock};
 use crate::serialize::*;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
-use bevy::render::render_resource::TextureDescriptor;
+use bevy::render::render_resource::{TextureDataOrder, TextureDescriptor};
 use bevy::{
     image::{
         ImageAddressMode, ImageCompareFunction, ImageFilterMode, ImageSampler,
@@ -22,9 +22,9 @@ use bevy::{
 
 // `Image` is serialized as raw pixel data plus the essential descriptors.
 impl_fast_serialize!(Image, keep: {
-    data, texture_descriptor, sampler, texture_view_descriptor, asset_usage
+    data, texture_descriptor, sampler, texture_view_descriptor, asset_usage, copy_on_resize, data_order
 }, skip: {
-    data_order, copy_on_resize
+
 });
 
 static MAP: LazyLock<RwLock<HashMap<AssetId<Image>, Handle<Image>>>> =
@@ -55,6 +55,10 @@ keep: {
 // =============================================================================
 
 impl_fast_raw_item!(Extent3d);
+
+// =============================================================================
+
+impl_fast_raw_item!(TextureDataOrder);
 
 // =============================================================================
 
@@ -122,7 +126,6 @@ impl_fast_serialize!(
 
 // =============================================================================
 
-// Keep only fields used for view configuration; skip labels/usages.
 impl_fast_serialize!(
     TextureViewDescriptor<'static>,
     keep: {
@@ -132,10 +135,10 @@ impl_fast_serialize!(
         base_mip_level,
         mip_level_count,
         base_array_layer,
-        array_layer_count
-    }, skip: {
-        label,
+        array_layer_count,
         usage
+    }, skip: {
+        label
     }
 );
 

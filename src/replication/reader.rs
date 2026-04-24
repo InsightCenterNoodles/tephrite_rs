@@ -1,7 +1,7 @@
 use bevy::ecs::entity::EntityHashMap;
 use bevy::prelude::*;
 
-use crate::backfill_link::components::BReplicate;
+use crate::multiprocess::shared_buffer::CBWrapper;
 use crate::serialize::transcript_reader::TranscriptReaderResource;
 
 use super::instruction::*;
@@ -11,10 +11,26 @@ use super::instruction::*;
 /// Plugin for child processes. Reads a transcript and replicates entities, components, and assets.
 pub struct ReplicationReaderPlugin;
 
+static CURRENT_CONTROL_BLOCK: std::sync::RwLock<Option<CBWrapper>> = std::sync::RwLock::new(None);
+
+fn presentation_lock() {
+    let r = CURRENT_CONTROL_BLOCK.read().unwrap();
+
+    if let Some(r) = *r {
+        unsafe {
+            (*r.0).general_barrier();
+        }
+    }
+}
+
 impl Plugin for ReplicationReaderPlugin {
     fn build(&self, app: &mut App) {
-        //println!("Building reader...");
         let transcript = TranscriptReaderResource::new();
+
+        *(CURRENT_CONTROL_BLOCK.write().unwrap()) =
+            Some(CBWrapper(transcript.consumer().control_block_ptr()));
+
+        bevy::render::renderer::install_presentation_hook(presentation_lock);
 
         app.insert_non_send_resource(transcript);
         app.init_resource::<EntityMap>();
@@ -94,11 +110,7 @@ fn consume_buffer(
 
         match instruction {
             ClientInstruction::EAdd(entity) => {
-                let local = commands.spawn((
-                    BReplicate,
-                    InheritedVisibility::default(),
-                    Transform::default(),
-                ));
+                let local = commands.spawn((InheritedVisibility::default(), Transform::default()));
 
                 map.0.insert(entity, local.id());
                 // debug!("Mapping entity {:?} -> {:?}", entity, local.id());
@@ -121,7 +133,7 @@ fn consume_buffer(
                 item.component.remove_component(local, commands);
             }
             ClientInstruction::ResourceUpdate(item) => {
-                item.resouce.add_resource(commands);
+                item.resource.add_resource(commands);
             }
             ClientInstruction::ResourceDrop(item) => {
                 item.resource.remove_resource(commands);
@@ -146,17 +158,6 @@ fn consume_buffer(
                         StandardMaterial::clear_mapping(id, materials);
                     }
                     ReplicatedAssetID::Image(id) => Image::clear_mapping(id, images),
-                };
-            }
-            ClientInstruction::CPrepAsset(item) => {
-                use crate::replication::replicated_assets::ReplicatedAssetID;
-
-                match item.id {
-                    ReplicatedAssetID::Mesh(id) => Mesh::reserve_mapping(id, meshes),
-                    ReplicatedAssetID::StandardMaterial(id) => {
-                        StandardMaterial::reserve_mapping(id, materials);
-                    }
-                    ReplicatedAssetID::Image(id) => Image::reserve_mapping(id, images),
                 };
             }
             ClientInstruction::HChange(item) => {

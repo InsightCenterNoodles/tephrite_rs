@@ -8,7 +8,7 @@ use std::time::Duration;
 use bevy::prelude::*;
 
 use crate::{
-    input::{ButtonMessage, Interactor, JoystickButton},
+    input::{AxisMessage, ButtonMessage, Interactor, JoystickAxis, JoystickButton},
     prelude::{PropagateReplication, Replicated},
     remote_control::{
         RemoteControlDefinitions,
@@ -48,28 +48,54 @@ fn setup_joystick(
             ..Default::default()
         });
         ec.observe(button_control_observer);
+        ec.observe(analog_control_observer);
 
-        let mesh = meshes.add(Cuboid::from_length(0.05));
+        let axis_mesh = meshes.add(Cuboid::from_length(0.05));
+        let arrow_mesh = meshes.add(Cuboid::from_length(0.035));
 
-        // Add axis mesh to the joystick for easy identification.
+        // Add axis mesh and a forward arrow to the joystick for easy identification.
         ec.with_children(|parent| {
+            let axis_thickness = 0.35;
+
             // X-axis (red).
             parent.spawn((
-                Mesh3d(mesh.clone()),
+                Mesh3d(axis_mesh.clone()),
                 MeshMaterial3d(materials.add(Color::linear_rgb(1.0, 0.0, 0.0))),
-                Transform::from_scale(vec3(2.0, 1.0, 1.0)),
+                Transform::from_scale(vec3(2.0, axis_thickness, axis_thickness)),
             ));
             // Y-axis (green).
             parent.spawn((
-                Mesh3d(mesh.clone()),
+                Mesh3d(axis_mesh.clone()),
                 MeshMaterial3d(materials.add(Color::linear_rgb(0.0, 1.0, 0.0))),
-                Transform::from_scale(vec3(1.0, 2.0, 1.0)),
+                Transform::from_scale(vec3(axis_thickness, 2.0, axis_thickness)),
             ));
             // Z-axis (blue).
             parent.spawn((
-                Mesh3d(mesh.clone()),
+                Mesh3d(axis_mesh),
                 MeshMaterial3d(materials.add(Color::linear_rgb(0.0, 0.0, 1.0))),
-                Transform::from_scale(vec3(1.0, 1.0, 2.0)),
+                Transform::from_scale(vec3(axis_thickness, axis_thickness, 2.0)),
+            ));
+
+            // Forward arrow (+Z): shaft and two angled head segments.
+            let arrow_material = materials.add(Color::linear_rgb(1.0, 1.0, 1.0));
+            parent.spawn((
+                Mesh3d(arrow_mesh.clone()),
+                MeshMaterial3d(arrow_material.clone()),
+                Transform::from_xyz(0.0, 0.0, -0.065).with_scale(vec3(0.7, 0.7, 2.6)),
+            ));
+            parent.spawn((
+                Mesh3d(arrow_mesh.clone()),
+                MeshMaterial3d(arrow_material.clone()),
+                Transform::from_xyz(0.015, 0.0, -0.11)
+                    .with_rotation(Quat::from_rotation_y(0.65))
+                    .with_scale(vec3(0.55, 0.55, 1.2)),
+            ));
+            parent.spawn((
+                Mesh3d(arrow_mesh),
+                MeshMaterial3d(arrow_material),
+                Transform::from_xyz(-0.015, 0.0, -0.11)
+                    .with_rotation(Quat::from_rotation_y(-0.65))
+                    .with_scale(vec3(0.55, 0.55, 1.2)),
             ));
         });
 
@@ -81,15 +107,35 @@ fn setup_joystick(
         definitions.push(PropertyDefinition {
             id: entity,
             aspect_id: BUTTON_ASPECT,
-            label: format!("{label} (A, B, X, Y, BL, BR, TL, TR, Back, Start)"),
+            label: format!(
+                "{label} (A, B, X, Y, BL, BR, TL, TR, Back, Start)[:ms duration, default 500 ms]"
+            ),
             control: PropertyControl::String {
                 initial: Default::default(),
+            },
+        });
+        definitions.push(PropertyDefinition {
+            id: entity,
+            aspect_id: ANALOG_ASPECT,
+            label: format!("{label} Left Stick (x,y in [-1,1])"),
+            control: PropertyControl::Analog {
+                initial: Vec2::ZERO,
+            },
+        });
+        definitions.push(PropertyDefinition {
+            id: entity,
+            aspect_id: ANALOG_2_ASPECT,
+            label: format!("{label} Right Stick (x,y in [-1,1])"),
+            control: PropertyControl::Analog {
+                initial: Vec2::ZERO,
             },
         });
     }
 }
 
 const BUTTON_ASPECT: u32 = 10;
+const ANALOG_ASPECT: u32 = 11;
+const ANALOG_2_ASPECT: u32 = 12;
 
 #[derive(Debug, Component)]
 struct PendingReleases(Vec<(JoystickButton, f32)>);
@@ -110,9 +156,18 @@ fn button_control_observer(
     };
 
     let joystick = trigger.entity;
-    let target = target.to_lowercase();
+    let target_button = target.to_lowercase();
+    let mut target_button = target_button.as_str();
+    let mut duration = 500u64;
 
-    let button = match target.as_str() {
+    let parts = target_button.split_once(":");
+
+    if let Some((new_target, new_duration)) = parts {
+        target_button = new_target;
+        duration = new_duration.parse().unwrap_or(500).clamp(1, 10000);
+    }
+
+    let button = match target_button {
         "a" => JoystickButton::A,
         "b" => JoystickButton::B,
         "x" => JoystickButton::X,
@@ -135,7 +190,7 @@ fn button_control_observer(
         kind: crate::input::ButtonEventKind::ButtonPressed(button),
     });
 
-    let release_when = Duration::from_millis(500).as_secs_f32();
+    let release_when = Duration::from_millis(duration).as_secs_f32();
 
     match items.get_mut(trigger.entity).ok().and_then(|x| x) {
         Some(mut x) => {
@@ -170,4 +225,30 @@ fn release_system(
             }
         });
     }
+}
+
+fn analog_control_observer(
+    trigger: On<RemoteControlEvent>,
+    mut axis_writer: MessageWriter<AxisMessage>,
+) {
+    let (ax, ay) = match trigger.event().aspect_id {
+        ANALOG_ASPECT => (JoystickAxis::LeftX, JoystickAxis::LeftY),
+        ANALOG_2_ASPECT => (JoystickAxis::RightX, JoystickAxis::RightY),
+        _ => return,
+    };
+
+    let Ok(target): Result<Vec2, _> = trigger.value.clone().try_into() else {
+        return;
+    };
+
+    axis_writer.write(AxisMessage {
+        from: trigger.entity,
+        axis: ax,
+        value: target.x.clamp(-1.0, 1.0),
+    });
+    axis_writer.write(AxisMessage {
+        from: trigger.entity,
+        axis: ay,
+        value: target.y.clamp(-1.0, 1.0),
+    });
 }

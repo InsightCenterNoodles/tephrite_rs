@@ -19,16 +19,21 @@ fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
     server: Res<AssetServer>,
 ) {
-    let setting_editor = |x: &mut ImageLoaderSettings| {
+    let color_settings = |x: &mut ImageLoaderSettings| {
         x.sampler = bevy::image::ImageSampler::linear();
+    };
+    let linear_settings = |x: &mut ImageLoaderSettings| {
+        x.sampler = bevy::image::ImageSampler::linear();
+        // PBR data textures (normal, roughness/metallic, AO, etc.) must be sampled in linear space.
+        x.is_srgb = false;
     };
 
     let ground_color =
-        server.load_with_settings("tex/MetalPlates006_1K-JPG_Color.jpg", setting_editor);
+        server.load_with_settings("tex/MetalPlates006_1K-JPG_Color.jpg", color_settings);
     let ground_normal =
-        server.load_with_settings("tex/MetalPlates006_1K-JPG_NormalGL.jpg", setting_editor);
+        server.load_with_settings("tex/MetalPlates006_1K-JPG_NormalGL.jpg", linear_settings);
     let ground_roughmet =
-        server.load_with_settings("tex/MetalPlates006_1K-JPG_RM.png", setting_editor);
+        server.load_with_settings("tex/MetalPlates006_1K-JPG_RM.png", linear_settings);
 
     let ground_mat = StandardMaterial {
         base_color: Color::WHITE,
@@ -42,9 +47,14 @@ fn setup(
         ..Default::default()
     };
 
+    let mut ground_mesh = Mesh::from(Circle::new(4.0));
+    if let Err(err) = ground_mesh.generate_tangents() {
+        warn!("Failed to generate tangents for ground mesh: {err}");
+    }
+
     // circular base
     commands.spawn((
-        Mesh3d(meshes.add(Circle::new(4.0))),
+        Mesh3d(meshes.add(ground_mesh)),
         MeshMaterial3d(materials.add(ground_mat)),
         Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
         Replicated,
@@ -102,7 +112,7 @@ fn setup(
     // light
     commands.spawn((
         DirectionalLight {
-            illuminance: 32000.0,
+            illuminance: 5000.0,
             shadows_enabled: true,
             ..default()
         },
@@ -110,18 +120,12 @@ fn setup(
         Replicated,
     ));
 
-    let env_map = server.load("ibl/workshop_4k_small.exr");
-
     commands.insert_resource(EnvironmentLighting {
-        intensity: 30000.0,
-        equirect: env_map,
+        diffuse: server.load("ibl/workshop_diffuse.ktx2"),
+        specular: server.load("ibl/workshop_specular.ktx2"),
+        intensity: 5000.0,
+        skybox_color: Color::srgb(0.5, 0.5, 1.0).into(),
     });
-
-    // camera
-    commands.spawn((
-        Camera3d::default(),
-        Transform::from_xyz(-2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
-    ));
 }
 
 #[derive(Debug, Component)]

@@ -28,14 +28,6 @@ macro_rules! make_change_detection {
                                     })
                                     .write_fast(dest);
                                 }
-                            } else {
-                                //warn!("PREP ASSET {id:?}");
-                                unsafe {
-                                    ServerInstruction::CPrepAsset(ReserveAsset {
-                                        id: (*id).into(),
-                                    })
-                                    .write_fast(dest);
-                                }
                             }
                         }
                         AssetEvent::Modified { id } => {

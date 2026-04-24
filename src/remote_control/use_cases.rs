@@ -225,7 +225,15 @@ fn control_observer(
             if direction.length_squared() <= f32::EPSILON {
                 return;
             }
-            let world_rot = Quat::from_rotation_arc(Vec3::NEG_Z, direction.normalize());
+
+            let direction = direction.normalize();
+            let up = if direction.dot(Vec3::Y).abs() > 0.999 {
+                Vec3::Z
+            } else {
+                Vec3::Y
+            };
+
+            let world_rot = Transform::default().looking_to(direction, up).rotation;
 
             info!(
                 "Updating head {} look-at target to {}",

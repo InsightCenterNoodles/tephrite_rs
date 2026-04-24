@@ -3,24 +3,21 @@ name = "tephrite_rs"
 version = "0.1.0"
 edition = "2024"
 
-[build-dependencies]
-dirs = "6"
-bindgen = "0.72"
-pkg-config = "0.3"
-anyhow = "1"
-
 [dependencies]
 dirs = "6"
 bitflags = "2"
-bevy = { version = "0.18", features = ["jpeg", "exr"] }
+bevy = { version = "0.18.1", features = ["jpeg", "exr"] }
 bytemuck = "1"
 itertools = "*"
 thiserror = "*"
 libc = "0.2"
 serde = { version = "*", features = ["derive"] }
 toml = "0.9"
-libloading = {version = "0.9", features = ["std"] }
 cosmic-text = "*"
+crossbeam-queue = "*"
+
+[patch.crates-io]
+bevy = { git = "https://github.com/nicholasbl/bevy", branch = "cave_patches" }
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]
@@ -32,7 +29,7 @@ opt-level = 3
 
 [dev-dependencies]
 nix = "0.30"
-rand = "*"
+rand = "0.9"
 
 [[test]]
 name = "shmem_integration"

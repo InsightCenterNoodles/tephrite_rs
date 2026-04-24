@@ -1,32 +1,31 @@
 # Teprite (`tephrite_rs`)
 
-Teprite is a Rust-based immersive visualization renderer built on top of Bevy. It’s designed for multi-display / CAVE-style rendering by running your Bevy app as a **logic process** that spawns one or more **render processes**. World state is replicated from the logic process to render processes, and render processes present the scene using the native `libbackfill` renderer.
+Teprite is a Rust-based immersive visualization renderer built on top of Bevy. It’s designed for multi-display / CAVE-style rendering by running your Bevy app as a **logic process** that spawns one or more **render processes**. World state is replicated from the logic process to render processes, and render processes present the scene to the configured screens.
 
 - Platforms: macOS + Linux (Windows is WIP)
-- Render backends: Vulkan / Metal / OpenGL (configurable)
+- Render backends: Vulkan / Metal 
 - Tracking + input: optional VRPN head tracking and joystick/button events
 
 ## How to use (quick start)
 
-1. Install `libbackfill` (unless your machine already has it installed globally):
-   - https://github.com/InsightCenterNoodles/libbackfill
-2. Create a Teprite config file (see “Configuration” below).
-3. Run the starter example:
-   - `cargo run --example mesh`
+Tephrite is built off of [bevy]("bevyengine.org"). You can build your app as usual, and then adopt Teprite’s rendering architecture. To do so:
 
-Teprite applications should call `tephrite_rs::run(...)` (not `App::run()` directly). `run()` decides whether the current process is the logic process or a spawned render child process.
+1. Use a supported version of Bevy in your Cargo.toml: 
+```toml 
+bevy = "0.18.1"
+```
+2. Ensure that you are patching Bevy:
+```toml
+[patch.crates-io]
+bevy = { git = "https://github.com/nicholasbl/bevy", branch = "cave_patches" }
+```
+3. Structure your app to start via a single plugin.
 
-## Architecture
+4. Call `tephrite_rs::run(YourPlugin)` (not `App::run()` directly). 
 
-- **Logic process**
-  - Builds a normal Bevy `App` and adds your plugin(s)
-  - Spawns N render processes (N = number of `[[screens]]` entries in the config)
-  - Writes replication data (entities/components/assets/resources) to shared memory
-  - Optionally consumes VRPN and produces “head” + joystick/button events
-- **Render process(es)**
-  - Starts `libbackfill` and opens a window for its assigned `[[screen]]`
-  - Reads replication data and reconstructs the replicated world
-  - Renders the replicated scene
+5. Make sure you have a valid configuration for your immersive setup. If not, your app will be in simulator mode.
+
+6. Run!
 
 ## Minimal code structure
 
@@ -53,6 +52,18 @@ fn main() {
 }
 ```
 
+## Architecture
+
+- **Logic process**
+  - Builds a normal Bevy `App` and adds your plugin(s)
+  - Spawns N render processes (N = number of `[[screens]]` entries in the config)
+  - Writes replication data (entities/components/assets/resources) to shared memory
+  - Optionally consumes VRPN and produces “head” + joystick/button events
+- **Render process(es)**
+  - Starts renderer and opens a window for its assigned `[[screen]]`
+  - Reads replication data and reconstructs the replicated world
+  - Renders the replicated scene
+
 ### Replication basics
 
 Replication is opt-in: mark what should appear in the render process.
@@ -65,29 +76,6 @@ The prelude exports the most commonly used pieces:
 - `Replicated`, `PropagateReplication`
 - input utilities (navigator + interactors)
 - `Head`, `EnvironmentLighting`
-
-## Native dependency: `libbackfill`
-
-Teprite links against `libbackfill` (ABI version `backfill-0`). Bevy does not yet support offaxis projections, and is still under development. This dependency provides a stable render layer through Google's Filament, and
-will be removed once Bevy's renderer better supports our use case.
-
-### Option A: global install or local install in known location (recommended when available)
-
-If `libbackfill` is installed system-wide and exposes a pkg-config file for `backfill-0`, builds should "just work".
-
-If the library is installed in `~/.local`, builds should also "just work".
-
-### Option B: custom install path
-
-If `pkg-config` can’t find `backfill-0`, set one of:
-
-- `BACKFILL_DIR` (prefix containing `include/` and `lib/`)
-- `BACKFILL_INCLUDE_DIR` (directory containing the `backfill-0/.../api.h` header)
-- `BACKFILL_LIB_DIR` (directory containing `libbackfill-0.(dylib|so)`)
-
-If you see an error like:
-`Could not find headers or library for backfill-0`
-it means Teprite couldn’t locate both the headers and the shared library.
 
 ## Configuration
 
@@ -108,8 +96,8 @@ You can start from `assets/config_example.toml`.
 ### Top-level fields
 
 ```toml
-use_offaxis = false            # enable off-axis stereo projection (CAVE-style)
-debug_renderer = false         # enable renderer-side debug logging
+use_offaxis = true     # enable immersive mode (simulator mode otherwise)
+debug_renderer = false # enable renderer-side debug logging
 
 [render]
 api = "vulkan"                 # one of: "vulkan", "metal", "opengl"
@@ -117,7 +105,6 @@ api = "vulkan"                 # one of: "vulkan", "metal", "opengl"
 [vrpn]
 head = "Head0@127.0.0.1:3883"  # optional
 joystick = "Joy0@127.0.0.1:3883,Joy1@127.0.0.1:3883"  # optional, comma-separated
-debug_head = false             # if true, synthesize head motion when no head tracker is configured
 ```
 
 Notes:
@@ -127,19 +114,17 @@ Notes:
 
 ### `[[displays]]`: physical screens in room coordinates
 
-Each `[[display]]` describes a *physical* display plane in 3D space (room coordinates) plus its pixel resolution.
+Each `[[display]]` describes a *physical* display plane in 3D space (room coordinates) plus its pixel resolution. If using VRPN, ensure that these coordinates are the same as the tracker coordinates.
 
 ```toml
 [[displays]]
 lower_left  = [-1.0, 0.0, 0.0]
 lower_right = [ 1.0, 0.0, 0.0]
 upper_right = [ 1.0, 1.0, 0.0]
-resolution = [1920, 1200]
 ```
 
 Semantics:
 - The three corners define the display plane and orientation.
-- `resolution` is `[width, height]` in pixels.
 
 ### `[[screens]]`: windows (render processes) bound to displays
 
@@ -181,7 +166,6 @@ fullscreen = false
 VRPN is optional:
 
 - If `[vrpn].head` is set, Teprite spawns a replicated `Head` entity and updates its transform from VRPN.
-- If `[vrpn].debug_head = true` and no head is configured, Teprite synthesizes head motion for debugging.
 - If `[vrpn].joystick` is set, Teprite spawns an `Interactor` entity and emits button/axis messages from VRPN input.
 
 ## Examples

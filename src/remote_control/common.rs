@@ -1,4 +1,4 @@
-use bevy::prelude::Vec3;
+use bevy::prelude::{Vec2, Vec3};
 
 /// URL path for the remote-control HTML page.
 pub(crate) const INDEX_PATH: &str = "/";
@@ -20,6 +20,8 @@ pub enum PropertyValue {
     Text(String),
     /// 3D vector value.
     Vec3(Vec3),
+    /// 2D vector value.
+    Vec2(Vec2),
     /// Stateless trigger, used by button controls.
     Triggered,
 }
@@ -34,6 +36,7 @@ impl TryFrom<PropertyValue> for f32 {
             PropertyValue::Choice(_) => Err("unable to convert choice to f32"),
             PropertyValue::Text(x) => x.parse().map_err(|_| "unable to convert text to f32"),
             PropertyValue::Vec3(vec3) => Ok(vec3.x),
+            PropertyValue::Vec2(vec2) => Ok(vec2.x),
             PropertyValue::Triggered => Ok(1.0),
         }
     }
@@ -57,6 +60,7 @@ impl TryFrom<PropertyValue> for bool {
                 }
             }
             PropertyValue::Vec3(vec3) => Ok(vec3.x != 0.0 || vec3.y != 0.0 || vec3.z != 0.0),
+            PropertyValue::Vec2(vec2) => Ok(vec2.x != 0.0 || vec2.y != 0.0),
             PropertyValue::Triggered => Ok(true),
         }
     }
@@ -72,6 +76,7 @@ impl TryFrom<PropertyValue> for String {
             PropertyValue::Choice(x) => Ok(x),
             PropertyValue::Text(x) => Ok(x),
             PropertyValue::Vec3(vec3) => Ok(format!("({}, {}, {})", vec3.x, vec3.y, vec3.z)),
+            PropertyValue::Vec2(vec2) => Ok(format!("({}, {})", vec2.x, vec2.y)),
             PropertyValue::Triggered => Ok("triggered".to_string()),
         }
     }
@@ -125,7 +130,54 @@ impl TryFrom<PropertyValue> for Vec3 {
                 }
             }
             PropertyValue::Vec3(vec3) => Ok(vec3),
+            PropertyValue::Vec2(vec2) => Ok(Vec3::new(vec2.x, vec2.y, 0.0)),
             PropertyValue::Triggered => Ok(Vec3::new(0.0, 0.0, 0.0)),
+        }
+    }
+}
+
+impl TryFrom<PropertyValue> for Vec2 {
+    type Error = &'static str;
+
+    fn try_from(value: PropertyValue) -> Result<Self, Self::Error> {
+        match value {
+            PropertyValue::Float(x) => Ok(Vec2::new(x, 0.0)),
+            PropertyValue::Bool(x) => Ok(Vec2::new((x as u32) as f32, 0.0)),
+            PropertyValue::Choice(x) => {
+                let parts: Vec<&str> = x.split(',').collect();
+                if parts.len() >= 2 {
+                    let x = parts[0]
+                        .trim()
+                        .parse::<f32>()
+                        .map_err(|_| "unable to parse x component")?;
+                    let y = parts[1]
+                        .trim()
+                        .parse::<f32>()
+                        .map_err(|_| "unable to parse y component")?;
+                    Ok(Vec2::new(x, y))
+                } else {
+                    Err("unable to convert choice to Vec2")
+                }
+            }
+            PropertyValue::Text(x) => {
+                let parts: Vec<&str> = x.split(',').collect();
+                if parts.len() >= 2 {
+                    let x = parts[0]
+                        .trim()
+                        .parse::<f32>()
+                        .map_err(|_| "unable to parse x component")?;
+                    let y = parts[1]
+                        .trim()
+                        .parse::<f32>()
+                        .map_err(|_| "unable to parse y component")?;
+                    Ok(Vec2::new(x, y))
+                } else {
+                    Err("unable to convert text to Vec2")
+                }
+            }
+            PropertyValue::Vec3(vec3) => Ok(Vec2::new(vec3.x, vec3.y)),
+            PropertyValue::Vec2(vec2) => Ok(vec2),
+            PropertyValue::Triggered => Ok(Vec2::ZERO),
         }
     }
 }
