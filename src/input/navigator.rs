@@ -1,6 +1,6 @@
-use bevy::prelude::*;
+use bevy::{math::DAffine3, prelude::*};
 
-use crate::input::{Interactor, InteractorState, common::map_point};
+use crate::input::{Interactor, InteractorState};
 
 use super::JoystickType;
 
@@ -28,10 +28,13 @@ pub struct NavigationPlugin {
 impl NavigationPlugin {
     pub fn new(mode: NavigatorMode) -> Self {
         Self {
-            settings: NavigatorSettings { mode, allow_x_rotation: true },
+            settings: NavigatorSettings {
+                mode,
+                allow_x_rotation: true,
+            },
         }
     }
-    
+
     pub fn with_x_rotation(mut self, allow: bool) -> Self {
         self.settings.allow_x_rotation = allow;
         self
@@ -116,24 +119,35 @@ fn on_tick(
                 _ => 0.0,
             };
 
-            let mut rotation = Quat::from_rotation_y((rotation_degrees_per_second * time.delta_secs() * dir_y).to_radians());
-            
-            if (settings.allow_x_rotation) {
-                rotation = rotation * Quat::from_rotation_x((rotation_degrees_per_second * time.delta_secs() * dir_x).to_radians());
-            } 
-            dbg!(settings.allow_x_rotation);
-            if (settings.mode == NavigatorMode::JoyCentric) {
-                let parent_global_affine = target_parent
+            let mut rotation = Quat::from_rotation_y(
+                (rotation_degrees_per_second * time.delta_secs() * dir_y).to_radians(),
+            );
+
+            if settings.allow_x_rotation {
+                rotation = rotation
+                    * Quat::from_rotation_x(
+                        (rotation_degrees_per_second * time.delta_secs() * dir_x).to_radians(),
+                    );
+            }
+            //dbg!(settings.allow_x_rotation);
+            if settings.mode == NavigatorMode::JoyCentric {
+                let parent_global_affine: DAffine3 = target_parent
                     .and_then(|parent| parents.get(parent.0).ok())
                     .map(|parent_tf| parent_tf.affine())
-                    .unwrap_or_else(|| GlobalTransform::IDENTITY.affine());
+                    .unwrap_or_default()
+                    .as_daffine3();
 
-                let joystick_pivot = parent_global_affine.inverse().transform_point3(joy_world_position);
-                target_tf.translation = joystick_pivot + rotation * (target_tf.translation - joystick_pivot);
+                let joystick_pivot = parent_global_affine
+                    .inverse()
+                    .transform_point3(joy_world_position.into());
+
+                let tf = joystick_pivot
+                    + rotation.as_dquat() * (target_tf.translation.as_dvec3() - joystick_pivot);
+
+                target_tf.translation = tf.as_vec3();
             }
-            
+
             target_tf.rotation = rotation * target_tf.rotation;
-   
         }
 
         const SCALE_FACTOR: f32 = 1.01;
