@@ -1,6 +1,7 @@
 pub(crate) mod common;
 pub(crate) mod config;
 pub mod input;
+pub mod material;
 pub mod multiprocess;
 pub mod remote_control;
 mod render;
@@ -21,6 +22,7 @@ pub mod prelude {
     pub use crate::replication::components::Replicated;
 
     pub use crate::input::*;
+    pub use crate::material::*;
 }
 
 /// Primary entry point for your application

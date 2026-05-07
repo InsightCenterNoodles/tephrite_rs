@@ -10,6 +10,8 @@ use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::render::render_resource::Face;
 
+use crate::prelude::PointsMaterial;
+use crate::prelude::points::PointsShaderSettings;
 use crate::serialize::*;
 
 impl_fast_serialize!(
@@ -71,6 +73,20 @@ impl_fast_raw_item!(OpaqueRendererMethod);
 
 // =============================================================================
 
+impl_fast_raw_item!(PointsShaderSettings);
+
+impl_fast_serialize!(
+    PointsMaterial,
+    keep: {
+        settings,
+        depth_bias,
+        use_vertex_color
+    }, skip: {
+    }
+);
+
+// =============================================================================
+
 static MAP: LazyLock<RwLock<HashMap<AssetId<StandardMaterial>, Handle<StandardMaterial>>>> =
     LazyLock::new(|| Default::default());
 
@@ -82,6 +98,22 @@ impl RemappableAsset for StandardMaterial {
     #[inline]
     fn with_remapper_mut<F: FnOnce(&mut HashMap<AssetId<Self>, Handle<Self>>)>(func: F) {
         func(&mut MAP.write().unwrap());
+    }
+}
+
+// =============================================================================
+
+static P_MAP: LazyLock<RwLock<HashMap<AssetId<PointsMaterial>, Handle<PointsMaterial>>>> =
+    LazyLock::new(|| Default::default());
+
+impl RemappableAsset for PointsMaterial {
+    #[inline]
+    fn with_remapper<F: FnOnce(&HashMap<AssetId<Self>, Handle<Self>>)>(func: F) {
+        func(&P_MAP.read().unwrap());
+    }
+    #[inline]
+    fn with_remapper_mut<F: FnOnce(&mut HashMap<AssetId<Self>, Handle<Self>>)>(func: F) {
+        func(&mut P_MAP.write().unwrap());
     }
 }
 

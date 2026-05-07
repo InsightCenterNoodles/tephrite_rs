@@ -2,6 +2,7 @@ use bevy::ecs::entity::EntityHashMap;
 use bevy::prelude::*;
 
 use crate::multiprocess::shared_buffer::CBWrapper;
+use crate::prelude::PointsMaterial;
 use crate::serialize::transcript_reader::TranscriptReaderResource;
 
 use super::instruction::*;
@@ -70,6 +71,7 @@ fn child_system(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut point_materials: ResMut<Assets<PointsMaterial>>,
     mut images: ResMut<Assets<Image>>,
     mut exit_event: MessageWriter<AppExit>,
 ) {
@@ -81,6 +83,7 @@ fn child_system(
             &mut commands,
             &mut meshes,
             &mut materials,
+            &mut point_materials,
             &mut images,
         );
     });
@@ -98,6 +101,7 @@ fn consume_buffer(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
+    point_materials: &mut Assets<PointsMaterial>,
     images: &mut Assets<Image>,
 ) {
     use crate::serialize::*;
@@ -146,6 +150,9 @@ fn consume_buffer(
                     AssetEnum::StandardMaterial(x) => {
                         StandardMaterial::set_mapping(x.id, x.data, materials);
                     }
+                    AssetEnum::PointsMaterial(x) => {
+                        PointsMaterial::set_mapping(x.id, x.data, point_materials);
+                    }
                     AssetEnum::Image(x) => Image::set_mapping(x.id, x.data, images),
                 }
             }
@@ -156,6 +163,9 @@ fn consume_buffer(
                     ReplicatedAssetID::Mesh(id) => Mesh::clear_mapping(id, meshes),
                     ReplicatedAssetID::StandardMaterial(id) => {
                         StandardMaterial::clear_mapping(id, materials);
+                    }
+                    ReplicatedAssetID::PointsMaterial(id) => {
+                        PointsMaterial::clear_mapping(id, point_materials);
                     }
                     ReplicatedAssetID::Image(id) => Image::clear_mapping(id, images),
                 };

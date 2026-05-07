@@ -85,6 +85,9 @@ pub(crate) fn run() -> AppExit {
     app.add_systems(Update, env_change_watch);
     app.add_systems(Update, oit_resource_watch);
 
+    // Materials
+    app.add_plugins(crate::material::builtin_materials_plugin);
+
     // Add in replication components
     app.add_plugins(crate::replication::reader::ReplicationReaderPlugin);
 

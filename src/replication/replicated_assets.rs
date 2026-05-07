@@ -1,3 +1,4 @@
+use crate::prelude::PointsMaterial;
 use crate::replication::instruction::*;
 use crate::replication::sets::*;
 use crate::serialize::transcript_writer::TranscriptWriteStateResource;
@@ -203,5 +204,6 @@ macro_rules! generate_asset_systems {
 generate_asset_systems!(
     (0, Mesh, AssetDeltaPhase::Priority2),
     (1, StandardMaterial, AssetDeltaPhase::Priority2),
-    (2, Image, AssetDeltaPhase::Priority1)
+    (2, PointsMaterial, AssetDeltaPhase::Priority2),
+    (3, Image, AssetDeltaPhase::Priority1)
 );

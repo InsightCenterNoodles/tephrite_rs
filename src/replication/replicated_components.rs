@@ -7,6 +7,7 @@ use bevy::prelude::*;
 
 use crate::common::Head;
 
+use crate::prelude::PointsMaterial;
 use crate::serialize::transcript_writer::*;
 use crate::serialize::*;
 
@@ -160,6 +161,7 @@ macro_rules! detect_component_changes {
 }
 
 type StandardMatComponent = MeshMaterial3d<StandardMaterial>;
+type PointsMatComponent = MeshMaterial3d<PointsMaterial>;
 
 detect_component_changes!(
     (0, Head),
@@ -170,7 +172,8 @@ detect_component_changes!(
     (5, SpotLight),
     (6, Mesh3d),
     (7, StandardMatComponent),
-    (8, InheritedVisibility),
-    (9, NotShadowCaster),
-    (10, NotShadowReceiver)
+    (8, PointsMatComponent),
+    (9, InheritedVisibility),
+    (10, NotShadowCaster),
+    (11, NotShadowReceiver)
 );
