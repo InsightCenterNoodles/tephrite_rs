@@ -38,25 +38,28 @@ pub(crate) fn run() -> AppExit {
         }
     }
 
+    let mut window = Window {
+        present_mode: bevy::window::PresentMode::Fifo,
+        mode: bevy::window::WindowMode::Windowed,
+        title: format!("Tephrite Window {}", std::process::id()),
+        resolution: child_config.resolution.into(),
+        enabled_buttons: EnabledButtons {
+            minimize: false,
+            maximize: false,
+            close: false,
+        },
+        position: WindowPosition::At(child_config.placement.as_ivec2()),
+        ..Default::default()
+    };
+
+    if child_config.fullscreen {
+        window.mode = bevy::window::WindowMode::BorderlessFullscreen(MonitorSelection::Primary)
+    }
+
     app.add_plugins(
         DefaultPlugins
             .set(WindowPlugin {
-                primary_window: Some(Window {
-                    present_mode: bevy::window::PresentMode::Fifo,
-                    mode: if child_config.fullscreen {
-                        bevy::window::WindowMode::BorderlessFullscreen(MonitorSelection::Primary)
-                    } else {
-                        bevy::window::WindowMode::Windowed
-                    },
-                    title: format!("Tephrite Window {}", std::process::id()),
-                    resolution: (1920, 1200).into(),
-                    enabled_buttons: EnabledButtons {
-                        minimize: false,
-                        maximize: false,
-                        close: false,
-                    },
-                    ..Default::default()
-                }),
+                primary_window: Some(window),
                 ..Default::default()
             })
             .set(LogPlugin {

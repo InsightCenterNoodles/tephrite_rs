@@ -43,6 +43,14 @@ mod file {
         pub(crate) resolution: [u32; 2],
     }
 
+    #[derive(Debug, Clone, Default, Deserialize)]
+    pub(crate) struct Placement {
+        /// X x Y
+        pub(crate) location: [u32; 2],
+        /// width x height
+        pub(crate) resolution: [u32; 2],
+    }
+
     #[derive(Debug, Default, Deserialize)]
     pub(crate) struct Screen {
         // index into `displays`
@@ -52,6 +60,8 @@ mod file {
 
         #[serde(default)]
         pub(crate) fullscreen: bool,
+
+        pub(crate) placement: Option<Placement>,
 
         #[serde(default)]
         pub(crate) is_right: bool,
@@ -210,6 +220,8 @@ pub struct RenderConfiguration {
     /// The pixel resolution of the display (w, h)
     pub resolution: UVec2,
 
+    pub placement: UVec2,
+
     pub fullscreen: bool,
 
     pub is_right: bool,
@@ -246,12 +258,20 @@ fn build_child_config() -> RenderConfiguration {
         .as_ref()
         .and_then(|x| displays.into_iter().nth(x.display as usize));
 
-    let resolution: UVec2 = this_display
+    let resolution: UVec2 = this_screen
         .as_ref()
+        .and_then(|x| x.placement.clone())
         .map(|x| x.resolution.into())
+        .or(this_display.as_ref().map(|x| x.resolution.into()))
         .unwrap_or_else(|| uvec2(1920, 1200));
 
     let mono_override = std::env::var("TEPH_MONO").ok().map(|_| false);
+
+    let placement: UVec2 = this_screen
+        .as_ref()
+        .and_then(|x| x.placement.clone())
+        .map(|x| x.location.into())
+        .unwrap_or_else(|| uvec2(0, 0));
 
     RenderConfiguration {
         use_offaxis: use_offaxis.unwrap_or_default(),
@@ -275,6 +295,7 @@ fn build_child_config() -> RenderConfiguration {
             })
             .unwrap_or_else(DisplayPhysical::make_plain),
         resolution,
+        placement,
     }
 }
 
