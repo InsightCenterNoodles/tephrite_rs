@@ -17,6 +17,19 @@ pub enum PropertyControl {
         /// Initial slider value shown in the UI.
         initial: f32,
     },
+    /// A dual-handled range slider for defining a min and max span.
+    RangeSlider {
+        /// Minimum slider value.
+        min: f32,
+        /// Maximum slider value.
+        max: f32,
+        /// Slider step size.
+        step: f32,
+        /// Initial lower value shown in the UI.
+        initial_low: f32,
+        /// Initial upper value shown in the UI.
+        initial_high: f32,
+    },
     /// A checkbox toggle.
     Toggle {
         /// Initial checkbox state.
@@ -82,6 +95,19 @@ pub(crate) fn parse_property_value(
             };
             let parsed = raw.parse::<f32>().map_err(|_| "invalid slider value")?;
             Ok(PropertyValue::Float(parsed))
+        }
+        PropertyControl::RangeSlider { .. } => {
+            let Some(raw) = provided_value else {
+                return Err("missing value");
+            };
+            let parts: [f32; 2] = raw
+                .split(',')
+                .map(str::trim)
+                .take(2)
+                .filter_map(|x| x.parse::<f32>().ok())
+                .next_array()
+                .ok_or("invalid range slider value")?;
+            Ok(PropertyValue::Vec2(parts.into()))
         }
         PropertyControl::Toggle { .. } => match provided_value.map(String::as_str) {
             Some("1") | Some("true") | Some("on") => Ok(PropertyValue::Bool(true)),
