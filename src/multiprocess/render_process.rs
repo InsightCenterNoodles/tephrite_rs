@@ -15,28 +15,36 @@ use crate::{
 
 /// Function to run a render (or child) process
 pub(crate) fn run() -> AppExit {
-    let mut app = App::new();
-
-    app.insert_resource(DefaultOpaqueRendererMethod::deferred());
-
     // Get child config
     let child_config = get_render_configuration();
     let rank = child_config.process_rank;
 
-    if child_config.use_offaxis {
-        unsafe {
-            // try to set here
-            if let Some(index) = child_config.card_index {
-                let index = index.to_string();
-                std::env::set_var("ENABLE_DEVICE_CHOOSER_LAYER", "1");
-                std::env::set_var("VULKAN_DEVICE_INDEX", index);
-            }
+    unsafe {
+        // Set process environment before Bevy's render stack has a chance to
+        // initialize Vulkan/wgpu.
+        if let Some(index) = child_config.card_index {
+            let index = index.to_string();
+            std::env::set_var("ENABLE_DEVICE_CHOOSER_LAYER", "1");
+            std::env::set_var("VULKAN_DEVICE_INDEX", &index);
+        }
 
-            if let Some(display) = &child_config.display_name {
-                std::env::set_var("DISPLAY", display);
-            }
+        if let Some(display) = &child_config.display_name {
+            std::env::set_var("DISPLAY", display);
         }
     }
+
+    eprintln!(
+        "Renderer env rank={} pid={} DISPLAY={:?} ENABLE_DEVICE_CHOOSER_LAYER={:?} VULKAN_DEVICE_INDEX={:?}",
+        rank,
+        std::process::id(),
+        std::env::var("DISPLAY").ok(),
+        std::env::var("ENABLE_DEVICE_CHOOSER_LAYER").ok(),
+        std::env::var("VULKAN_DEVICE_INDEX").ok(),
+    );
+
+    let mut app = App::new();
+
+    app.insert_resource(DefaultOpaqueRendererMethod::deferred());
 
     let mut window = Window {
         present_mode: bevy::window::PresentMode::Fifo,
@@ -56,17 +64,7 @@ pub(crate) fn run() -> AppExit {
         window.mode = bevy::window::WindowMode::BorderlessFullscreen(MonitorSelection::Primary)
     }
 
-    warn!(
-        "Creating render window rank={} pid={} display={:?} card_index={:?} position={:?} resolution={:?} fullscreen={} mode={:?}",
-        rank,
-        std::process::id(),
-        child_config.display_name,
-        child_config.card_index,
-        child_config.placement,
-        child_config.resolution,
-        child_config.fullscreen,
-        window.mode,
-    );
+    let window_mode = format!("{:?}", window.mode);
 
     app.add_plugins(
         DefaultPlugins
@@ -78,6 +76,18 @@ pub(crate) fn run() -> AppExit {
                 level: Level::WARN,
                 ..Default::default()
             }),
+    );
+
+    warn!(
+        "Creating render window rank={} pid={} display={:?} card_index={:?} position={:?} resolution={:?} fullscreen={} mode={}",
+        rank,
+        std::process::id(),
+        child_config.display_name,
+        child_config.card_index,
+        child_config.placement,
+        child_config.resolution,
+        child_config.fullscreen,
+        window_mode,
     );
 
     //info!("{rank}: Running render process {}", std::process::id());
