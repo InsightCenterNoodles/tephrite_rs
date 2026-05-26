@@ -311,12 +311,16 @@ impl VRPNClient {
         to_watch: HashMap<String, SharedItemState>,
         host_string: &str,
     ) -> Result<Self> {
-        let host: SocketAddr = if host_string.contains(':') {
-            host_string.parse()
+        let host = if host_string.contains(':') {
+            let part = host_string
+                .split_once('@')
+                .map(|(_, b)| b)
+                .unwrap_or(host_string);
+            part.parse()
         } else {
             format!("{}:{}", host_string, VRPN_DEFAULT_PORT).parse()
         }
-        .unwrap();
+        .map_err(|x| std::io::Error::other(x))?;
 
         let conn_info = ConnectionInfo {
             senders: to_watch,
