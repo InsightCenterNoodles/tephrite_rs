@@ -11,16 +11,22 @@ use crossbeam_queue::SegQueue;
 /// Values are stored as Bevy double-precision types (`DVec3`/`DQuat`).
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SharedItemState {
-    pub pose: Arc<Mutex<Pose>>,
+    pub poses: Arc<Vec<Mutex<Pose>>>,
     pub latest_analog: Arc<Vec<AtomicF32>>,
     pub previous_analog: Arc<Vec<AtomicF32>>,
     pub button_changes: Arc<SegQueue<(u8, u8)>>,
 }
 
+const MAX_TRACKER_SENSORS: usize = 12;
+
 impl SharedItemState {
     pub(crate) fn new() -> Self {
+        let poses = (0..MAX_TRACKER_SENSORS)
+            .map(|_| Mutex::new(Pose::default()))
+            .collect();
+
         Self {
-            pose: Arc::new(Mutex::new(Pose::default())),
+            poses: Arc::new(poses),
             latest_analog: Arc::new(vec![AtomicF32::default(); 256]),
             previous_analog: Arc::new(vec![AtomicF32::default(); 256]),
             button_changes: Arc::new(Default::default()),

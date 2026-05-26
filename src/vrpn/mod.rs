@@ -3,8 +3,8 @@
 //! It exposes a small Bevy plugin (`VRPNPlugin`) and a component (`VRPNLink`)
 //! to bind an entity's `Transform` to a specific VRPN sender.
 
-mod comm;
 mod common;
+mod protocol;
 
 use std::time::Duration;
 
@@ -27,7 +27,7 @@ fn vrpn_spinner(to_watch: HashMap<String, SharedItemState>, host_string: String)
             std::thread::sleep(Duration::from_secs(try_num as u64));
         }
 
-        let Ok(mut state) = comm::VRPNClient::new(to_watch.clone(), &host_string) else {
+        let Ok(mut state) = protocol::VRPNClient::new(to_watch.clone(), &host_string) else {
             error!("Unable to connect to {host_string}, attempts: {try_num}/{MAX_RETRY}");
             continue;
         };
@@ -91,6 +91,7 @@ pub struct VRPNObject(pub Vec<crate::config::VRPNAddress>);
 #[derive(Component)]
 struct VRPNLinkConnected {
     reader: SharedItemState,
+    sensor: usize,
 }
 
 /// Observer that establishes network connections for newly added `VRPNLink`s.
@@ -120,9 +121,16 @@ fn check_for_new_vrpn(
 
     let state = SharedItemState::new();
 
+    // TODO: clean up
+    let mut sensor = 0usize;
+
     for ep in &link.0 {
         // Not very fast...
         let endpoint = format!("{}:{}", ep.host, ep.port);
+
+        if let Some(requested_sensor) = ep.sensor {
+            sensor = sensor as usize
+        }
 
         map.entry(endpoint)
             .and_modify(|x| {
@@ -135,9 +143,10 @@ fn check_for_new_vrpn(
             });
     }
 
-    commands
-        .entity(entity)
-        .insert(VRPNLinkConnected { reader: state });
+    commands.entity(entity).insert(VRPNLinkConnected {
+        reader: state,
+        sensor,
+    });
 
     for (k, v) in map {
         start_vrpn_client(v, &k, &mut res);
@@ -184,7 +193,13 @@ fn service_vrpn(
     for (e, c, mut tf) in query.iter_mut() {
         // some funky optimization here. we dont want to always hold a write lock
 
-        let new_pos = c.reader.pose.lock().unwrap().clone();
+        let sensor = c.sensor;
+
+        let new_pos = if let Some(mtx) = c.reader.poses.get(sensor) {
+            mtx.lock().unwrap().clone()
+        } else {
+            Default::default()
+        };
 
         tf.translation = new_pos.position;
         tf.rotation = new_pos.rotation.normalize();

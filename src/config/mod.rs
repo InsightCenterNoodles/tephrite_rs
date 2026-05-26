@@ -153,6 +153,7 @@ pub struct VRPNAddress {
     pub sender: String,
     pub host: String,
     pub port: u16,
+    pub sensor: Option<u16>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -161,15 +162,17 @@ pub enum VRPNAddressParseError {
     MissingPart(String),
     #[error("Bad port {0}")]
     BadPort(#[from] std::num::ParseIntError),
+    #[error("Invalid sensor {0}")]
+    BadSensor(String),
 }
 
 impl FromStr for VRPNAddress {
     type Err = VRPNAddressParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // Should be in the form of sender@host:port
+        // Should be in the form of sender/sensor@host:port
         let mut iter = s.split(&['@', ':']);
-        let sender = iter
+        let mut sender = iter
             .next()
             .ok_or_else(|| VRPNAddressParseError::MissingPart("sender".into()))?;
         let host = iter
@@ -181,10 +184,20 @@ impl FromStr for VRPNAddress {
 
         let port: u16 = port.parse()?;
 
+        let mut sensor: Option<u16> = None;
+
+        if let Some((sndr, snsr)) = sender.split_once('/') {
+            sender = sndr;
+            sensor = Some(snsr.parse().map_err(|err: std::num::ParseIntError| {
+                VRPNAddressParseError::BadSensor(err.to_string())
+            })?);
+        }
+
         Ok(Self {
             sender: sender.into(),
             host: host.into(),
             port,
+            sensor,
         })
     }
 }

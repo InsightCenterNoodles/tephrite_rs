@@ -482,8 +482,9 @@ impl MessageState {
         source: &mut Cursor<&[u8]>,
         _local_cache: &mut Vec<f64>,
     ) -> Result<()> {
-        // First double is a timestamp (seconds since server start). Skip it.
-        let _dummy = read_be_f64(source)?;
+        // First is the sensor, the second is padding
+        let sensor = read_be_i32(source)?;
+        let _dummy = read_be_i32(source)?;
 
         let pos: [f64; 3] = read_be_f64_n(source)?;
         let quat: [f64; 4] = read_be_f64_n(source)?;
@@ -491,9 +492,13 @@ impl MessageState {
         //dbg!(pos, quat);
 
         if let Ok(item) = self.remote_sender_list.lookup(sender) {
-            let mut lock = item.pose.lock().unwrap();
-            lock.position = transform_position(pos).as_vec3();
-            lock.rotation = transform_rotation(quat).as_quat();
+            if let Ok(sensor) = usize::try_from(sensor) {
+                if let Some(pose) = item.poses.get(sensor) {
+                    let mut lock = pose.lock().unwrap();
+                    lock.position = transform_position(pos).as_vec3();
+                    lock.rotation = transform_rotation(quat).as_quat();
+                }
+            }
         }
 
         Ok(())
@@ -722,13 +727,13 @@ mod test {
 
     use crate::vrpn::common::SharedItemState;
 
-    use super::{MessageState, check_vrpn_cookie, get_message};
+    use super::*;
 
     #[test]
     fn basic_decode() {
         let mut bytes: &[u8] = &[0x40, 0x25, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00];
 
-        assert_eq!(10.75, super::read_be_f64(&mut bytes).unwrap());
+        assert_eq!(10.75, read_be_f64(&mut bytes).unwrap());
 
         let mut data: &[u8] = &[
             0x40, 0x24, 0xe6, 0x66, 0x66, 0x66, 0x66, 0x66, //
@@ -812,14 +817,29 @@ mod test {
         output.clear();
 
         assert!(
-            head_state.pose.lock().unwrap().position.distance(vec3(
-                0.12531011353529492,
-                0.8024732135411116,
-                0.867021419799275,
-            )) < 0.0001
+            head_state
+                .poses
+                .get(0)
+                .unwrap()
+                .lock()
+                .unwrap()
+                .position
+                .distance(vec3(
+                    0.12531011353529492,
+                    0.8024732135411116,
+                    0.867021419799275,
+                ))
+                < 0.0001
         );
 
-        let head_rot: Vec4 = head_state.pose.lock().unwrap().rotation.into();
+        let head_rot: Vec4 = head_state
+            .poses
+            .get(0)
+            .unwrap()
+            .lock()
+            .unwrap()
+            .rotation
+            .into();
 
         //dbg!(head_rot);
 
@@ -833,14 +853,29 @@ mod test {
         );
 
         assert!(
-            joy_state.pose.lock().unwrap().position.distance(vec3(
-                -0.4458300779842322,
-                0.8178812792378916,
-                2.1620918226860906,
-            )) < 0.0001
+            joy_state
+                .poses
+                .get(0)
+                .unwrap()
+                .lock()
+                .unwrap()
+                .position
+                .distance(vec3(
+                    -0.4458300779842322,
+                    0.8178812792378916,
+                    2.1620918226860906,
+                ))
+                < 0.0001
         );
 
-        let joy_rot: Vec4 = joy_state.pose.lock().unwrap().rotation.into();
+        let joy_rot: Vec4 = joy_state
+            .poses
+            .get(0)
+            .unwrap()
+            .lock()
+            .unwrap()
+            .rotation
+            .into();
 
         //dbg!(joy_rot);
 
