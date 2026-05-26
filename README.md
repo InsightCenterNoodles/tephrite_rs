@@ -6,6 +6,8 @@ Teprite is a Rust-based immersive visualization renderer built on top of Bevy. I
 - Render backends: Vulkan / Metal 
 - Tracking + input: optional VRPN head tracking and joystick/button events
 
+NRL SWR: SWR 26-061
+
 ## How to use (quick start)
 
 Tephrite is built off of [bevy]("bevyengine.org"). You can build your app as usual, and then adopt Teprite’s rendering architecture. To do so:
