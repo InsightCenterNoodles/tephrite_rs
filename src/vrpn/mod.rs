@@ -129,7 +129,7 @@ fn check_for_new_vrpn(
         let endpoint = format!("{}:{}", ep.host, ep.port);
 
         if let Some(requested_sensor) = ep.sensor {
-            sensor = sensor as usize
+            sensor = requested_sensor as usize
         }
 
         map.entry(endpoint)

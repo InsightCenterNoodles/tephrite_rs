@@ -56,6 +56,18 @@ pub(crate) fn run() -> AppExit {
         window.mode = bevy::window::WindowMode::BorderlessFullscreen(MonitorSelection::Primary)
     }
 
+    warn!(
+        "Creating render window rank={} pid={} display={:?} card_index={:?} position={:?} resolution={:?} fullscreen={} mode={:?}",
+        rank,
+        std::process::id(),
+        child_config.display_name,
+        child_config.card_index,
+        child_config.placement,
+        child_config.resolution,
+        child_config.fullscreen,
+        window.mode,
+    );
+
     app.add_plugins(
         DefaultPlugins
             .set(WindowPlugin {

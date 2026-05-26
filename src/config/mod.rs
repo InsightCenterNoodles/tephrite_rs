@@ -171,27 +171,49 @@ impl FromStr for VRPNAddress {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // Should be in the form of sender/sensor@host:port
-        let mut iter = s.split(&['@', ':']);
-        let mut sender = iter
-            .next()
-            .ok_or_else(|| VRPNAddressParseError::MissingPart("sender".into()))?;
-        let host = iter
-            .next()
+        let (sender, endpoint) = s
+            .split_once('@')
             .ok_or_else(|| VRPNAddressParseError::MissingPart("host".into()))?;
-        let port = iter
-            .next()
+        let (host, port) = endpoint
+            .split_once(':')
             .ok_or_else(|| VRPNAddressParseError::MissingPart("port".into()))?;
+
+        if sender.is_empty() {
+            return Err(VRPNAddressParseError::MissingPart("sender".into()));
+        }
+
+        if host.is_empty() {
+            return Err(VRPNAddressParseError::MissingPart("host".into()));
+        }
+
+        if port.is_empty() || port.contains(':') || port.contains('@') {
+            return Err(VRPNAddressParseError::MissingPart("port".into()));
+        }
+
+        if sender.contains('@') || host.contains('@') || host.contains(':') {
+            return Err(VRPNAddressParseError::MissingPart("address".into()));
+        }
 
         let port: u16 = port.parse()?;
 
         let mut sensor: Option<u16> = None;
 
-        if let Some((sndr, snsr)) = sender.split_once('/') {
-            sender = sndr;
+        let sender = if let Some((sndr, snsr)) = sender.split_once('/') {
+            if sndr.is_empty() {
+                return Err(VRPNAddressParseError::MissingPart("sender".into()));
+            }
+
+            if snsr.is_empty() || snsr.contains('/') {
+                return Err(VRPNAddressParseError::BadSensor(snsr.into()));
+            }
+
             sensor = Some(snsr.parse().map_err(|err: std::num::ParseIntError| {
                 VRPNAddressParseError::BadSensor(err.to_string())
             })?);
-        }
+            sndr
+        } else {
+            sender
+        };
 
         Ok(Self {
             sender: sender.into(),
@@ -392,5 +414,47 @@ mod tests {
         assert_eq!(render.card_index, Some(4));
         assert_eq!(render.display_name.as_deref(), Some(":0.0"));
         assert_eq!(render.resolution, UVec2::new(1920, 1200));
+    }
+
+    #[test]
+    fn parses_vrpn_address_without_sensor() {
+        let address: VRPNAddress = "Head0@127.0.0.1:3883".parse().unwrap();
+
+        assert_eq!(address.sender, "Head0");
+        assert_eq!(address.host, "127.0.0.1");
+        assert_eq!(address.port, 3883);
+        assert_eq!(address.sensor, None);
+    }
+
+    #[test]
+    fn parses_vrpn_address_with_sensor() {
+        let address: VRPNAddress = "Head0/3@127.0.0.1:3883".parse().unwrap();
+
+        assert_eq!(address.sender, "Head0");
+        assert_eq!(address.host, "127.0.0.1");
+        assert_eq!(address.port, 3883);
+        assert_eq!(address.sensor, Some(3));
+    }
+
+    #[test]
+    fn rejects_malformed_vrpn_addresses() {
+        for address in [
+            "@127.0.0.1:3883",
+            "/1@127.0.0.1:3883",
+            "Head0@",
+            "Head0@:3883",
+            "Head0@127.0.0.1",
+            "Head0@127.0.0.1:",
+            "Head0@127.0.0.1:3883:extra",
+            "Head0@127.0.0.1:3883@extra",
+            "Head0/@127.0.0.1:3883",
+            "Head0/1/2@127.0.0.1:3883",
+            "Head0/not-a-number@127.0.0.1:3883",
+        ] {
+            assert!(
+                VRPNAddress::from_str(address).is_err(),
+                "{address} should not parse"
+            );
+        }
     }
 }

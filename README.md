@@ -105,14 +105,14 @@ debug_renderer = false # enable renderer-side debug logging
 api = "vulkan"                 # one of: "vulkan", "metal", "opengl"
 
 [vrpn]
-head = "Head0@127.0.0.1:3883"  # optional
-joystick = "Joy0@127.0.0.1:3883,Joy1@127.0.0.1:3883"  # optional, comma-separated
+head = "Head0/0@127.0.0.1:3883"  # optional; sensor is optional and defaults to 0
+joystick = "Joy0@127.0.0.1:3883,Joy1/1@127.0.0.1:3883"  # optional, comma-separated
 ```
 
 Notes:
 - `use_offaxis = false` is appropriate for local single-display development.
 - `debug_renderer` controls render-process logging (the logic process also uses it to pass a debug env var to children).
-- VRPN addresses are parsed as `sender@host:port`.
+- VRPN addresses are parsed as `sender@host:port` or `sender/sensor@host:port`.
 
 ### `[[displays]]`: physical screens in room coordinates
 
@@ -182,4 +182,3 @@ Use `cargo test -- --test-threads=1` to avoid some tests deadlocking.
 ## License
 
 MIT. See `LICENSE`.
-
