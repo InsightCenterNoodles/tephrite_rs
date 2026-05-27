@@ -140,7 +140,7 @@ impl VRPNCoordinateTransform {
     #[inline]
     fn transform_position(self, p: [f64; 3]) -> DVec3 {
         match self {
-            Self::VrpnBevy => DVec3::new(-p[0], p[2], p[1]),
+            Self::Vicon => DVec3::new(-p[0], p[2], p[1]),
             Self::Identity => DVec3::new(p[0], p[1], p[2]),
         }
     }
@@ -150,7 +150,7 @@ impl VRPNCoordinateTransform {
     #[inline]
     fn transform_rotation(self, p: [f64; 4]) -> DQuat {
         match self {
-            Self::VrpnBevy => DQuat {
+            Self::Vicon => DQuat {
                 x: -p[0],
                 y: p[2],
                 z: p[1],
@@ -817,7 +817,7 @@ mod test {
                 ("Joystick0".into(), joy_state.clone()),
             ]
             .into(),
-            VRPNCoordinateTransform::VrpnBevy,
+            VRPNCoordinateTransform::Vicon,
         );
 
         let mut output = Vec::new();
@@ -911,7 +911,7 @@ mod test {
 
     #[test]
     fn coordinate_transform_vrpn_bevy_matches_historical_mapping() {
-        let transform = VRPNCoordinateTransform::VrpnBevy;
+        let transform = VRPNCoordinateTransform::Vicon;
         let pos = transform.transform_position([1.0, 2.0, 3.0]);
         let rot: Vec4 = transform
             .transform_rotation([0.1, 0.2, 0.3, 0.4])

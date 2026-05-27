@@ -240,7 +240,7 @@ pub enum VRPNCoordinateTransform {
     /// Preserve the historical Tephrite VRPN mapping: position `[-x, z, y]`
     /// and rotation `[-x, z, y, w]`.
     #[default]
-    VrpnBevy,
+    Vicon,
     /// Use VRPN position and quaternion components as-is.
     Identity,
 }
@@ -423,7 +423,7 @@ mod tests {
         assert_eq!(head.port, 3883);
         assert!(matches!(
             logic.vrpn_config.coordinate_transform,
-            VRPNCoordinateTransform::VrpnBevy
+            VRPNCoordinateTransform::Vicon
         ));
 
         // Prepare render context for child 0 and validate render configuration
