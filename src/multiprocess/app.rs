@@ -14,7 +14,7 @@ pub(crate) fn make_common_app() -> App {
     app.add_plugins((
         PanicHandlerPlugin,
         LogPlugin {
-            filter: "warn,bevy_render=off".into(),
+            filter: "info,bevy_render=off".into(),
             level: if std::env::var("TEPH_DEBUG").is_ok() {
                 bevy::log::Level::DEBUG
             } else {

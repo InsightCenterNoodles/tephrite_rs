@@ -8,10 +8,10 @@ use super::*;
 // Lets split this up. the raw ints are from VRPN. we will take those events, and translate to user facing API
 
 #[derive(Debug, Clone, Copy)]
-pub enum JoystickType {
+pub enum JoystickID {
     Joystick0,
-    Right,
-    DPad,
+    Joystick1,
+    Joystick2,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -27,10 +27,10 @@ pub enum JoystickAxis {
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum JoystickButton {
-    X,
-    Y,
-    A,
-    B,
+    Button0, // X
+    Button1,
+    Button2, // A
+    Button3,
     BL,
     BR,
     TL,
@@ -67,11 +67,11 @@ impl InteractorState {
         }
     }
 
-    pub fn stick_state(&self, stick: JoystickType) -> Option<Vec2> {
+    pub fn stick_state(&self, stick: JoystickID) -> Option<Vec2> {
         let (a, b) = match stick {
-            JoystickType::Joystick0 => (JoystickAxis::LeftX, JoystickAxis::LeftY),
-            JoystickType::Right => (JoystickAxis::RightX, JoystickAxis::RightY),
-            JoystickType::DPad => (JoystickAxis::DPad, JoystickAxis::DPad),
+            JoystickID::Joystick0 => (JoystickAxis::LeftX, JoystickAxis::LeftY),
+            JoystickID::Joystick1 => (JoystickAxis::RightX, JoystickAxis::RightY),
+            JoystickID::Joystick2 => (JoystickAxis::DPad, JoystickAxis::DPad),
         };
 
         // a stick is valid if either one of its axis is not null
@@ -84,16 +84,6 @@ impl InteractorState {
         }
     }
 }
-
-// The states of all interactors
-//#[derive(Debug, Resource, Default)]
-//pub struct AllInteractorState(EntityHashMap<InteractorState>);
-
-//impl AllInteractorState {
-//    pub fn state_for(&self, entity: Entity) -> Option<&InteractorState> {
-//        self.0.get(&entity)
-//    }
-//}
 
 pub struct InteractorPlugin;
 

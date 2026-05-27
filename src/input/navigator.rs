@@ -2,7 +2,7 @@ use bevy::{math::DAffine3, prelude::*};
 
 use crate::input::{Interactor, InteractorState};
 
-use super::JoystickType;
+use super::JoystickID;
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum NavigatorMode {
@@ -13,6 +13,15 @@ pub enum NavigatorMode {
 
 #[derive(Debug, Component)]
 pub struct NavigatorMarker;
+
+#[derive(Debug, Clone, Copy, Resource)]
+pub struct InitialNavigatorTransform(pub Transform);
+
+impl Default for InitialNavigatorTransform {
+    fn default() -> Self {
+        Self(Transform::IDENTITY)
+    }
+}
 
 #[derive(Debug, Clone, Resource, Default)]
 struct NavigatorSettings {
@@ -44,7 +53,28 @@ impl NavigationPlugin {
 impl Plugin for NavigationPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(self.settings.clone());
+        app.init_resource::<InitialNavigatorTransform>();
+        app.add_systems(PostStartup, apply_initial_navigator_transform);
+        app.add_systems(Update, initialize_added_navigators);
         app.add_systems(Update, on_tick);
+    }
+}
+
+fn apply_initial_navigator_transform(
+    initial: Res<InitialNavigatorTransform>,
+    mut targets: Query<&mut Transform, With<NavigatorMarker>>,
+) {
+    for mut target_tf in &mut targets {
+        *target_tf = initial.0;
+    }
+}
+
+fn initialize_added_navigators(
+    initial: Res<InitialNavigatorTransform>,
+    mut targets: Query<&mut Transform, Added<NavigatorMarker>>,
+) {
+    for mut target_tf in &mut targets {
+        *target_tf = initial.0;
     }
 }
 
@@ -53,6 +83,7 @@ fn on_tick(
     mut joystick: Query<(&GlobalTransform, &InteractorState), With<Interactor>>,
     parents: Query<&GlobalTransform>,
     settings: Res<NavigatorSettings>,
+    initial: Res<InitialNavigatorTransform>,
     time: Res<Time>,
 ) {
     for (mut target_tf, target_parent) in target {
@@ -66,7 +97,7 @@ fn on_tick(
 
         let joy_world_position = joystick_global_tf.transform_point(Vec3::ZERO);
 
-        if let Some(right_stick) = state.stick_state(JoystickType::Right) {
+        if let Some(right_stick) = state.stick_state(JoystickID::Joystick1) {
             // direction vector
 
             let dir = vec3(right_stick.x, 0.0, right_stick.y);
@@ -91,7 +122,7 @@ fn on_tick(
             target_tf.translation += local_displace;
         }
 
-        if let Some(left_stick) = state.stick_state(JoystickType::Joystick0) {
+        if let Some(left_stick) = state.stick_state(JoystickID::Joystick0) {
             target_tf.translation += vec3(
                 0.0,
                 time.delta_secs() * speed_meters_per_second * left_stick.y,
@@ -99,7 +130,7 @@ fn on_tick(
             )
         }
 
-        if let Some(dpad) = state.stick_state(JoystickType::DPad) {
+        if let Some(dpad) = state.stick_state(JoystickID::Joystick2) {
             let degrees = dpad.x;
 
             // left is 270 ish and right is 90 ish
@@ -166,7 +197,7 @@ fn on_tick(
             .buttons
             .just_pressed(crate::input::JoystickButton::Start)
         {
-            *target_tf = Transform::IDENTITY;
+            *target_tf = initial.0;
         }
     }
 }

@@ -68,7 +68,7 @@ pub(crate) fn run() -> AppExit {
                 ..Default::default()
             })
             .set(LogPlugin {
-                level: Level::WARN,
+                level: Level::ERROR,
                 ..Default::default()
             })
             .set(TaskPoolPlugin {

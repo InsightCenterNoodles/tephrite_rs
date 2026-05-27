@@ -75,7 +75,7 @@ pub struct RadialComboBoxPlugin {
 impl Default for RadialComboBoxPlugin {
     fn default() -> Self {
         Self {
-            trigger_button: JoystickButton::Y,
+            trigger_button: JoystickButton::Button1,
             radius: 0.22,
             forward_offset: -0.33,
             up_offset: 0.12,

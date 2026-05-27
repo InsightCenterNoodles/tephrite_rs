@@ -179,10 +179,10 @@ const AXIS_MAP: [JoystickAxis; 9] = [
 ];
 
 const BUTTON_MAP: [JoystickButton; 10] = [
-    JoystickButton::X,
-    JoystickButton::A,
-    JoystickButton::B,
-    JoystickButton::Y,
+    JoystickButton::Button0,
+    JoystickButton::Button2,
+    JoystickButton::Button3,
+    JoystickButton::Button1,
     JoystickButton::BL,
     JoystickButton::BR,
     JoystickButton::TL,

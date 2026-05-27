@@ -1,6 +1,7 @@
 pub mod common;
 mod events;
 mod interactor;
+pub mod interactor_types;
 mod navigator;
 
 use bevy::{

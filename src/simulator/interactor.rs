@@ -168,10 +168,10 @@ fn button_control_observer(
     }
 
     let button = match target_button {
-        "a" => JoystickButton::A,
-        "b" => JoystickButton::B,
-        "x" => JoystickButton::X,
-        "y" => JoystickButton::Y,
+        "a" => JoystickButton::Button2,
+        "b" => JoystickButton::Button3,
+        "x" => JoystickButton::Button0,
+        "y" => JoystickButton::Button1,
         "bl" => JoystickButton::BL,
         "br" => JoystickButton::BR,
         "tl" => JoystickButton::TL,
