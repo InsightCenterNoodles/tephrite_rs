@@ -1,10 +1,13 @@
+use std::num::NonZeroU32;
+
 use bevy::{
+    app::TaskPoolThreadAssignmentPolicy,
     core_pipeline::{Skybox, oit::OrderIndependentTransparencySettings, tonemapping::Tonemapping},
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     log::{Level, LogPlugin},
     pbr::{DefaultOpaqueRendererMethod, ScreenSpaceAmbientOcclusion, ScreenSpaceReflections},
     prelude::*,
-    render::{camera::TemporalJitter, view::Hdr},
+    render::{camera::TemporalJitter, pipelined_rendering::PipelinedRenderingPlugin, view::Hdr},
     window::EnabledButtons,
 };
 
@@ -48,6 +51,7 @@ pub(crate) fn run() -> AppExit {
             close: false,
         },
         position: WindowPosition::At(child_config.placement.as_ivec2()),
+        desired_maximum_frame_latency: Some(unsafe { NonZeroU32::new_unchecked(1) }),
         ..Default::default()
     };
 
@@ -66,7 +70,42 @@ pub(crate) fn run() -> AppExit {
             .set(LogPlugin {
                 level: Level::WARN,
                 ..Default::default()
-            }),
+            })
+            .set(TaskPoolPlugin {
+                task_pool_options: TaskPoolOptions {
+                    min_total_threads: 1,
+                    max_total_threads: 8,
+                    io: TaskPoolThreadAssignmentPolicy {
+                        // say we know our app is i/o intensive (asset streaming?)
+                        // so maybe we want lots of i/o threads
+                        min_threads: 1,
+                        max_threads: 2,
+                        percent: 0.5, // use 50% of available threads for I/O
+                        on_thread_spawn: None,
+                        on_thread_destroy: None,
+                    },
+                    async_compute: TaskPoolThreadAssignmentPolicy {
+                        min_threads: 1,
+                        max_threads: 1,
+                        percent: 0.0,
+                        on_thread_spawn: None,
+                        on_thread_destroy: None,
+                    },
+                    compute: TaskPoolThreadAssignmentPolicy {
+                        min_threads: 2,
+                        // but limit it to a maximum of 8 threads
+                        max_threads: 8,
+                        // 1.0 in this case means "use all remaining threads"
+                        // (that were not assigned to io/async_compute)
+                        // (clamped to min_threads..=max_threads)
+                        percent: 1.0,
+                        on_thread_spawn: None,
+                        on_thread_destroy: None,
+                    },
+                },
+            })
+            .build()
+            .disable::<PipelinedRenderingPlugin>(),
     );
 
     debug!(

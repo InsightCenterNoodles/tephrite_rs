@@ -11,7 +11,10 @@ pub(crate) mod simulator;
 pub mod ui;
 pub(crate) mod vrpn;
 
-use bevy::app::Plugin;
+use bevy::{
+    DefaultPlugins,
+    app::{App, Plugin},
+};
 
 pub mod prelude {
     pub use super::run;
@@ -44,5 +47,33 @@ pub fn run(user_plugin: impl Plugin) -> bevy::app::AppExit {
         multiprocess::logic_process::cleanup(app);
 
         result
+    }
+}
+
+pub enum RunOption {
+    Normal,
+    DisableTephrite,
+}
+
+pub struct TephriteOptions {
+    run_options: RunOption,
+}
+
+pub fn run_with_options(
+    user_plugin: impl Plugin,
+    non_teprite_plugin: impl Plugin,
+    options: TephriteOptions,
+) -> bevy::app::AppExit {
+    match options.run_options {
+        RunOption::Normal => run(user_plugin),
+        RunOption::DisableTephrite => {
+            let mut app = App::new();
+
+            app.add_plugins(DefaultPlugins);
+            app.add_plugins(user_plugin);
+            app.add_plugins(non_teprite_plugin);
+
+            return app.run();
+        }
     }
 }
