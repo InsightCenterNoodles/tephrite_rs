@@ -107,12 +107,14 @@ api = "vulkan"                 # one of: "vulkan", "metal", "opengl"
 [vrpn]
 head = "Head0/0@127.0.0.1:3883"  # optional; sensor is optional and defaults to 0
 joystick = "Joy0@127.0.0.1:3883,Joy1/1@127.0.0.1:3883"  # optional, comma-separated
+coordinate_transform = "vrpn_bevy"  # optional: "vrpn_bevy" (default) or "identity"
 ```
 
 Notes:
 - `use_offaxis = false` is appropriate for local single-display development.
 - `debug_renderer` controls render-process logging (the logic process also uses it to pass a debug env var to children).
 - VRPN addresses are parsed as `sender@host:port` or `sender/sensor@host:port`.
+- `coordinate_transform = "vrpn_bevy"` preserves Tephrite's historical VRPN mapping; use `"identity"` when the VRPN server already reports coordinates in Tephrite/Bevy space.
 
 ### `[[displays]]`: physical screens in room coordinates
 

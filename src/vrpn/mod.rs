@@ -11,12 +11,17 @@ use std::time::Duration;
 use bevy::{platform::collections::HashMap, prelude::*};
 
 use crate::{
+    config::{VRPNAddress, VRPNCoordinateTransform, get_logic_configuration},
     input::{AxisMessage, ButtonEventKind, ButtonMessage, JoystickAxis, JoystickButton},
     vrpn::common::SharedItemState,
 };
 
 /// Worker thread entry point that services a single VRPN client.
-fn vrpn_spinner(to_watch: HashMap<String, SharedItemState>, host_string: String) {
+fn vrpn_spinner(
+    to_watch: HashMap<String, SharedItemState>,
+    host_string: String,
+    coordinate_transform: VRPNCoordinateTransform,
+) {
     // try to connect, retrying if things go south
 
     const MAX_RETRY: usize = 5;
@@ -27,7 +32,9 @@ fn vrpn_spinner(to_watch: HashMap<String, SharedItemState>, host_string: String)
             std::thread::sleep(Duration::from_secs(try_num as u64));
         }
 
-        let Ok(mut state) = protocol::VRPNClient::new(to_watch.clone(), &host_string) else {
+        let Ok(mut state) =
+            protocol::VRPNClient::new(to_watch.clone(), &host_string, coordinate_transform)
+        else {
             error!("Unable to connect to {host_string}, attempts: {try_num}/{MAX_RETRY}");
             continue;
         };
@@ -53,12 +60,13 @@ fn vrpn_spinner(to_watch: HashMap<String, SharedItemState>, host_string: String)
 fn start_vrpn_client(
     to_watch: HashMap<String, SharedItemState>,
     host_string: &str,
+    coordinate_transform: VRPNCoordinateTransform,
     res: &mut VRPNResource,
 ) {
     let host_string = host_string.to_owned();
 
     let handle = std::thread::spawn(move || {
-        vrpn_spinner(to_watch, host_string);
+        vrpn_spinner(to_watch, host_string, coordinate_transform);
     });
 
     res.vrpn_threads.push(handle);
@@ -85,7 +93,7 @@ impl VRPNResource {
 /// the entity's `Transform` is updated in `FixedUpdate`.
 #[derive(Component)]
 #[component(immutable)]
-pub struct VRPNObject(pub Vec<crate::config::VRPNAddress>);
+pub struct VRPNObject(pub Vec<VRPNAddress>);
 
 /// Represents the connected VRPN state
 #[derive(Component)]
@@ -149,7 +157,12 @@ fn check_for_new_vrpn(
     });
 
     for (k, v) in map {
-        start_vrpn_client(v, &k, &mut res);
+        start_vrpn_client(
+            v,
+            &k,
+            get_logic_configuration().vrpn_config.coordinate_transform,
+            &mut res,
+        );
     }
 }
 

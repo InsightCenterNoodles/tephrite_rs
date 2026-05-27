@@ -33,15 +33,6 @@ pub(crate) fn run() -> AppExit {
         }
     }
 
-    eprintln!(
-        "Renderer env rank={} pid={} DISPLAY={:?} ENABLE_DEVICE_CHOOSER_LAYER={:?} VULKAN_DEVICE_INDEX={:?}",
-        rank,
-        std::process::id(),
-        std::env::var("DISPLAY").ok(),
-        std::env::var("ENABLE_DEVICE_CHOOSER_LAYER").ok(),
-        std::env::var("VULKAN_DEVICE_INDEX").ok(),
-    );
-
     let mut app = App::new();
 
     app.insert_resource(DefaultOpaqueRendererMethod::deferred());
@@ -78,7 +69,7 @@ pub(crate) fn run() -> AppExit {
             }),
     );
 
-    warn!(
+    debug!(
         "Creating render window rank={} pid={} display={:?} card_index={:?} position={:?} resolution={:?} fullscreen={} mode={}",
         rank,
         std::process::id(),

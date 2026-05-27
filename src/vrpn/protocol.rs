@@ -32,7 +32,7 @@ use std::{
     time::Duration,
 };
 
-use crate::vrpn::common::SharedItemState;
+use crate::{config::VRPNCoordinateTransform, vrpn::common::SharedItemState};
 
 /// All VRPN messages are aligned to doubles
 const VRPN_ALIGN: usize = 8;
@@ -134,26 +134,35 @@ fn read_be_f64_dyn(r: &mut impl Read, count: u64, dest: &mut Vec<f64>) -> std::i
     Ok(())
 }
 
-/// Transform position from VRPN coordinates to Bevy coordinates.
-///
-/// Empirically, this mapping matches common VRPN tracker conventions to
-/// Bevy's `X-right, Y-up, Z-forward` coordinates:
-/// `[-x, z, y]`.
-#[inline]
-fn transform_position(p: [f64; 3]) -> DVec3 {
-    DVec3::new(-p[0], p[2], p[1])
-}
+impl VRPNCoordinateTransform {
+    /// Transform position from VRPN coordinates to the configured application
+    /// coordinate system.
+    #[inline]
+    fn transform_position(self, p: [f64; 3]) -> DVec3 {
+        match self {
+            Self::VrpnBevy => DVec3::new(-p[0], p[2], p[1]),
+            Self::Identity => DVec3::new(p[0], p[1], p[2]),
+        }
+    }
 
-/// Transform rotation from VRPN coordinates to Bevy coordinates.
-///
-/// The mapping mirrors `transform_position` and flips the X component: `[-x, z, y, w]`.
-#[inline]
-fn transform_rotation(p: [f64; 4]) -> DQuat {
-    DQuat {
-        x: -p[0],
-        y: p[2],
-        z: p[1],
-        w: p[3],
+    /// Transform rotation from VRPN coordinates to the configured application
+    /// coordinate system.
+    #[inline]
+    fn transform_rotation(self, p: [f64; 4]) -> DQuat {
+        match self {
+            Self::VrpnBevy => DQuat {
+                x: -p[0],
+                y: p[2],
+                z: p[1],
+                w: p[3],
+            },
+            Self::Identity => DQuat {
+                x: p[0],
+                y: p[1],
+                z: p[2],
+                w: p[3],
+            },
+        }
     }
 }
 
@@ -310,6 +319,7 @@ impl VRPNClient {
     pub(crate) fn new(
         to_watch: HashMap<String, SharedItemState>,
         host_string: &str,
+        coordinate_transform: VRPNCoordinateTransform,
     ) -> Result<Self> {
         let host = if host_string.contains(':') {
             let part = host_string
@@ -348,7 +358,7 @@ impl VRPNClient {
 
         Ok(Self {
             remote,
-            message_state: MessageState::new(conn_info.senders),
+            message_state: MessageState::new(conn_info.senders, coordinate_transform),
         })
     }
 
@@ -455,15 +465,20 @@ struct MessageState {
     remote_sender_list: SenderList,
 
     message_type_handlers: Vec<Option<Handler>>,
+    coordinate_transform: VRPNCoordinateTransform,
 }
 
 impl MessageState {
-    fn new(to_watch: HashMap<String, SharedItemState>) -> Self {
+    fn new(
+        to_watch: HashMap<String, SharedItemState>,
+        coordinate_transform: VRPNCoordinateTransform,
+    ) -> Self {
         let remote_sender_list = SenderList::new(to_watch);
 
         Self {
             remote_sender_list,
             message_type_handlers: Vec::with_capacity(64),
+            coordinate_transform,
         }
     }
 
@@ -499,8 +514,8 @@ impl MessageState {
             if let Ok(sensor) = usize::try_from(sensor) {
                 if let Some(pose) = item.poses.get(sensor) {
                     let mut lock = pose.lock().unwrap();
-                    lock.position = transform_position(pos).as_vec3();
-                    lock.rotation = transform_rotation(quat).as_quat();
+                    lock.position = self.coordinate_transform.transform_position(pos).as_vec3();
+                    lock.rotation = self.coordinate_transform.transform_rotation(quat).as_quat();
                 }
             }
         }
@@ -802,6 +817,7 @@ mod test {
                 ("Joystick0".into(), joy_state.clone()),
             ]
             .into(),
+            VRPNCoordinateTransform::VrpnBevy,
         );
 
         let mut output = Vec::new();
@@ -891,5 +907,31 @@ mod test {
                 0.8081629182801645,
             )) < 0.0001
         );
+    }
+
+    #[test]
+    fn coordinate_transform_vrpn_bevy_matches_historical_mapping() {
+        let transform = VRPNCoordinateTransform::VrpnBevy;
+        let pos = transform.transform_position([1.0, 2.0, 3.0]);
+        let rot: Vec4 = transform
+            .transform_rotation([0.1, 0.2, 0.3, 0.4])
+            .as_quat()
+            .into();
+
+        assert_eq!(pos, DVec3::new(-1.0, 3.0, 2.0));
+        assert_eq!(rot, vec4(-0.1, 0.3, 0.2, 0.4));
+    }
+
+    #[test]
+    fn coordinate_transform_identity_preserves_components() {
+        let transform = VRPNCoordinateTransform::Identity;
+        let pos = transform.transform_position([1.0, 2.0, 3.0]);
+        let rot: Vec4 = transform
+            .transform_rotation([0.1, 0.2, 0.3, 0.4])
+            .as_quat()
+            .into();
+
+        assert_eq!(pos, DVec3::new(1.0, 2.0, 3.0));
+        assert_eq!(rot, vec4(0.1, 0.2, 0.3, 0.4));
     }
 }

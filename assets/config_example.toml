@@ -3,6 +3,7 @@ use_offaxis = false
 
 [vrpn]
 head = "Head0@10.79.144.3:3883"
+coordinate_transform = "vrpn_bevy"
 
 # Define six physical displays
 [[displays]]

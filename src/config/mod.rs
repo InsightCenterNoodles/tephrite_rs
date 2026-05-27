@@ -31,6 +31,7 @@ mod file {
     pub(crate) struct Vrpn {
         pub(crate) head: Option<String>,
         pub(crate) joystick: Option<String>,
+        pub(crate) coordinate_transform: Option<super::VRPNCoordinateTransform>,
     }
 
     #[derive(Debug, Default, Deserialize)]
@@ -229,6 +230,19 @@ impl FromStr for VRPNAddress {
 pub struct VRPNConfig {
     pub head: Option<VRPNAddress>,
     pub joystick: Option<Vec<VRPNAddress>>,
+    pub coordinate_transform: VRPNCoordinateTransform,
+}
+
+/// Named coordinate transforms for VRPN tracker poses.
+#[derive(Debug, Default, Clone, Copy, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VRPNCoordinateTransform {
+    /// Preserve the historical Tephrite VRPN mapping: position `[-x, z, y]`
+    /// and rotation `[-x, z, y, w]`.
+    #[default]
+    VrpnBevy,
+    /// Use VRPN position and quaternion components as-is.
+    Identity,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -367,6 +381,7 @@ pub fn get_logic_configuration() -> &'static LogicConfiguration {
             vrpn_config: VRPNConfig {
                 head: vrpn.head.and_then(|x| x.parse().ok()),
                 joystick: vrpn.joystick.map(|x| get_multiple_vrpn_addresses(&x)),
+                coordinate_transform: vrpn.coordinate_transform.unwrap_or_default(),
             },
             child_count: screens.len().try_into().unwrap(),
         })
@@ -406,6 +421,10 @@ mod tests {
         assert_eq!(head.sender, "Head0");
         assert_eq!(head.host, "10.79.144.3");
         assert_eq!(head.port, 3883);
+        assert!(matches!(
+            logic.vrpn_config.coordinate_transform,
+            VRPNCoordinateTransform::VrpnBevy
+        ));
 
         // Prepare render context for child 0 and validate render configuration
         unsafe { std::env::set_var("TEPHRITE_CHILD_PROCESS", "0") };
