@@ -43,6 +43,27 @@ pub(crate) fn render_controls(properties: &[PropertyDefinition]) -> String {
                     </div>"
                 );
             }
+PropertyControl::RangeSlider {
+                min,
+                max,
+                step,
+                initial_low,
+                initial_high,
+            } => {
+                let _ = write!(
+                    out,
+                    "<div class=\"control\">\
+                        <label>{label}: <span class=\"value\" id=\"value-{prop_id}\">{initial_low} - {initial_high}</span></label>\
+                        <div class=\"dual-range-wrapper\">\
+                            <div class=\"slider-track\" id=\"track-{prop_id}\"></div>\
+                            <input type=\"range\" id=\"dual-{prop_id}-low\" min=\"{min}\" max=\"{max}\" step=\"{step}\" value=\"{initial_low}\" \
+                                   oninput=\"updateDualRange('{prop_id}', {min}, {max})\" onchange=\"sendDualRange('{prop_id}')\">\
+                            <input type=\"range\" id=\"dual-{prop_id}-high\" min=\"{min}\" max=\"{max}\" step=\"{step}\" value=\"{initial_high}\" \
+                                   oninput=\"updateDualRange('{prop_id}', {min}, {max})\" onchange=\"sendDualRange('{prop_id}')\">\
+                        </div>\
+                    </div>"
+                );
+            }
             PropertyControl::Toggle { initial } => {
                 let checked = if initial { " checked" } else { "" };
                 let _ = write!(
@@ -219,6 +240,51 @@ pub(crate) fn render_index_page(controls_html: &str) -> String {
                     width: 100%;\
                     accent-color: var(--accent);\
                 }}\
+                .dual-range-wrapper {{\
+                    position: relative;\
+                    width: 100%;\
+                    height: 24px;\
+                    margin-top: 10px;\
+                    display: flex;\
+                    align-items: center;\
+                }}\
+                .slider-track {{\
+                    width: 100%;\
+                    height: 6px;\
+                    position: absolute;\
+                    background: var(--border);\
+                    border-radius: 3px;\
+                }}\
+                .dual-range-wrapper input[type='range'] {{\
+                    position: absolute;\
+                    width: 100%;\
+                    background: none;\
+                    pointer-events: none;\
+                    -webkit-appearance: none;\
+                    -moz-appearance: none;\
+                    appearance: none;\
+                    margin: 0;\
+                }}\
+                .dual-range-wrapper input[type='range']::-webkit-slider-thumb {{\
+                    height: 18px;\
+                    width: 18px;\
+                    border-radius: 50%;\
+                    background-color: var(--accent);\
+                    cursor: pointer;\
+                    pointer-events: auto;\
+                    -webkit-appearance: none;\
+                    box-shadow: 0 1px 4px rgba(0,0,0,0.3);\
+                }}\
+                .dual-range-wrapper input[type='range']::-moz-range-thumb {{\
+                    height: 18px;\
+                    width: 18px;\
+                    border: none;\
+                    border-radius: 50%;\
+                    background-color: var(--accent);\
+                    cursor: pointer;\
+                    pointer-events: auto;\
+                    box-shadow: 0 1px 4px rgba(0,0,0,0.3);\
+                }}\
                 input[type='text'],\
                 input[type='number'],\
                 select {{\
@@ -328,6 +394,31 @@ pub(crate) fn render_index_page(controls_html: &str) -> String {
                 function setLabel(id, value) {{\
                     const el = document.getElementById('value-' + id);\
                     if (el) el.innerText = value;\
+                }}\
+                                function updateDualRange(id, min, max) {{\
+                    const low = document.getElementById('dual-' + id + '-low');\
+                    const high = document.getElementById('dual-' + id + '-high');\
+                    const track = document.getElementById('track-' + id);\
+                    if (!low || !high || !track) return;\
+                    \
+                    let lowVal = parseFloat(low.value);\
+                    let highVal = parseFloat(high.value);\
+                    \
+                    if (lowVal > highVal) {{\
+                        if (document.activeElement === low) {{ low.value = highVal; lowVal = highVal; }}\
+                        else {{ high.value = lowVal; highVal = lowVal; }}\
+                    }}\
+                    \
+                    setLabel(id, lowVal + ' - ' + highVal);\
+                    \
+                    const percent1 = ((lowVal - min) / (max - min)) * 100;\
+                    const percent2 = ((highVal - min) / (max - min)) * 100;\
+                    track.style.background = 'linear-gradient(to right, var(--border) ' + percent1 + '%, var(--accent) ' + percent1 + '%, var(--accent) ' + percent2 + '%, var(--border) ' + percent2 + '%)';\
+                }}\
+                function sendDualRange(id) {{\
+                    const low = document.getElementById('dual-' + id + '-low');\
+                    const high = document.getElementById('dual-' + id + '-high');\
+                    if (low && high) sendUpdate(id, low.value + ',' + high.value);\
                 }}\
                 function sendVec3(id) {{\
                     const x = document.getElementById('vec3-' + id + '-x')?.value ?? '0';\
