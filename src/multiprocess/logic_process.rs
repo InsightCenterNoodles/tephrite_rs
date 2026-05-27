@@ -4,7 +4,7 @@ use bevy::{app::App, prelude::*};
 
 use crate::{
     common::{Head, TephExit},
-    config::{ENV_VAR_LOG_RENDERER, get_logic_configuration},
+    config::{InteractorType, get_configuration},
     input::{Interactor, InteractorState},
     multiprocess::app::make_common_app,
     prelude::Replicated,
@@ -23,10 +23,11 @@ pub(crate) fn setup() -> App {
 
     // only now are logs enabled!
 
-    let use_simulator_mode = get_logic_configuration().child_count == 0;
+    let config = get_configuration();
+    let use_simulator_mode = config.child_count() == 0;
 
     // Having zero children makes no sense
-    let child_count = get_logic_configuration().child_count.max(1);
+    let child_count = config.child_count().max(1);
 
     app.add_plugins(crate::input::InputPlugin);
 
@@ -59,8 +60,6 @@ pub(crate) fn setup() -> App {
 
     info!("Launching {child_count} render processes");
 
-    let install_debug_env_var = get_logic_configuration().debug_renderer;
-
     let children: Vec<_> = (0..child_count)
         .map(|i| {
             let current_exe = current_exe.clone();
@@ -69,10 +68,6 @@ pub(crate) fn setup() -> App {
 
             let mut command = std::process::Command::new(current_exe);
             crate::multiprocess::install_ids(&mut command, &session_clone, i);
-
-            if install_debug_env_var {
-                command.env(ENV_VAR_LOG_RENDERER, "1");
-            }
 
             command.spawn().expect("launching render process")
         })
@@ -93,9 +88,9 @@ struct ChildProcessResource {
 fn setup_tracked_head(mut commands: Commands) {
     debug!("Setup tracked head");
 
-    let config = get_logic_configuration();
+    let config = get_configuration();
 
-    if let Some(h) = config.vrpn_config.head.clone() {
+    if let Some(h) = config.vrpn.head.clone() {
         commands.spawn((
             Replicated,
             Transform::default(),
@@ -110,21 +105,23 @@ fn setup_tracked_head(mut commands: Commands) {
     // TODO we should reconsider our config with a dedicated sim mode flag or something.
     // but we need to be smart; if no config, auto sim mode?
 
-    if let Some(js) = &config.vrpn_config.joystick {
-        commands.spawn((
+    let interactor = config.interactor();
+    let interactor_type = match interactor.as_ref().map(|x| x.ty).unwrap_or_default() {
+        InteractorType::Controller => Interactor::Controller,
+        InteractorType::Flystick => Interactor::Flystick,
+    };
+
+    let id = commands
+        .spawn((
             Transform::default(),
-            Interactor,
+            interactor_type,
             InteractorState::default(),
             Name::new("Joystick"),
-            VRPNObject(js.clone()),
-        ));
-    } else {
-        commands.spawn((
-            Transform::default(),
-            Interactor,
-            InteractorState::default(),
-            Name::new("Joystick"),
-        ));
+        ))
+        .id();
+
+    if let Some(interactor) = interactor {
+        commands.entity(id).insert(VRPNObject(interactor.addresses));
     }
 }
 

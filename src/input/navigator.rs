@@ -91,7 +91,7 @@ fn on_tick(
             target_tf.translation += local_displace;
         }
 
-        if let Some(left_stick) = state.stick_state(JoystickType::Left) {
+        if let Some(left_stick) = state.stick_state(JoystickType::Joystick0) {
             target_tf.translation += vec3(
                 0.0,
                 time.delta_secs() * speed_meters_per_second * left_stick.y,

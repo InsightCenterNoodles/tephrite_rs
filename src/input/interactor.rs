@@ -9,7 +9,7 @@ use super::*;
 
 #[derive(Debug, Clone, Copy)]
 pub enum JoystickType {
-    Left,
+    Joystick0,
     Right,
     DPad,
 }
@@ -43,7 +43,11 @@ pub enum JoystickButton {
 
 /// Marker for the entity that represents a user's controller
 #[derive(Component, Default, Debug)]
-pub struct Interactor;
+pub enum Interactor {
+    #[default]
+    Controller,
+    Flystick,
+}
 
 #[derive(Debug, Default, Component)]
 #[require(Interactor)]
@@ -65,7 +69,7 @@ impl InteractorState {
 
     pub fn stick_state(&self, stick: JoystickType) -> Option<Vec2> {
         let (a, b) = match stick {
-            JoystickType::Left => (JoystickAxis::LeftX, JoystickAxis::LeftY),
+            JoystickType::Joystick0 => (JoystickAxis::LeftX, JoystickAxis::LeftY),
             JoystickType::Right => (JoystickAxis::RightX, JoystickAxis::RightY),
             JoystickType::DPad => (JoystickAxis::DPad, JoystickAxis::DPad),
         };

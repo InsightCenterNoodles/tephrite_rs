@@ -4,7 +4,7 @@ mod interactor;
 mod navigator;
 
 use bevy::{
-    ecs::{entity::EntityHashMap, system::entity_command::observe},
+    ecs::entity::EntityHashMap,
     math::bounding::{Aabb3d, BoundingVolume},
     platform::collections::HashSet,
     prelude::*,

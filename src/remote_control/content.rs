@@ -43,7 +43,7 @@ pub(crate) fn render_controls(properties: &[PropertyDefinition]) -> String {
                     </div>"
                 );
             }
-PropertyControl::RangeSlider {
+            PropertyControl::RangeSlider {
                 min,
                 max,
                 step,

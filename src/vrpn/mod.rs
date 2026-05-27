@@ -11,7 +11,7 @@ use std::time::Duration;
 use bevy::{platform::collections::HashMap, prelude::*};
 
 use crate::{
-    config::{VRPNAddress, VRPNCoordinateTransform, get_logic_configuration},
+    config::{VRPNAddress, VRPNCoordinateTransform, get_configuration},
     input::{AxisMessage, ButtonEventKind, ButtonMessage, JoystickAxis, JoystickButton},
     vrpn::common::SharedItemState,
 };
@@ -160,7 +160,7 @@ fn check_for_new_vrpn(
         start_vrpn_client(
             v,
             &k,
-            get_logic_configuration().vrpn_config.coordinate_transform,
+            get_configuration().vrpn.coordinate_transform,
             &mut res,
         );
     }
