@@ -35,10 +35,20 @@ struct NavigatorSettings {
     allow_x_rotation: bool,
 }
 
-#[derive(Debug, Default)]
-struct FlystickRotationState {
+#[derive(Debug, Default, Component)]
+pub struct InteractorNavigatorState {
     last_yaw: Option<f32>,
     last_height: Option<f32>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum FlystickNavigationOperation {
+    None,
+    Reset,
+    RotateY(f32),
+    VerticalDisplace(Vec3),
+    Scale(f32),
+    Pan(Vec3),
 }
 
 #[derive(Debug)]
@@ -67,6 +77,7 @@ impl Plugin for NavigationPlugin {
         app.insert_resource(self.settings.clone());
         app.init_resource::<InitialNavigatorTransform>();
         app.add_systems(PostStartup, apply_initial_navigator_transform);
+        app.add_systems(PreUpdate, initialize_interactor_navigator_state);
         app.add_systems(Update, initialize_added_navigators);
         app.add_systems(Update, on_tick);
     }
@@ -90,41 +101,95 @@ fn initialize_added_navigators(
     }
 }
 
+fn initialize_interactor_navigator_state(
+    mut commands: Commands,
+    interactors: Query<Entity, (With<Interactor>, Without<InteractorNavigatorState>)>,
+) {
+    for entity in &interactors {
+        commands
+            .entity(entity)
+            .insert(InteractorNavigatorState::default());
+    }
+}
+
 fn on_tick(
-    target: Query<(&mut Transform, Option<&ChildOf>), (With<NavigatorMarker>, Without<Interactor>)>,
-    mut joystick: Query<(&Interactor, &GlobalTransform, &InteractorState)>,
+    mut target: Query<
+        (&mut Transform, Option<&ChildOf>),
+        (With<NavigatorMarker>, Without<Interactor>),
+    >,
+    mut joystick: Query<(
+        &Interactor,
+        &GlobalTransform,
+        &InteractorState,
+        &mut InteractorNavigatorState,
+    )>,
     parents: Query<&GlobalTransform>,
     settings: Res<NavigatorSettings>,
     initial: Res<InitialNavigatorTransform>,
     time: Res<Time>,
-    mut flystick_rotation: Local<FlystickRotationState>,
 ) {
-    for (mut target_tf, target_parent) in target {
-        // TODO: will fail if we add more interactors
-        let Ok((interactor, joystick_global_tf, state)) = joystick.single_mut() else {
-            error_once!("Multiple interactors detected, refusing to navigate!");
-            return;
-        };
+    // TODO: will fail if we add more interactors
+    let Ok((interactor, joystick_global_tf, state, mut navigator_state)) = joystick.single_mut()
+    else {
+        error_once!("Multiple interactors detected, refusing to navigate!");
+        return;
+    };
 
-        match interactor {
-            Interactor::Controller => on_tick_controller(
-                &mut target_tf,
+    match interactor {
+        Interactor::Controller => {
+            for (mut target_tf, target_parent) in &mut target {
+                on_tick_controller(
+                    &mut target_tf,
+                    joystick_global_tf,
+                    state,
+                    target_parent.and_then(|x| parents.get(x.0).ok()),
+                    &settings,
+                    &initial,
+                    &time,
+                );
+            }
+        }
+        Interactor::Flystick => {
+            let operation = flystick_navigation_operation(
                 joystick_global_tf,
                 state,
-                target_parent.and_then(|x| parents.get(x.0).ok()),
-                &settings,
-                &initial,
                 &time,
-            ),
-            Interactor::Flystick => on_tick_flystick(
-                &mut target_tf,
-                joystick_global_tf,
-                state,
-                target_parent.and_then(|x| parents.get(x.0).ok()),
-                &initial,
-                &time,
-                &mut flystick_rotation,
-            ),
+                &mut navigator_state,
+            );
+
+            for (mut target_tf, target_parent) in &mut target {
+                apply_flystick_navigation(
+                    &mut target_tf,
+                    target_parent.and_then(|x| parents.get(x.0).ok()),
+                    &initial,
+                    operation,
+                );
+            }
+        }
+    }
+}
+
+fn apply_flystick_navigation(
+    target_tf: &mut Transform,
+    parent_global_tf: Option<&GlobalTransform>,
+    initial: &InitialNavigatorTransform,
+    operation: FlystickNavigationOperation,
+) {
+    match operation {
+        FlystickNavigationOperation::None => {}
+        FlystickNavigationOperation::Reset => {
+            *target_tf = initial.0;
+        }
+        FlystickNavigationOperation::RotateY(delta_yaw) => {
+            target_tf.rotation = Quat::from_rotation_y(delta_yaw) * target_tf.rotation;
+        }
+        FlystickNavigationOperation::VerticalDisplace(global_displace)
+        | FlystickNavigationOperation::Pan(global_displace) => {
+            target_tf.translation += local_displace(global_displace, parent_global_tf);
+        }
+        FlystickNavigationOperation::Scale(scale_factor) => {
+            target_tf.scale =
+                (target_tf.scale * scale_factor).clamp(Vec3::splat(0.001), Vec3::splat(1000.0));
         }
     }
 }
@@ -242,72 +307,64 @@ fn on_tick_controller(
     }
 }
 
-fn on_tick_flystick(
-    target_tf: &mut Transform,
+fn flystick_navigation_operation(
     interactor_global_tf: &GlobalTransform,
     interactor_state: &InteractorState,
-    parent_global_tf: Option<&GlobalTransform>,
-    initial: &InitialNavigatorTransform,
     time: &Time,
-    rotation_state: &mut FlystickRotationState,
-) {
+    navigator_state: &mut InteractorNavigatorState,
+) -> FlystickNavigationOperation {
     let speed_meters_per_second = 2.0;
 
     if DTrackFlystick::just_pressed(FlystickButton::JoystickButton, interactor_state) {
-        *target_tf = initial.0;
-        rotation_state.last_yaw = None;
-        rotation_state.last_height = None;
-        return;
+        navigator_state.last_yaw = None;
+        navigator_state.last_height = None;
+        return FlystickNavigationOperation::Reset;
     }
 
     if DTrackFlystick::pressed(FlystickButton::RightWhiteButton, interactor_state) {
-        rotation_state.last_height = None;
+        navigator_state.last_height = None;
 
         let yaw = yaw_from_global_transform(interactor_global_tf);
+        let operation = navigator_state
+            .last_yaw
+            .map(|last_yaw| FlystickNavigationOperation::RotateY(wrap_angle(yaw - last_yaw)))
+            .unwrap_or(FlystickNavigationOperation::None);
 
-        if let Some(last_yaw) = rotation_state.last_yaw {
-            let delta_yaw = wrap_angle(yaw - last_yaw);
-            target_tf.rotation = Quat::from_rotation_y(delta_yaw) * target_tf.rotation;
-        }
-
-        rotation_state.last_yaw = Some(yaw);
-        return;
+        navigator_state.last_yaw = Some(yaw);
+        return operation;
     }
 
-    rotation_state.last_yaw = None;
+    navigator_state.last_yaw = None;
 
     if DTrackFlystick::pressed(FlystickButton::LeftWhiteButton, interactor_state) {
         let height = interactor_global_tf.translation().y;
-
-        if let Some(last_height) = rotation_state.last_height {
+        let operation = if let Some(last_height) = navigator_state.last_height {
             let delta_height = height - last_height;
 
             if DTrackFlystick::pressed(FlystickButton::Trigger, interactor_state) {
-                let scale_factor = 2.0_f32.powf(delta_height);
-                target_tf.scale =
-                    (target_tf.scale * scale_factor).clamp(Vec3::splat(0.001), Vec3::splat(1000.0));
+                FlystickNavigationOperation::Scale(2.0_f32.powf(delta_height))
             } else {
-                target_tf.translation += local_displace(Vec3::Y * delta_height, parent_global_tf);
+                FlystickNavigationOperation::VerticalDisplace(Vec3::Y * delta_height)
             }
-        }
+        } else {
+            FlystickNavigationOperation::None
+        };
 
-        rotation_state.last_height = Some(height);
-        return;
+        navigator_state.last_height = Some(height);
+        return operation;
     }
 
-    rotation_state.last_height = None;
+    navigator_state.last_height = None;
 
     let Some(stick) = DTrackFlystick::stick_state(FlystickStick::Stick, interactor_state) else {
-        return;
+        return FlystickNavigationOperation::None;
     };
 
     let dir = vec3(stick.x, 0.0, -stick.y);
     let mut global_dir = interactor_global_tf.affine().transform_vector3(dir);
     global_dir.y = 0.0;
 
-    let global_displace = global_dir * speed_meters_per_second * time.delta_secs();
-
-    target_tf.translation += local_displace(global_displace, parent_global_tf);
+    FlystickNavigationOperation::Pan(global_dir * speed_meters_per_second * time.delta_secs())
 }
 
 fn local_displace(global_displace: Vec3, parent_global_tf: Option<&GlobalTransform>) -> Vec3 {
