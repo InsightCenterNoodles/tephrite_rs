@@ -82,11 +82,15 @@ fn on_button(trigger: On<GlobalActivate>, mut known: ResMut<KnownScenes>, mut co
 
     let current_len = known.vec.len();
 
-    match trigger.button {
-        JoystickButton::TL => {
+    let Some(translated) = Controller::reverse_translate_button(trigger.button) else {
+        return;
+    };
+
+    match translated {
+        ControllerButton::TL => {
             new = (new + current_len - 1) % current_len;
         }
-        JoystickButton::TR => {
+        ControllerButton::TR => {
             new = (new + 1) % current_len;
         }
         _ => {}

@@ -3,7 +3,7 @@ use std::f32::consts::{FRAC_PI_2, PI};
 use bevy::{ecs::entity::EntityHashMap, platform::collections::HashSet, prelude::*};
 
 use crate::{
-    input::{ButtonEventKind, ButtonMessage, Interactor, InteractorState, JoystickButton},
+    input::{ButtonEventKind, ButtonMessage, InputButton, Interactor, InteractorState},
     prelude::{PropagateReplication, Replicated},
     ui::{
         label::make_label,
@@ -62,7 +62,7 @@ pub struct RadialComboBoxSelection {
 
 /// Plugin implementing a radial combo-box UI affordance.
 pub struct RadialComboBoxPlugin {
-    pub trigger_button: JoystickButton,
+    pub trigger_button: InputButton,
     pub radius: f32,
     pub forward_offset: f32,
     pub up_offset: f32,
@@ -75,7 +75,7 @@ pub struct RadialComboBoxPlugin {
 impl Default for RadialComboBoxPlugin {
     fn default() -> Self {
         Self {
-            trigger_button: JoystickButton::Button1,
+            trigger_button: InputButton::Button3,
             radius: 0.22,
             forward_offset: -0.33,
             up_offset: 0.12,
@@ -89,7 +89,7 @@ impl Default for RadialComboBoxPlugin {
 
 #[derive(Debug, Resource, Clone)]
 struct RadialComboBoxConfig {
-    trigger_button: JoystickButton,
+    trigger_button: InputButton,
     radius: f32,
     forward_offset: f32,
     up_offset: f32,

@@ -7,7 +7,7 @@
 // impl Plugin for MyPlugin {
 //     fn build(&self, app: &mut App) {
 //         app.add_plugins(RadialComboBoxPlugin {
-//             trigger_button: JoystickButton::A,
+//             trigger_button: InputButton::Button1,
 //             ..Default::default()
 //         });
 

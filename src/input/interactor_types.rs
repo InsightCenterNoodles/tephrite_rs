@@ -1,45 +1,135 @@
-// WIP
+use bevy::prelude::*;
 
-pub struct Controller<'a>(&'a super::InteractorState);
+use crate::input::{InputButton, InteractorAction};
 
-#[derive(Debug, Default, Clone, Copy)]
-pub enum ControllerJoystickAxis {
-    LeftX,
-    LeftY,
-    RightX,
-    RightY,
+pub trait InteractorTrait {
+    type Stick: Copy;
+    type Button: Copy;
+
+    fn decay() -> &'static [usize];
+
+    fn stick_state(stick: Self::Stick, state: &super::InteractorState) -> Option<Vec2>;
+
+    fn translate_button(button: Self::Button) -> Option<InputButton>;
+
+    fn reverse_translate_button(button: InputButton) -> Option<Self::Button>;
+
+    fn action_for_button(button: InputButton) -> Option<InteractorAction>;
+
+    fn pressed(button: Self::Button, state: &super::InteractorState) -> bool {
+        Self::translate_button(button)
+            .map(|x| state.buttons.pressed(x))
+            .unwrap_or_default()
+    }
+
+    fn just_pressed(button: Self::Button, state: &super::InteractorState) -> bool {
+        Self::translate_button(button)
+            .map(|x| state.buttons.just_pressed(x))
+            .unwrap_or_default()
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ControllerStick {
+    Left,
+    Right,
     DPad,
+}
+
+pub struct Controller;
+
+const LEFT_X_AXIS: usize = 0;
+const LEFT_Y_AXIS: usize = 1;
+const RIGHT_X_AXIS: usize = 2;
+const RIGHT_Y_AXIS: usize = 5;
+const DPAD_AXIS: usize = 8;
+
+impl InteractorTrait for Controller {
+    type Stick = ControllerStick;
+    type Button = ControllerButton;
+
+    fn decay() -> &'static [usize] {
+        static DEC_VALS: [usize; 4] = [LEFT_X_AXIS, LEFT_Y_AXIS, RIGHT_X_AXIS, RIGHT_Y_AXIS];
+
+        return &DEC_VALS;
+    }
+
+    fn stick_state(stick: Self::Stick, state: &super::InteractorState) -> Option<Vec2> {
+        let (a, b) = match stick {
+            ControllerStick::Left => (LEFT_X_AXIS, LEFT_Y_AXIS),
+            ControllerStick::Right => (RIGHT_X_AXIS, RIGHT_Y_AXIS),
+            ControllerStick::DPad => (DPAD_AXIS, DPAD_AXIS),
+        };
+
+        // a stick is valid if either one of its axis is not null
+
+        match (state.get_axis_value(a), state.get_axis_value(b)) {
+            (None, None) => None,
+            (None, Some(y)) => Some(vec2(0.0, y)),
+            (Some(x), None) => Some(vec2(x, 0.0)),
+            (Some(x), Some(y)) => Some(vec2(x, y)),
+        }
+    }
+
+    fn translate_button(button: Self::Button) -> Option<InputButton> {
+        match button {
+            ControllerButton::X => Some(InputButton::Button0),
+            ControllerButton::A => Some(InputButton::Button1),
+            ControllerButton::B => Some(InputButton::Button2),
+            ControllerButton::Y => Some(InputButton::Button3),
+            ControllerButton::BL => Some(InputButton::Button4),
+            ControllerButton::BR => Some(InputButton::Button5),
+            ControllerButton::TL => Some(InputButton::Button6),
+            ControllerButton::TR => Some(InputButton::Button7),
+            ControllerButton::Back => Some(InputButton::Button8),
+            ControllerButton::Start => Some(InputButton::Button9),
+            ControllerButton::Unknown => None,
+        }
+    }
+
+    fn reverse_translate_button(button: InputButton) -> Option<Self::Button> {
+        match button {
+            InputButton::Button0 => Some(ControllerButton::X),
+            InputButton::Button1 => Some(ControllerButton::A),
+            InputButton::Button2 => Some(ControllerButton::B),
+            InputButton::Button3 => Some(ControllerButton::Y),
+            InputButton::Button4 => Some(ControllerButton::BL),
+            InputButton::Button5 => Some(ControllerButton::BR),
+            InputButton::Button6 => Some(ControllerButton::TL),
+            InputButton::Button7 => Some(ControllerButton::TR),
+            InputButton::Button8 => Some(ControllerButton::Back),
+            InputButton::Button9 => Some(ControllerButton::Start),
+            _ => None,
+        }
+    }
+
+    fn action_for_button(button: InputButton) -> Option<InteractorAction> {
+        match Self::reverse_translate_button(button)? {
+            ControllerButton::A => Some(InteractorAction::Primary),
+            ControllerButton::B => Some(InteractorAction::Secondary),
+            ControllerButton::Y => Some(InteractorAction::Menu),
+            ControllerButton::Start => Some(InteractorAction::ResetView),
+            ControllerButton::TL => Some(InteractorAction::Previous),
+            ControllerButton::TR => Some(InteractorAction::Next),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ControllerButton {
+    X,
+    Y,
+    A,
+    B,
+    BL,
+    BR,
+    TL,
+    TR,
+    Back,
+    Start,
     #[default]
     Unknown,
 }
 
-// impl InteractorState {
-//     fn get_axis_value(&self, axis: ControllerJoystickAxis) -> Option<f32> {
-//         self.analogs.get(axis as usize).cloned().flatten()
-//     }
-
-//     fn set_axis_value(&mut self, axis: ControllerJoystickAxis, value: Option<f32>) {
-//         if let Some(v) = self.analogs.get_mut(axis as usize) {
-//             *v = value;
-//         }
-//     }
-
-//     pub fn stick_state(&self, stick: JoystickID) -> Option<Vec2> {
-//         let (a, b) = match stick {
-//             JoystickID::Joystick0 => (JoystickAxis::LeftX, JoystickAxis::LeftY),
-//             JoystickID::Joystick1 => (JoystickAxis::RightX, JoystickAxis::RightY),
-//             JoystickID::Joystick2 => (JoystickAxis::DPad, JoystickAxis::DPad),
-//         };
-
-//         // a stick is valid if either one of its axis is not null
-
-//         match (self.get_axis_value(a), self.get_axis_value(b)) {
-//             (None, None) => None,
-//             (None, Some(y)) => Some(vec2(0.0, y)),
-//             (Some(x), None) => Some(vec2(x, 0.0)),
-//             (Some(x), Some(y)) => Some(vec2(x, y)),
-//         }
-//     }
-// }
-
-pub struct DTrackFlystick<'a>(&'a super::InteractorState);
+pub struct DTrackFlystick;

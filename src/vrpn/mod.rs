@@ -12,7 +12,7 @@ use bevy::{platform::collections::HashMap, prelude::*};
 
 use crate::{
     config::{VRPNAddress, VRPNCoordinateTransform, get_configuration},
-    input::{AxisMessage, ButtonEventKind, ButtonMessage, JoystickAxis, JoystickButton},
+    input::{AxisMessage, ButtonEventKind, ButtonMessage, InputButton},
     vrpn::common::SharedItemState,
 };
 
@@ -166,37 +166,6 @@ fn check_for_new_vrpn(
     }
 }
 
-const AXIS_MAP: [JoystickAxis; 9] = [
-    JoystickAxis::LeftX,   //0
-    JoystickAxis::LeftY,   //1
-    JoystickAxis::RightX,  //2
-    JoystickAxis::Unknown, //3
-    JoystickAxis::Unknown, //4
-    JoystickAxis::RightY,  //5
-    JoystickAxis::Unknown, //6
-    JoystickAxis::Unknown, //7
-    JoystickAxis::DPad,    //8
-];
-
-const BUTTON_MAP: [JoystickButton; 10] = [
-    JoystickButton::Button0,
-    JoystickButton::Button2,
-    JoystickButton::Button3,
-    JoystickButton::Button1,
-    JoystickButton::BL,
-    JoystickButton::BR,
-    JoystickButton::TL,
-    JoystickButton::TR,
-    JoystickButton::Back,
-    JoystickButton::Start,
-];
-
-fn map_button(button_index: u8) -> JoystickButton {
-    *(BUTTON_MAP
-        .get(button_index as usize)
-        .unwrap_or(&JoystickButton::Unknown))
-}
-
 /// System that applies the latest VRPN-derived transform to entities.
 fn service_vrpn(
     mut query: Query<(Entity, &VRPNLinkConnected, &mut Transform)>,
@@ -235,7 +204,7 @@ fn service_vrpn(
                         //debug!("Send axis event: {x:?}");
                         Some(AxisMessage {
                             from: e,
-                            axis: (AXIS_MAP.get(index as usize)).cloned().unwrap_or_default(),
+                            axis: index as u8,
                             value,
                         })
                     } else {
@@ -256,6 +225,22 @@ fn service_vrpn(
                 ButtonMessage { from: e, kind }
             });
         }
+    }
+}
+
+fn map_button(x: u8) -> InputButton {
+    match x {
+        0 => InputButton::Button0,
+        1 => InputButton::Button1,
+        2 => InputButton::Button2,
+        3 => InputButton::Button3,
+        4 => InputButton::Button4,
+        5 => InputButton::Button5,
+        6 => InputButton::Button6,
+        7 => InputButton::Button7,
+        8 => InputButton::Button8,
+        9 => InputButton::Button9,
+        _ => InputButton::Unknown,
     }
 }
 

@@ -1,42 +1,24 @@
 use bevy::prelude::*;
 
-use crate::input::common::map_point;
+use crate::input::{common::map_point, interactor_types::InteractorTrait};
 
 use super::*;
 
 // TODO: make mappable
 // Lets split this up. the raw ints are from VRPN. we will take those events, and translate to user facing API
 
-#[derive(Debug, Clone, Copy)]
-pub enum JoystickID {
-    Joystick0,
-    Joystick1,
-    Joystick2,
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-pub enum JoystickAxis {
-    LeftX,
-    LeftY,
-    RightX,
-    RightY,
-    DPad,
-    #[default]
-    Unknown,
-}
-
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum JoystickButton {
-    Button0, // X
+pub enum InputButton {
+    Button0,
     Button1,
-    Button2, // A
+    Button2,
     Button3,
-    BL,
-    BR,
-    TL,
-    TR,
-    Back,
-    Start,
+    Button4,
+    Button5,
+    Button6,
+    Button7,
+    Button8,
+    Button9,
     #[default]
     Unknown,
 }
@@ -52,35 +34,24 @@ pub enum Interactor {
 #[derive(Debug, Default, Component)]
 #[require(Interactor)]
 pub struct InteractorState {
-    pub buttons: ButtonInput<JoystickButton>,
-    analogs: Vec<Option<f32>>,
+    pub(crate) buttons: ButtonInput<InputButton>,
+    pub(crate) analogs: Vec<Option<f32>>,
 }
 
 impl InteractorState {
-    fn get_axis_value(&self, axis: JoystickAxis) -> Option<f32> {
+    pub(crate) fn get_axis_value(&self, axis: usize) -> Option<f32> {
         self.analogs.get(axis as usize).cloned().flatten()
     }
 
-    fn set_axis_value(&mut self, axis: JoystickAxis, value: Option<f32>) {
-        if let Some(v) = self.analogs.get_mut(axis as usize) {
-            *v = value;
-        }
-    }
-
-    pub fn stick_state(&self, stick: JoystickID) -> Option<Vec2> {
-        let (a, b) = match stick {
-            JoystickID::Joystick0 => (JoystickAxis::LeftX, JoystickAxis::LeftY),
-            JoystickID::Joystick1 => (JoystickAxis::RightX, JoystickAxis::RightY),
-            JoystickID::Joystick2 => (JoystickAxis::DPad, JoystickAxis::DPad),
-        };
-
-        // a stick is valid if either one of its axis is not null
-
-        match (self.get_axis_value(a), self.get_axis_value(b)) {
-            (None, None) => None,
-            (None, Some(y)) => Some(vec2(0.0, y)),
-            (Some(x), None) => Some(vec2(x, 0.0)),
-            (Some(x), Some(y)) => Some(vec2(x, y)),
+    fn decay_channels(&mut self, axii: &[usize]) {
+        for axis in axii {
+            if let Some(v) = self.analogs.get_mut(*axis) {
+                if let Some(content) = v {
+                    if content.abs() < 0.01 {
+                        *v = None;
+                    }
+                }
+            }
         }
     }
 }
@@ -93,7 +64,13 @@ impl Plugin for InteractorPlugin {
 
         app.add_systems(
             PreUpdate,
-            (reset_current_states, update_current_states, read_events).chain(),
+            (
+                reset_current_states,
+                update_current_states,
+                translate_action_events,
+                read_events,
+            )
+                .chain(),
         );
     }
 }
@@ -115,11 +92,11 @@ fn reset_current_states(all_buttons: Query<&mut InteractorState>) {
 fn update_current_states(
     mut button_reader: MessageReader<ButtonMessage>,
     mut axis_reader: MessageReader<AxisMessage>,
-    mut states: Query<&mut InteractorState>,
+    mut states: Query<(&Interactor, &mut InteractorState)>,
 ) {
     for event in button_reader.read() {
         //println!("BUTTON E {event:?}");
-        let Ok(mut state) = states.get_mut(event.from) else {
+        let Ok((_, mut state)) = states.get_mut(event.from) else {
             continue;
         };
 
@@ -134,23 +111,17 @@ fn update_current_states(
     }
 
     // add decay factor
-    for mut state in &mut states {
-        for axis in [
-            JoystickAxis::LeftX,
-            JoystickAxis::LeftY,
-            JoystickAxis::RightX,
-            JoystickAxis::RightY,
-        ] {
-            if let Some(axis_value) = state.get_axis_value(axis) {
-                if axis_value.abs() < 0.01 {
-                    state.set_axis_value(axis, None);
-                }
-            }
-        }
+    for (ty, mut state) in &mut states {
+        let to_decay = match ty {
+            Interactor::Controller => super::interactor_types::Controller::decay(),
+            Interactor::Flystick => todo!(),
+        };
+
+        state.decay_channels(to_decay);
     }
 
     for event in axis_reader.read() {
-        let Ok(mut state) = states.get_mut(event.from) else {
+        let Ok((_, mut state)) = states.get_mut(event.from) else {
             continue;
         };
 
@@ -160,6 +131,45 @@ fn update_current_states(
             state.analogs.resize((l * 2).max(32), None);
         }
         state.analogs[event.axis as usize] = Some(event.value);
+    }
+}
+
+fn translate_action_events(
+    mut reader: MessageReader<ButtonMessage>,
+    interactors: Query<&Interactor>,
+    mut commands: Commands,
+) {
+    for event in reader.read() {
+        let Ok(interactor) = interactors.get(event.from) else {
+            continue;
+        };
+
+        let (button, pressed) = match event.kind {
+            ButtonEventKind::ButtonPressed(button) => (button, true),
+            ButtonEventKind::ButtonReleased(button) => (button, false),
+        };
+
+        let action = match interactor {
+            Interactor::Controller => {
+                super::interactor_types::Controller::action_for_button(button)
+            }
+            Interactor::Flystick => None,
+        };
+
+        let Some(action) = action else {
+            continue;
+        };
+
+        let kind = if pressed {
+            InteractorActionEventKind::Pressed(action)
+        } else {
+            InteractorActionEventKind::Released(action)
+        };
+
+        commands.trigger(InteractorActionEvent {
+            interactor: event.from,
+            kind,
+        });
     }
 }
 

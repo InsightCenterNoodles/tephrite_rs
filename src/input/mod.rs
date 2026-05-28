@@ -14,12 +14,13 @@ use bevy::{
 pub use common::*;
 pub use events::*;
 pub use interactor::*;
+pub use interactor_types::*;
 pub use navigator::*;
 
 /// Can be Activated (clicked)
 #[derive(Debug, Clone, PartialEq, Component, Default)]
 pub struct CanActivate {
-    button_down_map: EntityHashMap<HashSet<JoystickButton>>,
+    button_down_map: EntityHashMap<HashSet<InputButton>>,
 }
 
 /// The bounding box of an interactor, events inside this box will be channeled to the host entity

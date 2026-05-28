@@ -8,7 +8,7 @@ use std::time::Duration;
 use bevy::prelude::*;
 
 use crate::{
-    input::{AxisMessage, ButtonMessage, Interactor, JoystickAxis, JoystickButton},
+    input::{AxisMessage, ButtonMessage, InputButton, Interactor},
     prelude::{PropagateReplication, Replicated},
     remote_control::{
         RemoteControlDefinitions,
@@ -138,7 +138,7 @@ const ANALOG_ASPECT: u32 = 11;
 const ANALOG_2_ASPECT: u32 = 12;
 
 #[derive(Debug, Component)]
-struct PendingReleases(Vec<(JoystickButton, f32)>);
+struct PendingReleases(Vec<(InputButton, f32)>);
 
 ///
 fn button_control_observer(
@@ -168,16 +168,16 @@ fn button_control_observer(
     }
 
     let button = match target_button {
-        "a" => JoystickButton::Button2,
-        "b" => JoystickButton::Button3,
-        "x" => JoystickButton::Button0,
-        "y" => JoystickButton::Button1,
-        "bl" => JoystickButton::BL,
-        "br" => JoystickButton::BR,
-        "tl" => JoystickButton::TL,
-        "tr" => JoystickButton::TR,
-        "back" => JoystickButton::Back,
-        "start" => JoystickButton::Start,
+        "a" => InputButton::Button1,
+        "b" => InputButton::Button2,
+        "x" => InputButton::Button0,
+        "y" => InputButton::Button3,
+        "bl" => InputButton::Button4,
+        "br" => InputButton::Button5,
+        "tl" => InputButton::Button6,
+        "tr" => InputButton::Button7,
+        "back" => InputButton::Button8,
+        "start" => InputButton::Button9,
         x => {
             info!("Unknown button: {x}");
             return;
@@ -232,8 +232,8 @@ fn analog_control_observer(
     mut axis_writer: MessageWriter<AxisMessage>,
 ) {
     let (ax, ay) = match trigger.event().aspect_id {
-        ANALOG_ASPECT => (JoystickAxis::LeftX, JoystickAxis::LeftY),
-        ANALOG_2_ASPECT => (JoystickAxis::RightX, JoystickAxis::RightY),
+        ANALOG_ASPECT => (0, 1),
+        ANALOG_2_ASPECT => (2, 5),
         _ => return,
     };
 
