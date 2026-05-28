@@ -1,7 +1,8 @@
 use crate::{
     common::{
-        DeferredRendering, EnvironmentLighting, OrderIndependantTransparency,
-        ScreenSpaceAmbientOcclusionSettings, ScreenSpaceReflectionsSettings,
+        DeferredRendering, EnvironmentLighting, OffAxisProjectionSettings,
+        OrderIndependantTransparency, ScreenSpaceAmbientOcclusionSettings,
+        ScreenSpaceReflectionsSettings,
     },
     serialize::*,
 };
@@ -20,6 +21,7 @@ impl_fast_serialize!(
 
 impl_fast_raw_item!(OrderIndependantTransparency);
 impl_fast_raw_item!(DeferredRendering);
+impl_fast_raw_item!(OffAxisProjectionSettings);
 
 impl_fast_raw_item!(ScreenSpaceAmbientOcclusionQualityLevel);
 impl_fast_raw_item!(ScreenSpaceAmbientOcclusionSettings);

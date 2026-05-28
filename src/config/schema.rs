@@ -27,6 +27,8 @@ pub struct Environment {
     #[serde(default = "default_alert_scale")]
     pub alert_scale: f32,
     #[serde(default)]
+    pub alert_cubes: Vec<AlertCube>,
+    #[serde(default)]
     pub alerts: Vec<AlertZone>,
 }
 
@@ -35,6 +37,7 @@ impl Default for Environment {
         Self {
             alert_offset: default_alert_offset(),
             alert_scale: default_alert_scale(),
+            alert_cubes: Vec::new(),
             alerts: Vec::new(),
         }
     }
@@ -55,6 +58,12 @@ pub struct AlertZone {
     pub distance: f32,
     #[serde(default)]
     pub image: AlertImage,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AlertCube {
+    pub center: [f32; 3],
+    pub half_extents: [f32; 3],
 }
 
 #[derive(Debug, Default, Clone, Copy, Deserialize)]

@@ -54,6 +54,21 @@ impl OffAxisProjection {
         }
     }
 
+    pub fn set_clip_distances(&mut self, near: f32, far: f32) {
+        if near <= 0.0 {
+            warn!("Ignoring off-axis projection near distance {near}; near must be > 0");
+            return;
+        }
+
+        if far <= near {
+            warn!("Ignoring off-axis projection far distance {far}; far must be > near");
+            return;
+        }
+
+        self.near = near;
+        self.far = far;
+    }
+
     /// Compute frustum corners
     fn frustum_corners_for_depths(&self, z_near: f32, z_far: f32) -> [Vec3A; 8] {
         let inv = self.get_clip_from_view().inverse();

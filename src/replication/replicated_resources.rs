@@ -3,8 +3,9 @@ use super::sets::*;
 use bevy::prelude::*;
 
 use crate::common::{
-    DeferredRendering, EnvironmentLighting, OrderIndependantTransparency,
-    ScreenSpaceAmbientOcclusionSettings, ScreenSpaceReflectionsSettings,
+    DeferredRendering, EnvironmentLighting, OffAxisProjectionSettings,
+    OrderIndependantTransparency, ScreenSpaceAmbientOcclusionSettings,
+    ScreenSpaceReflectionsSettings,
 };
 use bevy::light::DirectionalLightShadowMap;
 
@@ -185,5 +186,6 @@ detect_resource_changes!(
     (2, ScreenSpaceAmbientOcclusionSettings),
     (3, ScreenSpaceReflectionsSettings),
     (4, DeferredRendering),
-    (5, DirectionalLightShadowMap)
+    (5, DirectionalLightShadowMap),
+    (6, OffAxisProjectionSettings)
 );

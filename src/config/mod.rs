@@ -13,8 +13,8 @@ pub use loader::{find_config_file, load_config};
 pub use render::{DisplayPhysical, RenderConfiguration};
 #[allow(unused_imports)]
 pub use schema::{
-    AlertImage, AlertZone, Config, Display, Environment, InteractorConfig, InteractorType,
-    Placement, Render, Screen, Vrpn,
+    AlertCube, AlertImage, AlertZone, Config, Display, Environment, InteractorConfig,
+    InteractorType, Placement, Render, Screen, Vrpn,
 };
 #[allow(unused_imports)]
 pub use vrpn::{VRPNAddress, VRPNAddressParseError, VRPNCoordinateTransform};

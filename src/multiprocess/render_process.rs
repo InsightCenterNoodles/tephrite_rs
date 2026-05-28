@@ -13,8 +13,9 @@ use bevy::{
 
 use crate::{
     common::{
-        DeferredRendering, EnvironmentLighting, OrderIndependantTransparency,
-        ScreenSpaceAmbientOcclusionSettings, ScreenSpaceReflectionsSettings,
+        DeferredRendering, EnvironmentLighting, OffAxisProjectionSettings,
+        OrderIndependantTransparency, ScreenSpaceAmbientOcclusionSettings,
+        ScreenSpaceReflectionsSettings,
     },
     config::get_render_configuration,
 };
@@ -200,6 +201,7 @@ fn setup(mut commands: Commands) {
 
     if child_config.use_offaxis {
         let physical = &child_config.display_physical;
+        let projection_settings = OffAxisProjectionSettings::default();
 
         commands.entity(id).insert(
             // Use our custom projection:
@@ -207,8 +209,8 @@ fn setup(mut commands: Commands) {
                 physical.lower_left.as_vec3(),
                 physical.lower_right.as_vec3(),
                 physical.upper_right.as_vec3(),
-                0.01,
-                100.0,
+                projection_settings.near,
+                projection_settings.far,
                 !child_config.is_right,
             )),
         );

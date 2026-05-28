@@ -22,6 +22,7 @@ pub mod prelude {
     pub use crate::common::DeferredRendering;
     pub use crate::common::EnvironmentLighting;
     pub use crate::common::Head;
+    pub use crate::common::OffAxisProjectionSettings;
     pub use crate::common::OrderIndependantTransparency;
     pub use crate::common::ScreenSpaceAmbientOcclusionSettings;
     pub use crate::common::ScreenSpaceReflectionsSettings;

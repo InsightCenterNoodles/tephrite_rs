@@ -40,6 +40,23 @@ impl Default for OrderIndependantTransparency {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Resource)]
 pub struct DeferredRendering;
 
+/// Add this resource to adjust the near/far clipping distances used by Tephrite's off-axis
+/// projection cameras.
+#[derive(Debug, Clone, Copy, PartialEq, Resource)]
+pub struct OffAxisProjectionSettings {
+    pub near: f32,
+    pub far: f32,
+}
+
+impl Default for OffAxisProjectionSettings {
+    fn default() -> Self {
+        Self {
+            near: 0.01,
+            far: 100.0,
+        }
+    }
+}
+
 /// Add this resource to enable screen space ambient occlusion on the render camera.
 /// This is a camera-attached Bevy component represented as a resource because Tephrite owns
 /// the replicated render camera.
