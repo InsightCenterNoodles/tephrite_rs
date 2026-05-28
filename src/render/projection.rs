@@ -1,4 +1,4 @@
-use bevy::camera::{CameraProjection, SubCameraView};
+use bevy::camera::CameraProjection;
 use bevy::prelude::*;
 use bevy::reflect::Reflect;
 
@@ -109,8 +109,10 @@ impl CameraProjection for OffAxisProjection {
         self.proj
     }
 
-    fn get_clip_from_view_for_sub(&self, _sub_view: &SubCameraView) -> Mat4 {
-        self.proj
+    fn get_clip_from_view_for_sub(&self, _sub_view: &bevy::camera::SubCameraView) -> Mat4 {
+        panic!(
+            "OffAxisProjection does not support Bevy SubCameraView. Configure each physical sub-view as a separate render window instead."
+        );
     }
 
     fn update(&mut self, width: f32, height: f32) {
