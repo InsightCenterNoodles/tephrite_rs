@@ -13,9 +13,39 @@ pub struct Config {
     #[serde(default)]
     pub vrpn: Vrpn,
     #[serde(default)]
+    pub environment: Environment,
+    #[serde(default)]
     pub displays: Vec<Display>,
     #[serde(default)]
     pub screens: Vec<Screen>,
+}
+
+#[derive(Debug, Default, Clone, Deserialize)]
+pub struct Environment {
+    #[serde(default)]
+    pub alerts: Vec<AlertZone>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AlertZone {
+    pub plane_point: [f32; 3],
+    pub plane_normal: [f32; 3],
+    pub distance: f32,
+    pub location: [f32; 3],
+    pub direction: [f32; 3],
+    pub scale: f32,
+    #[serde(default)]
+    pub image: AlertImage,
+}
+
+#[derive(Debug, Default, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AlertImage {
+    #[default]
+    Forward,
+    Left,
+    Rear,
+    Right,
 }
 
 #[derive(Debug, Default, Clone, Deserialize)]

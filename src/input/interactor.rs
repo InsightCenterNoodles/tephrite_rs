@@ -149,14 +149,7 @@ fn translate_action_events(
             ButtonEventKind::ButtonReleased(button) => (button, false),
         };
 
-        let action = match interactor {
-            Interactor::Controller => {
-                super::interactor_types::Controller::action_for_button(button)
-            }
-            Interactor::Flystick => {
-                super::interactor_types::DTrackFlystick::action_for_button(button)
-            }
-        };
+        let action = action_for_button(interactor, button);
 
         let Some(action) = action else {
             continue;
@@ -185,13 +178,13 @@ fn read_events(
         &GlobalTransform,
         &mut CanActivate,
     )>,
-    joy_query: Query<&GlobalTransform, With<Interactor>>,
+    joy_query: Query<(&Interactor, &GlobalTransform)>,
     mut commands: Commands,
 ) {
     //let mut handled = false;
 
     for event in reader.read() {
-        let Ok(joy_tf) = joy_query.get(event.from) else {
+        let Ok((interactor, joy_tf)) = joy_query.get(event.from) else {
             continue;
         };
 
@@ -249,8 +242,22 @@ fn read_events(
                 commands.trigger(GlobalActivate {
                     button: interactor_button,
                 });
+
+                if let Some(action) = action_for_button(interactor, interactor_button) {
+                    commands.trigger(GlobalInteractorAction {
+                        interactor: event.from,
+                        action,
+                    });
+                }
             }
             ButtonEventKind::ButtonReleased(_interactor_button) => {}
         }
+    }
+}
+
+fn action_for_button(interactor: &Interactor, button: InputButton) -> Option<InteractorAction> {
+    match interactor {
+        Interactor::Controller => super::interactor_types::Controller::action_for_button(button),
+        Interactor::Flystick => super::interactor_types::DTrackFlystick::action_for_button(button),
     }
 }

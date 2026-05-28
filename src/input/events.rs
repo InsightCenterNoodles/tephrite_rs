@@ -61,3 +61,10 @@ pub struct Activate {
 pub struct GlobalActivate {
     pub button: InputButton,
 }
+
+/// Notification sent by input system that an undirected semantic action has occured.
+#[derive(Debug, Clone, Copy, PartialEq, Event)]
+pub struct GlobalInteractorAction {
+    pub interactor: Entity,
+    pub action: InteractorAction,
+}
