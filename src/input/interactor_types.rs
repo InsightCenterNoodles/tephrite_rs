@@ -132,4 +132,82 @@ pub enum ControllerButton {
     Unknown,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum FlystickStick {
+    Stick,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FlystickButton {
+    Trigger,
+    Button1,
+    Button2,
+    Button3,
+    Button4,
+    Button5,
+    #[default]
+    Unknown,
+}
+
 pub struct DTrackFlystick;
+
+const FLYSTICK_X_AXIS: usize = 0;
+const FLYSTICK_Y_AXIS: usize = 1;
+
+impl InteractorTrait for DTrackFlystick {
+    type Stick = FlystickStick;
+    type Button = FlystickButton;
+
+    fn decay() -> &'static [usize] {
+        static DEC_VALS: [usize; 2] = [FLYSTICK_X_AXIS, FLYSTICK_Y_AXIS];
+
+        &DEC_VALS
+    }
+
+    fn stick_state(stick: Self::Stick, state: &super::InteractorState) -> Option<Vec2> {
+        let (a, b) = match stick {
+            FlystickStick::Stick => (FLYSTICK_X_AXIS, FLYSTICK_Y_AXIS),
+        };
+
+        match (state.get_axis_value(a), state.get_axis_value(b)) {
+            (None, None) => None,
+            (None, Some(y)) => Some(vec2(0.0, y)),
+            (Some(x), None) => Some(vec2(x, 0.0)),
+            (Some(x), Some(y)) => Some(vec2(x, y)),
+        }
+    }
+
+    fn translate_button(button: Self::Button) -> Option<InputButton> {
+        match button {
+            FlystickButton::Trigger => Some(InputButton::Button0),
+            FlystickButton::Button1 => Some(InputButton::Button1),
+            FlystickButton::Button2 => Some(InputButton::Button2),
+            FlystickButton::Button3 => Some(InputButton::Button3),
+            FlystickButton::Button4 => Some(InputButton::Button4),
+            FlystickButton::Button5 => Some(InputButton::Button5),
+            FlystickButton::Unknown => None,
+        }
+    }
+
+    fn reverse_translate_button(button: InputButton) -> Option<Self::Button> {
+        match button {
+            InputButton::Button0 => Some(FlystickButton::Trigger),
+            InputButton::Button1 => Some(FlystickButton::Button1),
+            InputButton::Button2 => Some(FlystickButton::Button2),
+            InputButton::Button3 => Some(FlystickButton::Button3),
+            InputButton::Button4 => Some(FlystickButton::Button4),
+            InputButton::Button5 => Some(FlystickButton::Button5),
+            _ => None,
+        }
+    }
+
+    fn action_for_button(button: InputButton) -> Option<InteractorAction> {
+        match Self::reverse_translate_button(button)? {
+            FlystickButton::Trigger => Some(InteractorAction::Primary),
+            FlystickButton::Button1 => Some(InteractorAction::Secondary),
+            FlystickButton::Button2 => Some(InteractorAction::Menu),
+            FlystickButton::Button5 => Some(InteractorAction::ResetView),
+            _ => None,
+        }
+    }
+}

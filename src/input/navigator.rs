@@ -1,11 +1,14 @@
+use std::f32::consts::{PI, TAU};
+
 use bevy::{math::DAffine3, prelude::*};
 
 use crate::input::{
     Interactor, InteractorState,
-    interactor_types::{ControllerButton, ControllerStick, InteractorTrait},
+    interactor_types::{
+        Controller, ControllerButton, ControllerStick, DTrackFlystick, FlystickButton,
+        FlystickStick, InteractorTrait,
+    },
 };
-
-use super::interactor_types::Controller;
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum NavigatorMode {
@@ -30,6 +33,11 @@ impl Default for InitialNavigatorTransform {
 struct NavigatorSettings {
     mode: NavigatorMode,
     allow_x_rotation: bool,
+}
+
+#[derive(Debug, Default)]
+struct FlystickRotationState {
+    last_yaw: Option<f32>,
 }
 
 #[derive(Debug)]
@@ -88,6 +96,7 @@ fn on_tick(
     settings: Res<NavigatorSettings>,
     initial: Res<InitialNavigatorTransform>,
     time: Res<Time>,
+    mut flystick_rotation: Local<FlystickRotationState>,
 ) {
     for (mut target_tf, target_parent) in target {
         // TODO: will fail if we add more interactors
@@ -106,7 +115,15 @@ fn on_tick(
                 &initial,
                 &time,
             ),
-            Interactor::Flystick => todo!(),
+            Interactor::Flystick => on_tick_flystick(
+                &mut target_tf,
+                joystick_global_tf,
+                state,
+                target_parent.and_then(|x| parents.get(x.0).ok()),
+                &initial,
+                &time,
+                &mut flystick_rotation,
+            ),
         }
     }
 }
@@ -222,4 +239,82 @@ fn on_tick_controller(
     if Controller::just_pressed(ControllerButton::Start, interactor_state) {
         *target_tf = initial.0;
     }
+}
+
+fn on_tick_flystick(
+    target_tf: &mut Transform,
+    interactor_global_tf: &GlobalTransform,
+    interactor_state: &InteractorState,
+    parent_global_tf: Option<&GlobalTransform>,
+    initial: &InitialNavigatorTransform,
+    time: &Time,
+    rotation_state: &mut FlystickRotationState,
+) {
+    let speed_meters_per_second = 2.0;
+
+    if DTrackFlystick::just_pressed(FlystickButton::Button5, interactor_state) {
+        *target_tf = initial.0;
+        rotation_state.last_yaw = None;
+        return;
+    }
+
+    if DTrackFlystick::pressed(FlystickButton::Button2, interactor_state) {
+        let yaw = yaw_from_global_transform(interactor_global_tf);
+
+        if let Some(last_yaw) = rotation_state.last_yaw {
+            let delta_yaw = wrap_angle(yaw - last_yaw);
+            target_tf.rotation = Quat::from_rotation_y(delta_yaw) * target_tf.rotation;
+        }
+
+        rotation_state.last_yaw = Some(yaw);
+        return;
+    }
+
+    rotation_state.last_yaw = None;
+
+    let Some(stick) = DTrackFlystick::stick_state(FlystickStick::Stick, interactor_state) else {
+        return;
+    };
+
+    if DTrackFlystick::pressed(FlystickButton::Button1, interactor_state) {
+        target_tf.translation += vec3(
+            0.0,
+            stick.y * speed_meters_per_second * time.delta_secs(),
+            0.0,
+        );
+        return;
+    }
+
+    let dir = vec3(stick.x, 0.0, stick.y);
+    let mut global_dir = interactor_global_tf.affine().transform_vector3(dir);
+    global_dir.y = 0.0;
+
+    let global_displace = global_dir * speed_meters_per_second * time.delta_secs();
+
+    target_tf.translation += local_displace(global_displace, parent_global_tf);
+}
+
+fn local_displace(global_displace: Vec3, parent_global_tf: Option<&GlobalTransform>) -> Vec3 {
+    let parent_global_affine = parent_global_tf
+        .map(|parent_tf| parent_tf.affine())
+        .unwrap_or_else(|| GlobalTransform::IDENTITY.affine());
+
+    parent_global_affine
+        .inverse()
+        .transform_vector3(global_displace)
+}
+
+fn yaw_from_global_transform(transform: &GlobalTransform) -> f32 {
+    let mut forward = transform.affine().transform_vector3(Vec3::Z);
+    forward.y = 0.0;
+
+    if forward.length_squared() == 0.0 {
+        return 0.0;
+    }
+
+    forward.x.atan2(forward.z)
+}
+
+fn wrap_angle(angle: f32) -> f32 {
+    (angle + PI).rem_euclid(TAU) - PI
 }

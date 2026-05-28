@@ -114,7 +114,7 @@ fn update_current_states(
     for (ty, mut state) in &mut states {
         let to_decay = match ty {
             Interactor::Controller => super::interactor_types::Controller::decay(),
-            Interactor::Flystick => todo!(),
+            Interactor::Flystick => super::interactor_types::DTrackFlystick::decay(),
         };
 
         state.decay_channels(to_decay);
@@ -153,7 +153,9 @@ fn translate_action_events(
             Interactor::Controller => {
                 super::interactor_types::Controller::action_for_button(button)
             }
-            Interactor::Flystick => None,
+            Interactor::Flystick => {
+                super::interactor_types::DTrackFlystick::action_for_button(button)
+            }
         };
 
         let Some(action) = action else {
