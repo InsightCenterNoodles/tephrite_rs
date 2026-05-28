@@ -283,7 +283,6 @@ fn on_tick_flystick(
             let delta_height = height - last_height;
 
             if DTrackFlystick::pressed(FlystickButton::Trigger, interactor_state) {
-                dbg!(delta_height, target_tf.scale);
                 let scale_factor = 2.0_f32.powf(delta_height);
                 target_tf.scale =
                     (target_tf.scale * scale_factor).clamp(Vec3::splat(0.001), Vec3::splat(1000.0));
