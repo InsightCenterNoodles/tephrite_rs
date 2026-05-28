@@ -3,8 +3,8 @@ use super::sets::*;
 use bevy::prelude::*;
 
 use crate::common::{
-    EnvironmentLighting, OrderIndependantTransparency, ScreenSpaceAmbientOcclusionSettings,
-    ScreenSpaceReflectionsSettings,
+    DeferredRendering, EnvironmentLighting, OrderIndependantTransparency,
+    ScreenSpaceAmbientOcclusionSettings, ScreenSpaceReflectionsSettings,
 };
 
 use crate::serialize::transcript_writer::*;
@@ -182,5 +182,6 @@ detect_resource_changes!(
     (0, EnvironmentLighting),
     (1, OrderIndependantTransparency),
     (2, ScreenSpaceAmbientOcclusionSettings),
-    (3, ScreenSpaceReflectionsSettings)
+    (3, ScreenSpaceReflectionsSettings),
+    (4, DeferredRendering)
 );

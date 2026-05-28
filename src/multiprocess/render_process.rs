@@ -13,8 +13,8 @@ use bevy::{
 
 use crate::{
     common::{
-        EnvironmentLighting, OrderIndependantTransparency, ScreenSpaceAmbientOcclusionSettings,
-        ScreenSpaceReflectionsSettings,
+        DeferredRendering, EnvironmentLighting, OrderIndependantTransparency,
+        ScreenSpaceAmbientOcclusionSettings, ScreenSpaceReflectionsSettings,
     },
     config::get_render_configuration,
 };
@@ -40,8 +40,6 @@ pub(crate) fn run() -> AppExit {
     }
 
     let mut app = App::new();
-
-    app.insert_resource(DefaultOpaqueRendererMethod::deferred());
 
     let mut window = Window {
         present_mode: bevy::window::PresentMode::Fifo,
@@ -151,6 +149,7 @@ pub(crate) fn run() -> AppExit {
 
     app.add_systems(Update, env_change_watch);
     app.add_systems(Update, oit_resource_watch);
+    app.add_systems(Update, deferred_rendering_watch);
     app.add_systems(Update, ssao_resource_watch);
     app.add_systems(Update, ssr_resource_watch);
 
@@ -273,6 +272,28 @@ fn oit_resource_watch(
             alpha_threshold: oit.alpha_threshold,
         });
     }
+}
+
+fn deferred_rendering_watch(
+    deferred: Option<Res<DeferredRendering>>,
+    mut commands: Commands,
+    mut was_enabled: Local<bool>,
+) {
+    let Some(deferred) = deferred else {
+        if *was_enabled {
+            commands.insert_resource(DefaultOpaqueRendererMethod::forward());
+            *was_enabled = false;
+        }
+
+        return;
+    };
+
+    if !deferred.is_changed() && *was_enabled {
+        return;
+    }
+
+    commands.insert_resource(DefaultOpaqueRendererMethod::deferred());
+    *was_enabled = true;
 }
 
 fn ssao_resource_watch(

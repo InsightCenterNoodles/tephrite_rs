@@ -18,6 +18,7 @@ use bevy::{
 
 pub mod prelude {
     pub use super::run;
+    pub use crate::common::DeferredRendering;
     pub use crate::common::EnvironmentLighting;
     pub use crate::common::Head;
     pub use crate::common::OrderIndependantTransparency;

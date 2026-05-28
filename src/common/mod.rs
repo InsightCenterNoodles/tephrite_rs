@@ -33,6 +33,13 @@ impl Default for OrderIndependantTransparency {
     }
 }
 
+/// Add this resource to make opaque materials use Bevy's deferred renderer by default.
+///
+/// This is required by some render effects, such as screen space reflections, but it has a
+/// meaningful performance and compatibility cost, so Tephrite keeps it opt-in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Resource)]
+pub struct DeferredRendering;
+
 /// Add this resource to enable screen space ambient occlusion on the render camera.
 /// This is a camera-attached Bevy component represented as a resource because Tephrite owns
 /// the replicated render camera.
