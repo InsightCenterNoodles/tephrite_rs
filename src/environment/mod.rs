@@ -101,6 +101,7 @@ fn setup_alerts(
 
     let cube_material = materials.add(StandardMaterial {
         base_color: Color::srgb(1.0, 0.0, 0.0),
+        unlit: true,
         ..Default::default()
     });
 
