@@ -11,6 +11,7 @@ use std::time::Duration;
 use bevy::{platform::collections::HashMap, prelude::*};
 
 use crate::{
+    common::Head,
     config::{VRPNAddress, VRPNCoordinateTransform, get_configuration},
     input::{AxisMessage, ButtonEventKind, ButtonMessage, InputButton},
     vrpn::common::SharedItemState,
@@ -281,5 +282,70 @@ impl Plugin for VRPNPlugin {
         });
         app.add_observer(check_for_new_vrpn);
         app.add_systems(PreUpdate, service_vrpn);
+    }
+}
+
+#[derive(Resource)]
+struct RenderHeadTracker {
+    reader: SharedItemState,
+    sensor: usize,
+    _thread: std::thread::JoinHandle<()>,
+}
+
+/// Render-process-only VRPN path for late-latching the tracked head pose.
+///
+/// Logic still receives and replicates the head transform for user systems. Render workers can
+/// additionally sample VRPN directly and overwrite the replicated `Head` transform just before the
+/// camera/off-axis projection systems run.
+pub(crate) struct RenderHeadTrackerPlugin;
+
+impl Plugin for RenderHeadTrackerPlugin {
+    fn build(&self, app: &mut App) {
+        let render_config = crate::config::get_render_configuration();
+
+        let Some(head) = render_config.head_vrpn.clone() else {
+            warn!("vrpn.late_latch_head is enabled, but vrpn.head is not configured");
+            return;
+        };
+
+        let state = SharedItemState::new();
+        let mut to_watch = HashMap::default();
+        to_watch.insert(head.sender.clone(), state.clone());
+
+        let endpoint = format!("{}:{}", head.host, head.port);
+        let coordinate_transform = render_config.coordinate_transform;
+        let thread = std::thread::spawn(move || {
+            vrpn_spinner(to_watch, endpoint, coordinate_transform);
+        });
+
+        app.insert_resource(RenderHeadTracker {
+            reader: state,
+            sensor: head.sensor.unwrap_or_default() as usize,
+            _thread: thread,
+        });
+
+        app.add_systems(
+            Update,
+            service_render_head_vrpn.in_set(crate::render::TephriteRenderSystems::LateLatchHead),
+        );
+    }
+}
+
+fn service_render_head_vrpn(
+    tracker: Res<RenderHeadTracker>,
+    mut heads: Query<&mut Transform, With<Head>>,
+) {
+    let Some(pose) = tracker.reader.poses.get(tracker.sensor) else {
+        return;
+    };
+
+    // Watch out here
+    let Ok(pose) = pose.try_lock() else {
+        return;
+    };
+
+    for mut head_tf in &mut heads {
+        head_tf.translation = pose.position;
+        head_tf.rotation = pose.rotation.normalize();
     }
 }

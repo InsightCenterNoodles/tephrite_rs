@@ -36,7 +36,7 @@ impl Plugin for ReplicationReaderPlugin {
         app.insert_non_send_resource(transcript);
         app.init_resource::<EntityMap>();
 
-        app.add_systems(Update, child_system);
+        app.add_systems(PreUpdate, child_system);
     }
 }
 

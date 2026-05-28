@@ -7,6 +7,12 @@ use crate::common::Head;
 
 pub(crate) use projection::OffAxisProjection;
 
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum TephriteRenderSystems {
+    LateLatchHead,
+    UpdateCamera,
+}
+
 // transfer a head position to an off axis projection
 fn update_off_axis_projection(
     head_q: Query<(&Transform, &Head), Without<Projection>>,
@@ -35,6 +41,11 @@ pub(crate) struct OffAxisPlugin;
 
 impl Plugin for OffAxisPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, update_off_axis_projection);
+        app.add_systems(
+            Update,
+            update_off_axis_projection
+                .in_set(TephriteRenderSystems::UpdateCamera)
+                .after(TephriteRenderSystems::LateLatchHead),
+        );
     }
 }

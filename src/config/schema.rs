@@ -44,6 +44,9 @@ pub struct InteractorConfig {
 pub struct Vrpn {
     pub head: Option<VRPNAddress>,
 
+    #[serde(default)]
+    pub late_latch_head: bool,
+
     // LEGACY OPTION. Remove later.
     #[serde(
         default,

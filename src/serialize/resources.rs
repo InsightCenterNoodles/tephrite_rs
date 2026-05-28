@@ -1,7 +1,12 @@
 use crate::{
-    common::{EnvironmentLighting, OrderIndependantTransparency},
+    common::{
+        EnvironmentLighting, OrderIndependantTransparency, ScreenSpaceAmbientOcclusionSettings,
+        ScreenSpaceReflectionsSettings,
+    },
     serialize::*,
 };
+
+use bevy::pbr::ScreenSpaceAmbientOcclusionQualityLevel;
 
 impl_fast_serialize!(
     EnvironmentLighting,
@@ -14,3 +19,7 @@ impl_fast_serialize!(
 );
 
 impl_fast_raw_item!(OrderIndependantTransparency);
+
+impl_fast_raw_item!(ScreenSpaceAmbientOcclusionQualityLevel);
+impl_fast_raw_item!(ScreenSpaceAmbientOcclusionSettings);
+impl_fast_raw_item!(ScreenSpaceReflectionsSettings);

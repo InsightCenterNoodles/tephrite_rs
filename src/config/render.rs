@@ -3,7 +3,9 @@ use bevy::{
     reflect::Reflect,
 };
 
-use super::{Config, Display, InteractorConfig, InteractorType, Screen};
+use super::{
+    Config, Display, InteractorConfig, InteractorType, Screen, VRPNAddress, VRPNCoordinateTransform,
+};
 
 /// Physical location of the display, as measured in room coordinates
 #[derive(Debug, Default, Reflect, Clone)]
@@ -77,6 +79,7 @@ impl Config {
 
         RenderConfiguration {
             use_offaxis: self.use_offaxis,
+            late_latch_head: self.vrpn.late_latch_head,
             debug_renderer: self.debug_renderer,
             process_rank: rank,
             card_index: this_screen.and_then(|screen| screen.card_index),
@@ -90,6 +93,8 @@ impl Config {
             display_physical: this_display
                 .map(Display::physical)
                 .unwrap_or_else(DisplayPhysical::make_plain),
+            head_vrpn: self.vrpn.head.clone(),
+            coordinate_transform: self.vrpn.coordinate_transform,
             resolution,
             placement,
         }
@@ -99,6 +104,8 @@ impl Config {
 #[derive(Debug, Default, Clone)]
 pub struct RenderConfiguration {
     pub use_offaxis: bool,
+
+    pub late_latch_head: bool,
 
     pub debug_renderer: bool,
 
@@ -113,6 +120,10 @@ pub struct RenderConfiguration {
 
     /// The physical disposition of the display
     pub display_physical: DisplayPhysical,
+
+    pub head_vrpn: Option<VRPNAddress>,
+
+    pub coordinate_transform: VRPNCoordinateTransform,
 
     /// The pixel resolution of the display (w, h)
     pub resolution: UVec2,

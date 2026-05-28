@@ -12,7 +12,10 @@ use bevy::{
 };
 
 use crate::{
-    common::{EnvironmentLighting, OrderIndependantTransparency},
+    common::{
+        EnvironmentLighting, OrderIndependantTransparency, ScreenSpaceAmbientOcclusionSettings,
+        ScreenSpaceReflectionsSettings,
+    },
     config::get_render_configuration,
 };
 
@@ -130,7 +133,16 @@ pub(crate) fn run() -> AppExit {
     if child_config.use_offaxis {
         app.add_plugins(crate::render::OffAxisPlugin);
     } else {
-        app.add_systems(PreUpdate, sync_cam_to_head);
+        app.add_systems(
+            Update,
+            sync_cam_to_head
+                .in_set(crate::render::TephriteRenderSystems::UpdateCamera)
+                .after(crate::render::TephriteRenderSystems::LateLatchHead),
+        );
+    }
+
+    if child_config.late_latch_head {
+        app.add_plugins(crate::vrpn::RenderHeadTrackerPlugin);
     }
 
     //app.add_plugins(bevy::camera::visibility::VisibilityPlugin);
@@ -139,6 +151,8 @@ pub(crate) fn run() -> AppExit {
 
     app.add_systems(Update, env_change_watch);
     app.add_systems(Update, oit_resource_watch);
+    app.add_systems(Update, ssao_resource_watch);
+    app.add_systems(Update, ssr_resource_watch);
 
     // Materials
     app.add_plugins(crate::material::builtin_materials_plugin);
@@ -181,18 +195,6 @@ fn setup(mut commands: Commands) {
             Tonemapping::AcesFitted,
             Hdr,
             Transform::default(),
-            ScreenSpaceAmbientOcclusion {
-                quality_level: bevy::pbr::ScreenSpaceAmbientOcclusionQualityLevel::Medium,
-                constant_object_thickness: 0.25,
-            },
-            ScreenSpaceReflections {
-                perceptual_roughness_threshold: 0.25,
-                thickness: 0.08,
-                linear_steps: 8,
-                linear_march_exponent: 1.0,
-                bisection_steps: 4,
-                use_secant: true,
-            },
             TemporalJitter::default(),
         ))
         .id();
@@ -271,4 +273,72 @@ fn oit_resource_watch(
             alpha_threshold: oit.alpha_threshold,
         });
     }
+}
+
+fn ssao_resource_watch(
+    ssao: Option<Res<ScreenSpaceAmbientOcclusionSettings>>,
+    mut cam_q: Query<Entity, With<Camera3d>>,
+    mut commands: Commands,
+    mut was_enabled: Local<bool>,
+) {
+    let Some(ssao) = ssao else {
+        if *was_enabled {
+            for cam in cam_q.iter_mut() {
+                commands.entity(cam).remove::<ScreenSpaceAmbientOcclusion>();
+            }
+
+            *was_enabled = false;
+        }
+
+        return;
+    };
+
+    if !ssao.is_changed() {
+        return;
+    }
+
+    for cam in cam_q.iter_mut() {
+        commands.entity(cam).insert(ScreenSpaceAmbientOcclusion {
+            quality_level: ssao.quality_level,
+            constant_object_thickness: ssao.constant_object_thickness,
+        });
+    }
+
+    *was_enabled = true;
+}
+
+fn ssr_resource_watch(
+    ssr: Option<Res<ScreenSpaceReflectionsSettings>>,
+    mut cam_q: Query<Entity, With<Camera3d>>,
+    mut commands: Commands,
+    mut was_enabled: Local<bool>,
+) {
+    let Some(ssr) = ssr else {
+        if *was_enabled {
+            for cam in cam_q.iter_mut() {
+                commands.entity(cam).remove::<ScreenSpaceReflections>();
+            }
+
+            *was_enabled = false;
+        }
+
+        return;
+    };
+
+    if !ssr.is_changed() {
+        return;
+    }
+
+    for cam in cam_q.iter_mut() {
+        commands.entity(cam).insert(ScreenSpaceReflections {
+            perceptual_roughness_threshold: ssr.perceptual_roughness_threshold,
+            thickness: ssr.thickness,
+            linear_steps: ssr.linear_steps,
+            linear_march_exponent: ssr.linear_march_exponent,
+            bisection_steps: ssr.bisection_steps,
+            use_secant: ssr.use_secant,
+        });
+    }
+
+    *was_enabled = true;
 }

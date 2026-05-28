@@ -21,6 +21,8 @@ pub mod prelude {
     pub use crate::common::EnvironmentLighting;
     pub use crate::common::Head;
     pub use crate::common::OrderIndependantTransparency;
+    pub use crate::common::ScreenSpaceAmbientOcclusionSettings;
+    pub use crate::common::ScreenSpaceReflectionsSettings;
     pub use crate::replication::components::PropagateReplication;
     pub use crate::replication::components::Replicated;
 

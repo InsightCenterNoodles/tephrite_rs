@@ -2,8 +2,10 @@ use super::instruction::*;
 use super::sets::*;
 use bevy::prelude::*;
 
-use crate::common::EnvironmentLighting;
-use crate::common::OrderIndependantTransparency;
+use crate::common::{
+    EnvironmentLighting, OrderIndependantTransparency, ScreenSpaceAmbientOcclusionSettings,
+    ScreenSpaceReflectionsSettings,
+};
 
 use crate::serialize::transcript_writer::*;
 use crate::serialize::*;
@@ -176,4 +178,9 @@ macro_rules! detect_resource_changes {
     }
 }
 
-detect_resource_changes!((0, EnvironmentLighting), (1, OrderIndependantTransparency));
+detect_resource_changes!(
+    (0, EnvironmentLighting),
+    (1, OrderIndependantTransparency),
+    (2, ScreenSpaceAmbientOcclusionSettings),
+    (3, ScreenSpaceReflectionsSettings)
+);

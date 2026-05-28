@@ -1,3 +1,4 @@
+use bevy::pbr::ScreenSpaceAmbientOcclusionQualityLevel;
 use bevy::prelude::*;
 
 /// Marker for the entity that represents the user's head
@@ -28,6 +29,50 @@ impl Default for OrderIndependantTransparency {
         Self {
             layer_count: 8,
             alpha_threshold: 0.0,
+        }
+    }
+}
+
+/// Add this resource to enable screen space ambient occlusion on the render camera.
+/// This is a camera-attached Bevy component represented as a resource because Tephrite owns
+/// the replicated render camera.
+#[derive(Debug, Clone, Copy, PartialEq, Resource)]
+pub struct ScreenSpaceAmbientOcclusionSettings {
+    pub quality_level: ScreenSpaceAmbientOcclusionQualityLevel,
+    pub constant_object_thickness: f32,
+}
+
+impl Default for ScreenSpaceAmbientOcclusionSettings {
+    fn default() -> Self {
+        Self {
+            quality_level: ScreenSpaceAmbientOcclusionQualityLevel::Medium,
+            constant_object_thickness: 0.25,
+        }
+    }
+}
+
+/// Add this resource to enable screen space reflections on the render camera.
+/// This is a camera-attached Bevy component represented as a resource because Tephrite owns
+/// the replicated render camera.
+#[derive(Debug, Clone, Copy, PartialEq, Resource)]
+pub struct ScreenSpaceReflectionsSettings {
+    pub perceptual_roughness_threshold: f32,
+    pub thickness: f32,
+    pub linear_steps: u32,
+    pub linear_march_exponent: f32,
+    pub bisection_steps: u32,
+    pub use_secant: bool,
+}
+
+impl Default for ScreenSpaceReflectionsSettings {
+    fn default() -> Self {
+        Self {
+            perceptual_roughness_threshold: 0.25,
+            thickness: 0.08,
+            linear_steps: 8,
+            linear_march_exponent: 1.0,
+            bisection_steps: 4,
+            use_secant: true,
         }
     }
 }
