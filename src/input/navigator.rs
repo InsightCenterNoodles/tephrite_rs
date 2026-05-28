@@ -252,13 +252,13 @@ fn on_tick_flystick(
 ) {
     let speed_meters_per_second = 2.0;
 
-    if DTrackFlystick::just_pressed(FlystickButton::Button5, interactor_state) {
+    if DTrackFlystick::just_pressed(FlystickButton::JoystickButton, interactor_state) {
         *target_tf = initial.0;
         rotation_state.last_yaw = None;
         return;
     }
 
-    if DTrackFlystick::pressed(FlystickButton::Button2, interactor_state) {
+    if DTrackFlystick::pressed(FlystickButton::RightWhiteButton, interactor_state) {
         let yaw = yaw_from_global_transform(interactor_global_tf);
 
         if let Some(last_yaw) = rotation_state.last_yaw {
@@ -276,7 +276,7 @@ fn on_tick_flystick(
         return;
     };
 
-    if DTrackFlystick::pressed(FlystickButton::Button1, interactor_state) {
+    if DTrackFlystick::pressed(FlystickButton::LeftWhiteButton, interactor_state) {
         target_tf.translation += vec3(
             0.0,
             stick.y * speed_meters_per_second * time.delta_secs(),

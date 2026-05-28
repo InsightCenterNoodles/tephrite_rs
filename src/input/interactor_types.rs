@@ -140,11 +140,13 @@ pub enum FlystickStick {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FlystickButton {
     Trigger,
-    Button1,
-    Button2,
-    Button3,
-    Button4,
-    Button5,
+    RedButton,
+    BlackButton,
+    BlueButton,
+    GreyButton,
+    JoystickButton,
+    LeftWhiteButton,
+    RightWhiteButton,
     #[default]
     Unknown,
 }
@@ -180,11 +182,13 @@ impl InteractorTrait for DTrackFlystick {
     fn translate_button(button: Self::Button) -> Option<InputButton> {
         match button {
             FlystickButton::Trigger => Some(InputButton::Button0),
-            FlystickButton::Button1 => Some(InputButton::Button1),
-            FlystickButton::Button2 => Some(InputButton::Button2),
-            FlystickButton::Button3 => Some(InputButton::Button3),
-            FlystickButton::Button4 => Some(InputButton::Button4),
-            FlystickButton::Button5 => Some(InputButton::Button5),
+            FlystickButton::RedButton => Some(InputButton::Button1),
+            FlystickButton::BlackButton => Some(InputButton::Button2),
+            FlystickButton::BlueButton => Some(InputButton::Button3),
+            FlystickButton::GreyButton => Some(InputButton::Button4),
+            FlystickButton::JoystickButton => Some(InputButton::Button5),
+            FlystickButton::LeftWhiteButton => Some(InputButton::Button6),
+            FlystickButton::RightWhiteButton => Some(InputButton::Button7),
             FlystickButton::Unknown => None,
         }
     }
@@ -192,11 +196,13 @@ impl InteractorTrait for DTrackFlystick {
     fn reverse_translate_button(button: InputButton) -> Option<Self::Button> {
         match button {
             InputButton::Button0 => Some(FlystickButton::Trigger),
-            InputButton::Button1 => Some(FlystickButton::Button1),
-            InputButton::Button2 => Some(FlystickButton::Button2),
-            InputButton::Button3 => Some(FlystickButton::Button3),
-            InputButton::Button4 => Some(FlystickButton::Button4),
-            InputButton::Button5 => Some(FlystickButton::Button5),
+            InputButton::Button1 => Some(FlystickButton::RedButton),
+            InputButton::Button2 => Some(FlystickButton::BlackButton),
+            InputButton::Button3 => Some(FlystickButton::BlueButton),
+            InputButton::Button4 => Some(FlystickButton::GreyButton),
+            InputButton::Button5 => Some(FlystickButton::JoystickButton),
+            InputButton::Button6 => Some(FlystickButton::LeftWhiteButton),
+            InputButton::Button7 => Some(FlystickButton::RightWhiteButton),
             _ => None,
         }
     }
@@ -204,9 +210,9 @@ impl InteractorTrait for DTrackFlystick {
     fn action_for_button(button: InputButton) -> Option<InteractorAction> {
         match Self::reverse_translate_button(button)? {
             FlystickButton::Trigger => Some(InteractorAction::Primary),
-            FlystickButton::Button1 => Some(InteractorAction::Secondary),
-            FlystickButton::Button2 => Some(InteractorAction::Menu),
-            FlystickButton::Button5 => Some(InteractorAction::ResetView),
+            FlystickButton::RedButton => Some(InteractorAction::Secondary),
+            FlystickButton::BlackButton => Some(InteractorAction::Menu),
+            FlystickButton::JoystickButton => Some(InteractorAction::ResetView),
             _ => None,
         }
     }
