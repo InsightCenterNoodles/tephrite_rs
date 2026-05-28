@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy::{light::CascadeShadowConfigBuilder, prelude::*};
 use tephrite_rs::prelude::*;
 
 struct MyPlugin;
@@ -50,6 +50,13 @@ fn setup(
         },
         Transform::from_xyz(0.0, 4.0, 0.0).looking_at(Vec3::ZERO, Dir3::Z),
         Replicated,
+        CascadeShadowConfigBuilder {
+            num_cascades: 1,
+            minimum_distance: 0.05,
+            maximum_distance: 5.0,
+            ..Default::default()
+        }
+        .build(),
     ));
 }
 
