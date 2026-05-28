@@ -20,10 +20,32 @@ pub struct Config {
     pub screens: Vec<Screen>,
 }
 
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Environment {
+    #[serde(default = "default_alert_offset")]
+    pub alert_offset: [f32; 3],
+    #[serde(default = "default_alert_scale")]
+    pub alert_scale: f32,
     #[serde(default)]
     pub alerts: Vec<AlertZone>,
+}
+
+impl Default for Environment {
+    fn default() -> Self {
+        Self {
+            alert_offset: default_alert_offset(),
+            alert_scale: default_alert_scale(),
+            alerts: Vec::new(),
+        }
+    }
+}
+
+fn default_alert_offset() -> [f32; 3] {
+    [0.0, 0.0, -1.0]
+}
+
+fn default_alert_scale() -> f32 {
+    0.5
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -31,9 +53,6 @@ pub struct AlertZone {
     pub plane_point: [f32; 3],
     pub plane_normal: [f32; 3],
     pub distance: f32,
-    pub location: [f32; 3],
-    pub direction: [f32; 3],
-    pub scale: f32,
     #[serde(default)]
     pub image: AlertImage,
 }

@@ -6,6 +6,7 @@ use crate::common::{
     DeferredRendering, EnvironmentLighting, OrderIndependantTransparency,
     ScreenSpaceAmbientOcclusionSettings, ScreenSpaceReflectionsSettings,
 };
+use bevy::light::DirectionalLightShadowMap;
 
 use crate::serialize::transcript_writer::*;
 use crate::serialize::*;
@@ -183,5 +184,6 @@ detect_resource_changes!(
     (1, OrderIndependantTransparency),
     (2, ScreenSpaceAmbientOcclusionSettings),
     (3, ScreenSpaceReflectionsSettings),
-    (4, DeferredRendering)
+    (4, DeferredRendering),
+    (5, DirectionalLightShadowMap)
 );

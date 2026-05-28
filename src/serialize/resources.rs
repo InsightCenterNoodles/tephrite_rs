@@ -6,7 +6,7 @@ use crate::{
     serialize::*,
 };
 
-use bevy::pbr::ScreenSpaceAmbientOcclusionQualityLevel;
+use bevy::{light::DirectionalLightShadowMap, pbr::ScreenSpaceAmbientOcclusionQualityLevel};
 
 impl_fast_serialize!(
     EnvironmentLighting,
@@ -24,3 +24,5 @@ impl_fast_raw_item!(DeferredRendering);
 impl_fast_raw_item!(ScreenSpaceAmbientOcclusionQualityLevel);
 impl_fast_raw_item!(ScreenSpaceAmbientOcclusionSettings);
 impl_fast_raw_item!(ScreenSpaceReflectionsSettings);
+
+impl_fast_raw_item!(DirectionalLightShadowMap);
