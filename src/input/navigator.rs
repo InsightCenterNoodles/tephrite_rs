@@ -38,6 +38,7 @@ struct NavigatorSettings {
 #[derive(Debug, Default)]
 struct FlystickRotationState {
     last_yaw: Option<f32>,
+    last_height: Option<f32>,
 }
 
 #[derive(Debug)]
@@ -255,10 +256,13 @@ fn on_tick_flystick(
     if DTrackFlystick::just_pressed(FlystickButton::JoystickButton, interactor_state) {
         *target_tf = initial.0;
         rotation_state.last_yaw = None;
+        rotation_state.last_height = None;
         return;
     }
 
     if DTrackFlystick::pressed(FlystickButton::RightWhiteButton, interactor_state) {
+        rotation_state.last_height = None;
+
         let yaw = yaw_from_global_transform(interactor_global_tf);
 
         if let Some(last_yaw) = rotation_state.last_yaw {
@@ -272,20 +276,32 @@ fn on_tick_flystick(
 
     rotation_state.last_yaw = None;
 
+    if DTrackFlystick::pressed(FlystickButton::LeftWhiteButton, interactor_state) {
+        let height = interactor_global_tf.translation().y;
+
+        if let Some(last_height) = rotation_state.last_height {
+            let delta_height = height - last_height;
+
+            if DTrackFlystick::pressed(FlystickButton::Trigger, interactor_state) {
+                let scale_factor = 2.0_f32.powf(delta_height);
+                target_tf.scale =
+                    (target_tf.scale * scale_factor).clamp(Vec3::splat(0.001), Vec3::splat(1000.0));
+            } else {
+                target_tf.translation += local_displace(Vec3::Y * delta_height, parent_global_tf);
+            }
+        }
+
+        rotation_state.last_height = Some(height);
+        return;
+    }
+
+    rotation_state.last_height = None;
+
     let Some(stick) = DTrackFlystick::stick_state(FlystickStick::Stick, interactor_state) else {
         return;
     };
 
-    if DTrackFlystick::pressed(FlystickButton::LeftWhiteButton, interactor_state) {
-        target_tf.translation += vec3(
-            0.0,
-            stick.y * speed_meters_per_second * time.delta_secs(),
-            0.0,
-        );
-        return;
-    }
-
-    let dir = vec3(stick.x, 0.0, stick.y);
+    let dir = vec3(stick.x, 0.0, -stick.y);
     let mut global_dir = interactor_global_tf.affine().transform_vector3(dir);
     global_dir.y = 0.0;
 
