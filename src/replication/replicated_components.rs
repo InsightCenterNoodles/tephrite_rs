@@ -1,8 +1,8 @@
 pub(crate) use super::components::Replicated;
 use super::instruction::*;
 use super::sets::*;
-use bevy::light::NotShadowCaster;
-use bevy::light::NotShadowReceiver;
+use bevy::light::cascade::CascadeShadowConfig;
+use bevy::light::{NotShadowCaster, NotShadowReceiver};
 use bevy::prelude::*;
 
 use crate::common::Head;
@@ -175,5 +175,6 @@ detect_component_changes!(
     (8, PointsMatComponent),
     (9, InheritedVisibility),
     (10, NotShadowCaster),
-    (11, NotShadowReceiver)
+    (11, NotShadowReceiver),
+    (12, CascadeShadowConfig)
 );

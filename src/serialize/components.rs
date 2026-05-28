@@ -4,7 +4,7 @@
 //! fields that affect rendering or spatial state and skipping fields that are
 //! computed or overwritten by Bevy at runtime.
 use bevy::{
-    light::{NotShadowCaster, NotShadowReceiver},
+    light::{NotShadowCaster, NotShadowReceiver, cascade::CascadeShadowConfig},
     prelude::*,
 };
 
@@ -57,6 +57,18 @@ impl_fast_raw_item!(DirectionalLight);
 
 impl_fast_raw_item!(NotShadowCaster);
 impl_fast_raw_item!(NotShadowReceiver);
+
+impl_fast_serialize!(
+    CascadeShadowConfig,
+    keep: {
+        bounds,
+        overlap_proportion,
+        minimum_distance
+    },
+    skip: {
+
+    }
+);
 
 // =============================================================================
 
