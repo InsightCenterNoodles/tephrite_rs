@@ -4,7 +4,8 @@ use bevy::{
 };
 
 use super::{
-    Config, Display, InteractorConfig, InteractorType, Screen, VRPNAddress, VRPNCoordinateTransform,
+    Config, Display, InteractorConfig, InteractorType, Screen, VRPNAddress,
+    VRPNCoordinateTransform, VulkanSupport,
 };
 
 /// Physical location of the display, as measured in room coordinates
@@ -95,6 +96,7 @@ impl Config {
                 .unwrap_or_else(DisplayPhysical::make_plain),
             head_vrpn: self.vrpn.head.clone(),
             coordinate_transform: self.vrpn.coordinate_transform,
+            vulkan_support: self.vulkan_support.clone(),
             resolution,
             placement,
         }
@@ -124,6 +126,8 @@ pub struct RenderConfiguration {
     pub head_vrpn: Option<VRPNAddress>,
 
     pub coordinate_transform: VRPNCoordinateTransform,
+
+    pub vulkan_support: VulkanSupport,
 
     /// The pixel resolution of the display (w, h)
     pub resolution: UVec2,

@@ -25,6 +25,8 @@ pub(crate) fn run() -> AppExit {
     // Get child config
     let child_config = get_render_configuration();
     let rank = child_config.process_rank;
+    let vulkan_support_client =
+        crate::multiprocess::vulkan_support::init_client(&child_config.vulkan_support);
 
     unsafe {
         // Set process environment before Bevy's render stack has a chance to
@@ -166,6 +168,7 @@ pub(crate) fn run() -> AppExit {
     let result = app.run();
 
     debug!("{rank}: Stopping renderer...");
+    drop(vulkan_support_client);
 
     result
 }

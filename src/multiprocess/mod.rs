@@ -9,6 +9,7 @@ pub mod logic_process;
 pub mod render_process;
 pub mod shared_buffer;
 pub mod shared_mem;
+pub(crate) mod vulkan_support;
 
 /// Environment variable to determine if a process is a render process
 const CHILD_ENV_VARIABLE: &str = "TEPHRITE_CHILD_PROCESS";
