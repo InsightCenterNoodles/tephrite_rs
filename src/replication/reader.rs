@@ -1,7 +1,6 @@
 use bevy::ecs::entity::EntityHashMap;
 use bevy::prelude::*;
 
-use crate::multiprocess::shared_buffer::CBWrapper;
 use crate::prelude::PointsMaterial;
 use crate::serialize::transcript_reader::TranscriptReaderResource;
 
