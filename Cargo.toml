@@ -16,9 +16,6 @@ toml = "0.9"
 cosmic-text = "*"
 crossbeam-queue = "*"
 
-[patch.crates-io]
-bevy = { git = "https://github.com/nicholasbl/bevy", branch = "cave_patches" }
-
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]
 opt-level = 1

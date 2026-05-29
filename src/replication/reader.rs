@@ -12,26 +12,9 @@ use super::instruction::*;
 /// Plugin for child processes. Reads a transcript and replicates entities, components, and assets.
 pub struct ReplicationReaderPlugin;
 
-static CURRENT_CONTROL_BLOCK: std::sync::RwLock<Option<CBWrapper>> = std::sync::RwLock::new(None);
-
-fn presentation_lock() {
-    let r = CURRENT_CONTROL_BLOCK.read().unwrap();
-
-    if let Some(r) = *r {
-        unsafe {
-            (*r.0).general_barrier();
-        }
-    }
-}
-
 impl Plugin for ReplicationReaderPlugin {
     fn build(&self, app: &mut App) {
         let transcript = TranscriptReaderResource::new();
-
-        *(CURRENT_CONTROL_BLOCK.write().unwrap()) =
-            Some(CBWrapper(transcript.consumer().control_block_ptr()));
-
-        bevy::render::renderer::install_presentation_hook(presentation_lock);
 
         app.insert_non_send_resource(transcript);
         app.init_resource::<EntityMap>();
