@@ -21,6 +21,7 @@ const ENABLE_SWAP_BARRIER_ENV: &str = "ENABLE_SWAP_BARRIER";
 const SUPPORT_DEBUG_ENV: &str = "TEPH_SUPPORT_DEBUG";
 const VK_ADD_IMPLICIT_LAYER_PATH_ENV: &str = "VK_ADD_IMPLICIT_LAYER_PATH";
 const LD_LIBRARY_PATH_ENV: &str = "LD_LIBRARY_PATH";
+const VULKAN_DEVICE_INDEX_ENV: &str = "VULKAN_DEVICE_INDEX";
 
 type HostInit = unsafe extern "C" fn(*const c_char, c_uint) -> c_int;
 type HostDeinit = unsafe extern "C" fn(*const c_char);
@@ -181,6 +182,7 @@ pub(crate) fn install_child_env(
     command: &mut std::process::Command,
     config: &VulkanSupport,
     host: Option<&VulkanSupportHost>,
+    card_index: Option<u32>,
 ) {
     if !config.enabled {
         return;
@@ -189,6 +191,10 @@ pub(crate) fn install_child_env(
     let host = host.expect("Vulkan support enabled without host state");
     command.env(ENABLE_SUPPORT_LAYER_ENV, "1");
     command.env(SUPPORT_KEY_ENV, host.key().to_string_lossy().as_ref());
+
+    if let Some(card_index) = card_index {
+        command.env(VULKAN_DEVICE_INDEX_ENV, card_index.to_string());
+    }
 
     if config.enable_swap_barrier {
         command.env(ENABLE_SWAP_BARRIER_ENV, "1");

@@ -31,12 +31,6 @@ pub(crate) fn run() -> AppExit {
     unsafe {
         // Set process environment before Bevy's render stack has a chance to
         // initialize Vulkan/wgpu.
-        if let Some(index) = child_config.card_index {
-            let index = index.to_string();
-            std::env::set_var("ENABLE_DEVICE_CHOOSER_LAYER", "1");
-            std::env::set_var("VULKAN_DEVICE_INDEX", &index);
-        }
-
         if let Some(display) = &child_config.display_name {
             std::env::set_var("DISPLAY", display);
         }

@@ -75,6 +75,7 @@ pub(crate) fn setup() -> App {
                 &mut command,
                 &config.vulkan_support,
                 vulkan_support_host.as_ref(),
+                config.render_configuration(i).card_index,
             );
 
             command.spawn().expect("launching render process")
