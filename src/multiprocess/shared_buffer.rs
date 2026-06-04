@@ -80,17 +80,7 @@ impl ControlBlock {
         }
         m
     }
-
-    pub(crate) fn general_barrier(&self) {
-        self.consumer_barrier.wait();
-    }
 }
-
-#[derive(Debug, Copy, Clone)]
-pub(crate) struct CBWrapper(pub(crate) *const ControlBlock);
-
-unsafe impl Sync for CBWrapper {}
-unsafe impl Send for CBWrapper {}
 
 struct Barrier {
     thread_count: u32,
@@ -103,26 +93,6 @@ impl Barrier {
         self.thread_count = child_count;
         self.state = AtomicU32::new(0);
         self.generation = AtomicU64::new(0);
-    }
-
-    fn wait(&self) {
-        use std::sync::atomic::Ordering;
-        // snapshot of state
-        let local_gen = self.generation.load(Ordering::Acquire);
-
-        // increment arrived
-        let arrived = self.state.fetch_add(1, Ordering::AcqRel);
-
-        if arrived + 1 == self.thread_count {
-            // reset count and bump
-            self.state.store(0, Ordering::Release);
-            self.generation.fetch_add(1, Ordering::Release);
-        } else {
-            // spin till generation changes
-            while self.generation.load(Ordering::Acquire) == local_gen {
-                std::hint::spin_loop();
-            }
-        }
     }
 }
 
@@ -453,10 +423,6 @@ impl Consumer {
     fn control_block_mut(&mut self) -> &mut ControlBlock {
         // Safety: Self is always initialized with a valid pointer
         unsafe { &mut *self.cb }
-    }
-
-    pub(crate) fn control_block_ptr(&self) -> *const ControlBlock {
-        self.cb
     }
 
     /// Block (spin/backoff) until a new buffer is published. Runs given function on the provided buffer.

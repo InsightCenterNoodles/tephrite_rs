@@ -35,8 +35,4 @@ impl TranscriptReaderResource {
     {
         self.multiprocess_comm.consume_next(f)
     }
-
-    pub fn consumer(&self) -> &Consumer {
-        &self.multiprocess_comm
-    }
 }

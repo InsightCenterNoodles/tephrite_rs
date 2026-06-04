@@ -15,6 +15,8 @@ pub struct Config {
     #[serde(default)]
     pub environment: Environment,
     #[serde(default)]
+    pub vulkan_support: VulkanSupport,
+    #[serde(default)]
     pub displays: Vec<Display>,
     #[serde(default)]
     pub screens: Vec<Screen>,
@@ -80,6 +82,18 @@ pub enum AlertImage {
 #[allow(dead_code)]
 pub struct Render {
     pub api: String,
+}
+
+#[derive(Debug, Default, Clone, Deserialize)]
+pub struct VulkanSupport {
+    #[serde(default)]
+    pub enabled: bool,
+    pub layer_path: Option<String>,
+    pub library_dir: Option<String>,
+    #[serde(default)]
+    pub enable_swap_barrier: bool,
+    #[serde(default)]
+    pub debug: bool,
 }
 
 #[derive(Debug, Default, Clone, Copy, Deserialize)]

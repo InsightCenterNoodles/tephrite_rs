@@ -14,7 +14,7 @@ pub use render::{DisplayPhysical, RenderConfiguration};
 #[allow(unused_imports)]
 pub use schema::{
     AlertCube, AlertImage, AlertZone, Config, Display, Environment, InteractorConfig,
-    InteractorType, Placement, Render, Screen, Vrpn,
+    InteractorType, Placement, Render, Screen, Vrpn, VulkanSupport,
 };
 #[allow(unused_imports)]
 pub use vrpn::{VRPNAddress, VRPNAddressParseError, VRPNCoordinateTransform};

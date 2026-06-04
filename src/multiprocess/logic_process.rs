@@ -28,6 +28,8 @@ pub(crate) fn setup() -> App {
 
     // Having zero children makes no sense
     let child_count = config.child_count().max(1);
+    let vulkan_support_host =
+        crate::multiprocess::vulkan_support::init_host(&config.vulkan_support, child_count);
 
     app.add_plugins(crate::input::InputPlugin);
 
@@ -69,12 +71,21 @@ pub(crate) fn setup() -> App {
 
             let mut command = std::process::Command::new(current_exe);
             crate::multiprocess::install_ids(&mut command, &session_clone, i);
+            crate::multiprocess::vulkan_support::install_child_env(
+                &mut command,
+                &config.vulkan_support,
+                vulkan_support_host.as_ref(),
+                config.render_configuration(i).card_index,
+            );
 
             command.spawn().expect("launching render process")
         })
         .collect();
 
-    app.insert_resource(ChildProcessResource { children });
+    app.insert_resource(ChildProcessResource {
+        children,
+        vulkan_support_host,
+    });
 
     app.add_observer(on_exit);
 
@@ -84,6 +95,7 @@ pub(crate) fn setup() -> App {
 #[derive(Debug, Resource)]
 struct ChildProcessResource {
     children: Vec<std::process::Child>,
+    vulkan_support_host: Option<crate::multiprocess::vulkan_support::VulkanSupportHost>,
 }
 
 fn setup_tracked_head(mut commands: Commands) {
@@ -168,6 +180,8 @@ pub(crate) fn cleanup(mut app: App) -> Option<()> {
     for child in res.children {
         destroy_child_process(child);
     }
+
+    drop(res.vulkan_support_host);
 
     Some(())
 }
