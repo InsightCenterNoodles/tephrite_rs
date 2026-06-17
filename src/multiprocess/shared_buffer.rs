@@ -503,12 +503,10 @@ pub type RunResult<T> = std::result::Result<T, RunResultError>;
 #[inline]
 fn adaptive_pause(spins: &mut u32) {
     *spins += 1;
-    if *spins < 64 {
+    if *spins < 4096 {
         std::hint::spin_loop();
-    } else if *spins < 256 {
-        thread::yield_now();
     } else {
-        thread::sleep(Duration::from_micros(1));
+        thread::yield_now();
     }
 }
 
