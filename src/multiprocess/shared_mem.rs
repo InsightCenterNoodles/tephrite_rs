@@ -1,6 +1,6 @@
 //! Module for building shared memory regions
 
-use bevy::log::{debug, warn};
+use bevy::log::{debug, error, warn};
 use libc::*;
 use std::ffi::{CStr, CString};
 
@@ -165,11 +165,18 @@ fn to_i64(size: usize) -> Result<i64> {
 // We dont use mode_t here as all the APIs take c_uint already
 const OPEN_MODES: c_uint = (S_IRUSR | S_IWUSR) as c_uint;
 
+// Darwin's shm_open rejects O_CLOEXEC with EINVAL and sets FD_CLOEXEC itself.
+#[cfg(target_os = "macos")]
+const SHM_CLOEXEC_FLAG: c_int = 0;
+
+#[cfg(not(target_os = "macos"))]
+const SHM_CLOEXEC_FLAG: c_int = O_CLOEXEC;
+
 /// Opens an existing shared memory region, and returns a handle
 fn open_shmem_handle(key: &CStr) -> Result<i32> {
     let handle = unsafe {
         //println!("SHM NAME (child): {key:?}");
-        shm_open(key.as_ptr(), O_RDWR | O_CLOEXEC, OPEN_MODES)
+        shm_open(key.as_ptr(), O_RDWR | SHM_CLOEXEC_FLAG, OPEN_MODES)
     };
 
     if handle < 0 {
@@ -186,6 +193,7 @@ fn truncate_handle(handle: i32, size: usize) -> Result<()> {
     let truncate_result = unsafe { ftruncate(handle, off) };
 
     if truncate_result < 0 {
+        error!("Truncation of shared memory region failed!");
         return Err(std::io::Error::last_os_error());
     }
 
@@ -202,12 +210,13 @@ fn create_shmem_handle(key: &CStr) -> Result<i32> {
 
         shm_open(
             key.as_ptr(),
-            O_RDWR | O_CREAT | O_TRUNC | O_CLOEXEC,
+            O_RDWR | O_CREAT | O_TRUNC | SHM_CLOEXEC_FLAG,
             OPEN_MODES,
         )
     };
 
     if handle < 0 {
+        error!("Unable to create shared memory handle!");
         return Err(std::io::Error::last_os_error());
     }
 
