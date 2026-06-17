@@ -25,6 +25,7 @@ opt-level = 1
 opt-level = 3
 
 [dev-dependencies]
+criterion = "0.8"
 nix = "0.30"
 rand = "0.9"
 
@@ -38,4 +39,8 @@ harness = false
 
 [[test]]
 name = "replication_integration"
+harness = false
+
+[[bench]]
+name = "asset_serialization"
 harness = false
