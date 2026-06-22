@@ -9,7 +9,6 @@ use core::sync::atomic::{
     Ordering::{AcqRel, Acquire, Relaxed, Release},
 };
 use std::io::Result;
-use std::time::Duration;
 use std::{ptr, thread};
 
 use bevy::log::{debug, warn};

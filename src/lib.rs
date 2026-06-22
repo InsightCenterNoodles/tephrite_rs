@@ -13,6 +13,8 @@ pub(crate) mod simulator;
 pub mod ui;
 pub(crate) mod vrpn;
 
+pub use bevy;
+
 use bevy::{
     DefaultPlugins,
     app::{App, Plugin},
