@@ -205,5 +205,6 @@ generate_asset_systems!(
     (0, Mesh, AssetDeltaPhase::Priority2),
     (1, StandardMaterial, AssetDeltaPhase::Priority2),
     (2, PointsMaterial, AssetDeltaPhase::Priority2),
-    (3, Image, AssetDeltaPhase::Priority1)
+    (3, Font, AssetDeltaPhase::Priority2),
+    (4, Image, AssetDeltaPhase::Priority1)
 );

@@ -4,6 +4,7 @@
 //! fields that affect rendering or spatial state and skipping fields that are
 //! computed or overwritten by Bevy at runtime.
 use bevy::{
+    camera::visibility::RenderLayers,
     light::{NotShadowCaster, NotShadowReceiver, cascade::CascadeShadowConfig},
     prelude::*,
 };
@@ -69,6 +70,25 @@ impl_fast_serialize!(
 
     }
 );
+
+//
+
+impl FastWrite for RenderLayers {
+    #[inline(always)]
+    unsafe fn write_fast(&self, w: &mut impl crate::serialize::fast_io::ByteSink) {
+        // only support 1 layer for now
+        let x = self.iter().next();
+        unsafe { x.write_fast(w) }
+    }
+}
+impl FastRead for RenderLayers {
+    type Ret = RenderLayers;
+    #[inline(always)]
+    unsafe fn read_fast<'b, S: crate::serialize::fast_io::ByteSource<'b>>(r: &mut S) -> Self {
+        let x = unsafe { Option::<usize>::read_fast(r) };
+        Self::from_layers(x.as_slice())
+    }
+}
 
 // =============================================================================
 

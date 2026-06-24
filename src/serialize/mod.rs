@@ -31,6 +31,7 @@ pub(crate) mod material;
 pub(crate) mod math;
 pub(crate) mod mesh;
 mod resources;
+mod text;
 pub(crate) mod transcript_reader;
 pub(crate) mod transcript_writer;
 

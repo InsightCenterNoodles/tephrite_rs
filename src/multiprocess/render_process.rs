@@ -2,6 +2,7 @@ use std::num::NonZeroU32;
 
 use bevy::{
     app::TaskPoolThreadAssignmentPolicy,
+    camera::visibility::RenderLayers,
     core_pipeline::{Skybox, oit::OrderIndependentTransparencySettings, tonemapping::Tonemapping},
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     log::{Level, LogPlugin},
@@ -187,6 +188,11 @@ fn setup(mut commands: Commands) {
 
     let id = commands
         .spawn((
+            Camera {
+                is_active: true,
+                order: 0,
+                ..Default::default()
+            },
             Camera3d::default(),
             Msaa::Off,
             Tonemapping::AcesFitted,
@@ -212,6 +218,23 @@ fn setup(mut commands: Commands) {
             )),
         );
     }
+
+    // spawn 2d text camera
+
+    // WE MUST have the same camera settings. Different settings means different rendertarget request, thus black screen.
+
+    commands.spawn((
+        Camera {
+            is_active: true,
+            order: 1,
+            clear_color: ClearColorConfig::None,
+            ..Default::default()
+        },
+        Camera2d,
+        Msaa::Off,
+        Hdr,
+        RenderLayers::layer(1),
+    ));
 }
 
 fn env_change_watch(

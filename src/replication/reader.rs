@@ -55,6 +55,7 @@ fn child_system(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut point_materials: ResMut<Assets<PointsMaterial>>,
     mut images: ResMut<Assets<Image>>,
+    mut fonts: ResMut<Assets<Font>>,
     mut exit_event: MessageWriter<AppExit>,
 ) {
     // wait for transcript to be finished
@@ -67,6 +68,7 @@ fn child_system(
             &mut materials,
             &mut point_materials,
             &mut images,
+            &mut fonts,
         );
     });
 
@@ -85,6 +87,7 @@ fn consume_buffer(
     materials: &mut Assets<StandardMaterial>,
     point_materials: &mut Assets<PointsMaterial>,
     images: &mut Assets<Image>,
+    fonts: &mut Assets<Font>,
 ) {
     use crate::serialize::*;
     let mut bytes = ByteReader::new(bytes);
@@ -136,6 +139,7 @@ fn consume_buffer(
                         PointsMaterial::set_mapping(x.id, x.data, point_materials);
                     }
                     AssetEnum::Image(x) => Image::set_mapping(x.id, x.data, images),
+                    AssetEnum::Font(x) => Font::set_mapping(x.id, x.data, fonts),
                 }
             }
             ClientInstruction::CDropAsset(drop_asset) => {
@@ -150,6 +154,7 @@ fn consume_buffer(
                         PointsMaterial::clear_mapping(id, point_materials);
                     }
                     ReplicatedAssetID::Image(id) => Image::clear_mapping(id, images),
+                    ReplicatedAssetID::Font(id) => Font::clear_mapping(id, fonts),
                 };
             }
             ClientInstruction::HChange(item) => {

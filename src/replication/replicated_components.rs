@@ -162,6 +162,7 @@ macro_rules! detect_component_changes {
 
 type StandardMatComponent = MeshMaterial3d<StandardMaterial>;
 type PointsMatComponent = MeshMaterial3d<PointsMaterial>;
+type RLayers = bevy::camera::visibility::RenderLayers;
 
 detect_component_changes!(
     (0, Head),
@@ -176,5 +177,10 @@ detect_component_changes!(
     (9, InheritedVisibility),
     (10, NotShadowCaster),
     (11, NotShadowReceiver),
-    (12, CascadeShadowConfig)
+    (12, CascadeShadowConfig),
+    (13, TextColor),
+    (14, TextFont),
+    (15, TextLayout),
+    (16, TextSpan),
+    (17, RLayers)
 );

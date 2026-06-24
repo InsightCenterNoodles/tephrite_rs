@@ -4,6 +4,7 @@ use bevy::{
     image::{CompressedImageFormatSupport, CompressedImageFormats},
     log::LogPlugin,
     prelude::*,
+    sprite_render::ColorMaterialPlugin,
     time::TimePlugin,
 };
 
@@ -39,8 +40,10 @@ pub(crate) fn make_common_app() -> App {
         bevy::mesh::MeshPlugin,
         bevy::image::ImagePlugin::default(),
         bevy::pbr::MaterialPlugin::<StandardMaterial>::default(),
+        ColorMaterialPlugin::default(), // we dont use this directly, other things might
         bevy::gltf::GltfPlugin::default(),
         bevy::render::texture::TexturePlugin, // without this, AssetServer does not work.
+        bevy::text::TextPlugin,
     ));
 
     app.world_mut()
