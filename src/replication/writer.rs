@@ -1,7 +1,9 @@
 use crate::replication::components::IsReplicated;
+use crate::replication::replicated_components::ReplicatedComponentRef;
 use crate::replication::replicated_resources::setup_replicated_resource_systems;
 use crate::serialize::transcript_writer::*;
 use crate::serialize::*;
+use bevy::ecs::entity::EntityHashSet;
 use bevy::prelude::*;
 
 use super::instruction::*;
@@ -47,6 +49,7 @@ impl Plugin for ReplicationWriterPlugin {
             Last,
             (
                 EntityStartDeltaPhase, // slight changes here otherwise events get lost?
+                EntityPromotionPhase,
                 AssetDeltaPhase::Priority0,
                 AssetDeltaPhase::Priority1,
                 AssetDeltaPhase::Priority2,
@@ -66,6 +69,11 @@ impl Plugin for ReplicationWriterPlugin {
         app.add_systems(Startup, setup_shmem);
 
         app.add_systems(Update, watch_for_exit);
+
+        app.add_systems(
+            Last,
+            hierarchy_parent_promotion_listener.in_set(EntityPromotionPhase),
+        );
 
         app.add_systems(
             Last,
@@ -104,6 +112,25 @@ pub(crate) fn tracker_listener_add<C: Component>(
     //commands.insert_batch(query.iter().map(|x| (x, IsReplicated)));
 }
 
+pub(crate) fn tracker_listener_snapshot<C: Component>(
+    query: Query<(Entity, &C), Added<IsReplicated>>,
+    mut transcript: NonSendMut<TranscriptWriteStateResource>,
+) where
+    for<'a> ReplicatedComponentRef<'a>: From<&'a C>,
+{
+    let dest: &mut TranscriptWriteStateResource = &mut transcript;
+
+    for (e, component) in query {
+        unsafe {
+            ServerInstruction::CAdd(ServerComponentAdded {
+                entity: e,
+                component: component.into(),
+            })
+            .write_fast(dest)
+        };
+    }
+}
+
 fn tracker_listener_remove(
     mut h_event: RemovedComponents<IsReplicated>,
     mut transcript: NonSendMut<TranscriptWriteStateResource>,
@@ -115,14 +142,51 @@ fn tracker_listener_remove(
     }
 }
 
+fn hierarchy_parent_promotion_listener(
+    h_event: Query<
+        &ChildOf,
+        (
+            With<IsReplicated>,
+            Or<(Changed<ChildOf>, Added<IsReplicated>)>,
+        ),
+    >,
+    parents: Query<&ChildOf>,
+    replicated: Query<(), With<IsReplicated>>,
+    mut commands: Commands,
+    mut transcript: NonSendMut<TranscriptWriteStateResource>,
+) {
+    let mut promoted = EntityHashSet::default();
+    let dest: &mut TranscriptWriteStateResource = &mut transcript;
+
+    for parent in h_event.iter().map(|parent| parent.0) {
+        let mut current = Some(parent);
+
+        while let Some(entity) = current {
+            if !replicated.contains(entity) && promoted.insert(entity) {
+                unsafe { ServerInstruction::EAdd(entity).write_fast(dest) };
+                commands.entity(entity).insert(IsReplicated);
+            }
+
+            current = parents.get(entity).ok().map(|parent| parent.0);
+        }
+    }
+}
+
 /// Watch for changes to parent-child relationships and write them to the
 /// transcript
 fn hierarchy_change_listener(
-    h_event: Query<(Entity, &ChildOf), Changed<ChildOf>>,
+    h_event: Query<
+        (Entity, &ChildOf),
+        (
+            With<IsReplicated>,
+            Or<(Changed<ChildOf>, Added<IsReplicated>)>,
+        ),
+    >,
+    replicated: Query<(), With<IsReplicated>>,
     mut transcript: NonSendMut<TranscriptWriteStateResource>,
 ) {
     for (child, parent) in h_event.iter() {
-        let new_parent = Some(parent.0);
+        let new_parent = replicated.get(parent.0).ok().map(|_| parent.0);
 
         let dest: &mut TranscriptWriteStateResource = &mut transcript;
         unsafe {
@@ -133,9 +197,14 @@ fn hierarchy_change_listener(
 
 fn hierarchy_remove_listener(
     mut h_event: RemovedComponents<ChildOf>,
+    replicated: Query<(), With<IsReplicated>>,
     mut transcript: NonSendMut<TranscriptWriteStateResource>,
 ) {
     for child in h_event.read() {
+        if !replicated.contains(child) {
+            continue;
+        }
+
         let dest: &mut TranscriptWriteStateResource = &mut transcript;
         unsafe {
             ServerInstruction::HChange(HierarchyChange {

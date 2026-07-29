@@ -19,6 +19,10 @@ pub enum AssetDeltaPhase {
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct EntityStartDeltaPhase;
 
+/// The system set that promotes hierarchy ancestors into replication.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct EntityPromotionPhase;
+
 /// The system set that all component replication efforts belong to
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct EntityEndDeltaPhase;
