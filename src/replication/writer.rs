@@ -164,7 +164,8 @@ fn write_hierarchy_changes(
         write_hierarchy_for_entity(world, dest, tracked, entity);
     }
 
-    let mut query = world.query_filtered::<(Entity, &ChildOf), (Changed<ChildOf>, With<IsReplicated>)>();
+    let mut query =
+        world.query_filtered::<(Entity, &ChildOf), (Changed<ChildOf>, With<IsReplicated>)>();
     let mut changed = Vec::new();
     for (entity, child_of) in query.iter(world) {
         if !newly_tracked.contains(&entity) {
@@ -175,8 +176,11 @@ fn write_hierarchy_changes(
     for (entity, parent) in changed {
         let new_parent = tracked.contains(&parent).then_some(parent);
         unsafe {
-            ServerInstruction::HChange(HierarchyChange { new_parent, child: entity })
-                .write_fast(dest);
+            ServerInstruction::HChange(HierarchyChange {
+                new_parent,
+                child: entity,
+            })
+            .write_fast(dest);
         }
     }
 

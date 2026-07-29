@@ -482,6 +482,7 @@ mod tests {
     use crate::remote_control::property::PropertyControl;
     use std::io::{Read, Write};
     use std::net::{SocketAddr, TcpListener};
+    use std::time::{Duration, Instant};
 
     #[derive(Component, Debug, Clone, Copy)]
     struct AppliedFloat(f32);
@@ -522,16 +523,62 @@ mod tests {
     }
 
     fn send_request(app: &mut App, request: &str) -> String {
-        let mut client = TcpStream::connect(server_addr(app)).expect("connect");
+        send_request_to_addr(app, server_addr(app), request)
+    }
+
+    fn send_request_to_addr(app: &mut App, addr: SocketAddr, request: &str) -> String {
+        let mut client = TcpStream::connect(addr).expect("connect");
+        client
+            .set_read_timeout(Some(Duration::from_millis(50)))
+            .expect("set read timeout");
         client.write_all(request.as_bytes()).expect("write request");
         client.shutdown(Shutdown::Write).expect("shutdown write");
-        app.update();
 
         let mut response = String::new();
-        client
-            .read_to_string(&mut response)
-            .expect("read response body");
-        response
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while Instant::now() < deadline {
+            app.update();
+
+            match client.read_to_string(&mut response) {
+                Ok(_) => return response,
+                Err(err)
+                    if matches!(
+                        err.kind(),
+                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                    ) =>
+                {
+                    continue;
+                }
+                Err(err) => panic!("read response body: {err}"),
+            }
+        }
+
+        panic!("timed out waiting for remote-control response; partial response: {response:?}");
+    }
+
+    fn app_with_bound_server(definitions: Vec<PropertyDefinition>) -> Option<(App, SocketAddr)> {
+        let listener = TcpListener::bind("127.0.0.1:0").ok()?;
+        listener.set_nonblocking(true).ok()?;
+        let addr = listener.local_addr().ok()?;
+
+        let mut properties = definitions;
+        properties.sort_by_key(|x| x.id);
+
+        let rendered_controls = content::render_controls(&properties);
+        let index_page = content::render_index_page(&rendered_controls);
+        let property_lookup = build_property_lookup(&properties);
+
+        let mut app = App::new();
+        app.init_resource::<RemoteControlDefinitions>();
+        app.add_systems(Update, server_poll);
+        app.add_observer(bounce);
+        app.insert_resource(RemoteControlServer {
+            server: listener,
+            index_page,
+            property_lookup,
+        });
+
+        Some((app, addr))
     }
 
     fn with_stream_pair(f: impl FnOnce(&mut TcpStream, &mut TcpStream)) {
@@ -817,21 +864,29 @@ mod tests {
             },
         };
 
-        let mut app = app_with_server(Some(vec![property]));
+        let Some((mut app, addr)) = app_with_bound_server(vec![property]) else {
+            eprintln!("skipping server status-code test: loopback bind is unavailable");
+            return;
+        };
 
-        let root = send_request(&mut app, &make_request("GET", "/", ""));
+        let root = send_request_to_addr(&mut app, addr, &make_request("GET", "/", ""));
         assert!(root.starts_with("HTTP/1.1 200 OK"));
 
-        let missing = send_request(&mut app, &make_request("POST", EVENT_PATH, "value=1.0"));
+        let missing = send_request_to_addr(
+            &mut app,
+            addr,
+            &make_request("POST", EVENT_PATH, "value=1.0"),
+        );
         assert!(missing.starts_with("HTTP/1.1 400 Bad Request"));
 
-        let unknown = send_request(
+        let unknown = send_request_to_addr(
             &mut app,
+            addr,
             &make_request("POST", EVENT_PATH, "id=99999&value=1.0"),
         );
         assert!(unknown.starts_with("HTTP/1.1 404 Not Found"));
 
-        let bad_path = send_request(&mut app, &make_request("GET", "/nope", ""));
+        let bad_path = send_request_to_addr(&mut app, addr, &make_request("GET", "/nope", ""));
         assert!(bad_path.starts_with("HTTP/1.1 404 Not Found"));
     }
 

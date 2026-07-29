@@ -104,7 +104,10 @@ fn consume_buffer(
         match instruction {
             ClientInstruction::CAdd(item) => {
                 let Some(local) = map.map_opt(item.entity) else {
-                    warn!("Skipping component update for unmapped entity {:?}", item.entity);
+                    warn!(
+                        "Skipping component update for unmapped entity {:?}",
+                        item.entity
+                    );
                     continue;
                 };
 

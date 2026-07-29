@@ -110,7 +110,10 @@ macro_rules! generate_asset_systems {
 
 #[derive(Resource)]
 struct CachedAssetReader<A: Asset> {
-    state: SystemState<(MessageReader<'static, 'static, AssetEvent<A>>, Res<'static, Assets<A>>)>,
+    state: SystemState<(
+        MessageReader<'static, 'static, AssetEvent<A>>,
+        Res<'static, Assets<A>>,
+    )>,
 }
 
 fn init_asset_reader<A: Asset>(world: &mut World) {
