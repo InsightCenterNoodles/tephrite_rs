@@ -14,7 +14,7 @@ Tephrite is built off of [bevy]("bevyengine.org"). You can build your app as usu
 
 1. Use a supported version of Bevy in your Cargo.toml: 
 ```toml 
-bevy = "0.18.1"
+bevy = "0.19.0"
 ```
 2. Ensure that you are patching Bevy:
 ```toml
@@ -45,8 +45,10 @@ impl Plugin for MyPlugin {
     }
 }
 
+impl TephriteApp for MyPlugin {}
+
 fn setup(mut commands: Commands) {
-    commands.spawn((DirectionalLight::default(), Transform::default(), Replicated));
+    commands.spawn((DirectionalLight::default(), Transform::default()));
 }
 
 fn main() {
@@ -68,14 +70,11 @@ fn main() {
 
 ### Replication basics
 
-Replication is opt-in: mark what should appear in the render process.
-
-- `Replicated`: tag an entity to replicate it
-- `PropagateReplication`: propagate replication through hierarchy (parent/children)
+Replication is automatic for entities with supported render-side components. Parent
+entities are automatically tracked to the root so transform hierarchy is preserved.
 
 The prelude exports the most commonly used pieces:
 - `tephrite_rs::prelude::run`
-- `Replicated`, `PropagateReplication`
 - input utilities (navigator + interactors)
 - `Head`, `EnvironmentLighting`
 
@@ -169,7 +168,7 @@ fullscreen = false
 
 VRPN is optional:
 
-- If `[vrpn].head` is set, Teprite spawns a replicated `Head` entity and updates its transform from VRPN.
+- If `[vrpn].head` is set, Teprite spawns a `Head` entity and updates its transform from VRPN.
 - If `[vrpn].joystick` is set, Teprite spawns an `Interactor` entity and emits button/axis messages from VRPN input.
 
 ## Examples

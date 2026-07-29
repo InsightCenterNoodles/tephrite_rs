@@ -35,7 +35,6 @@
 //         Mesh3d(meshes.add(Circle::new(3.5))),
 //         MeshMaterial3d(materials.add(Color::srgb(0.12, 0.12, 0.14))),
 //         Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
-//         Replicated,
 //     ));
 
 //     commands.spawn((
@@ -45,7 +44,6 @@
 //             ..Default::default()
 //         },
 //         Transform::from_xyz(2.0, 4.0, 2.0).looking_at(Vec3::ZERO, Vec3::Y),
-//         Replicated,
 //     ));
 
 //     commands.spawn((
@@ -63,8 +61,6 @@
 //     for interactor in interactors {
 //         commands.entity(interactor).insert((
 //             DemoInteractorReady,
-//             Replicated,
-//             PropagateReplication::default(),
 //             Name::new("DemoInteractor"),
 //         ));
 

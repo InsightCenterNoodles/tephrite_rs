@@ -1,80 +1,11 @@
-use crate::prelude::PointsMaterial;
-use crate::replication::instruction::*;
-use crate::replication::sets::*;
-use crate::serialize::transcript_writer::TranscriptWriteStateResource;
-use crate::serialize::*;
+use bevy::ecs::system::SystemState;
 use bevy::prelude::*;
 
+use crate::prelude::PointsMaterial;
+use crate::replication::instruction::*;
 use crate::serialize::create_serialize_enum;
-
-macro_rules! make_change_detection {
-    ($app:ident, $A:tt, $P:expr) => {
-        $app.add_systems(
-            Last,
-            (|mut ev_asset: MessageReader<AssetEvent<$A>>,
-              assets: Res<Assets<$A>>,
-              mut writer: NonSendMut<TranscriptWriteStateResource>| {
-                //println!("Checking for deltas to {}", stringify!($A));
-                for e in ev_asset.read() {
-                    // debug!("EVENT {e:?}");
-                    match e {
-                        AssetEvent::Added { id } => {
-                            let dest: &mut TranscriptWriteStateResource = &mut writer;
-
-                            if let Some(asset) = assets.get(*id) {
-                                //warn!("SEND ASSET {id:?}");
-                                unsafe {
-                                    ServerInstruction::CAsset(ServerReplicateAsset {
-                                        asset: AssetEnumRef::convert(*id, asset),
-                                    })
-                                    .write_fast(dest);
-                                }
-                            }
-                        }
-                        AssetEvent::Modified { id } => {
-                            //warn!("MODIFY ASSET {id:?}");
-                            let asset = assets.get(*id).expect("obtaining changed asset");
-
-                            let dest: &mut TranscriptWriteStateResource = &mut writer;
-
-                            unsafe {
-                                ServerInstruction::CAsset(ServerReplicateAsset {
-                                    asset: AssetEnumRef::convert(*id, asset),
-                                })
-                                .write_fast(dest);
-                            }
-                        }
-                        AssetEvent::Removed { id } => {
-                            //warn!("DESTROY ASSET {id:?}");
-                            let dest: &mut TranscriptWriteStateResource = &mut writer;
-                            unsafe {
-                                ServerInstruction::CDropAsset(DropAsset { id: (*id).into() })
-                                    .write_fast(dest);
-                            }
-                        }
-                        AssetEvent::Unused { id: _ } => {
-                            // handled
-                        }
-                        AssetEvent::LoadedWithDependencies { id: _ } => {
-                            //warn!("COMPLETE ASSET {id:?}");
-                            // let asset = assets.get(*id).expect("obtaining changed asset");
-
-                            // let dest: &mut TranscriptWriteStateResource = &mut writer;
-
-                            // unsafe {
-                            //     ServerInstruction::CAsset(ServerReplicateAsset {
-                            //         asset: AssetEnumRef::convert(*id, asset),
-                            //     })
-                            //     .write_fast(dest);
-                            // }
-                        }
-                    }
-                }
-            })
-            .in_set($P),
-        );
-    };
-}
+use crate::serialize::transcript_writer::TranscriptWriteStateResource;
+use crate::serialize::*;
 
 #[derive(Debug)]
 pub(crate) struct ReplicatedAsset<T: Asset> {
@@ -122,10 +53,7 @@ pub(crate) trait ConvertAsset<'a, T: Asset> {
 }
 
 macro_rules! generate_asset_systems {
-    (
-        $( ( $id:expr, $T:tt, $P:expr ) ),* $(,)?
-    ) => {
-
+    ($( ( $id:expr, $T:tt, $P:expr ) ),* $(,)?) => {
         create_serialize_enum!(
             ReplicatedAssetID,
             u8,
@@ -134,15 +62,13 @@ macro_rules! generate_asset_systems {
             }
         );
 
-         $(
+        $(
             impl From<AssetId<$T>> for ReplicatedAssetID {
                 fn from(v: AssetId<$T>) -> Self {
                     Self::$T(v)
                 }
             }
         )*
-
-        // Replicated asset
 
         create_serialize_enum!(
             AssetEnum,
@@ -164,47 +90,76 @@ macro_rules! generate_asset_systems {
         $(
             impl<'a> ConvertAsset<'a, $T> for AssetEnumRef<'a> {
                 fn convert(id: AssetId<$T>, t: &'a $T) -> Self {
-                    AssetEnumRef::$T(ReplicatedAssetRef {
-                        id,
-                        data: t,
-                    })
+                    AssetEnumRef::$T(ReplicatedAssetRef { id, data: t })
                 }
             }
         )*
 
-        // impl ReplicatedAssetID {
-        //     pub fn remove_asset(self, e: Entity, commands: &mut Commands) {
-        //         match self {
-        //             $(
-        //                 ReplicatedComponentID::$T => commands.entity(e).remove::<$T>(),
-        //             )*
-        //         };
-        //     }
-        // }
-
-        // impl AssetEnum {
-        //     pub fn add_component(self, e: Entity, commands: &mut Commands) {
-        //         match self {
-        //             $(
-        //                 ReplicatedComponent::$T(x) => commands.entity(e).insert(x),
-        //             )*
-        //         };
-        //     }
-        // }
-
-        pub(crate) fn setup_replicated_asset_systems(app: &mut App) {
-            $(
-                make_change_detection!(app, $T, $P);
-            )*
+        pub(crate) fn init_replicated_asset_readers(world: &mut World) {
+            $( init_asset_reader::<$T>(world); )*
         }
 
+        pub(crate) fn write_changed_assets(
+            world: &mut World,
+            dest: &mut TranscriptWriteStateResource,
+        ) {
+            $( write_asset_changes::<$T>(world, dest); )*
+        }
     };
 }
 
+#[derive(Resource)]
+struct CachedAssetReader<A: Asset> {
+    state: SystemState<(MessageReader<'static, 'static, AssetEvent<A>>, Res<'static, Assets<A>>)>,
+}
+
+fn init_asset_reader<A: Asset>(world: &mut World) {
+    if !world.contains_resource::<CachedAssetReader<A>>() {
+        let state = SystemState::new(world);
+        world.insert_resource(CachedAssetReader::<A> { state });
+    }
+}
+
+fn write_asset_changes<A>(world: &mut World, dest: &mut TranscriptWriteStateResource)
+where
+    A: Asset + FastWrite,
+    for<'a> AssetEnumRef<'a>: ConvertAsset<'a, A>,
+    ReplicatedAssetID: From<AssetId<A>>,
+{
+    init_asset_reader::<A>(world);
+
+    world.resource_scope(|world, mut cached: Mut<CachedAssetReader<A>>| {
+        let Ok((mut events, assets)) = cached.state.get_mut(world) else {
+            return;
+        };
+
+        for event in events.read() {
+            match event {
+                AssetEvent::Added { id } | AssetEvent::Modified { id } => {
+                    if let Some(asset) = assets.get(*id) {
+                        unsafe {
+                            ServerInstruction::CAsset(ServerReplicateAsset {
+                                asset: AssetEnumRef::convert(*id, asset),
+                            })
+                            .write_fast(dest);
+                        }
+                    }
+                }
+                AssetEvent::Removed { id } => unsafe {
+                    ServerInstruction::CDropAsset(DropAsset { id: (*id).into() }).write_fast(dest);
+                },
+                AssetEvent::Unused { id: _ } | AssetEvent::LoadedWithDependencies { id: _ } => {}
+            }
+        }
+
+        cached.state.apply(world);
+    });
+}
+
 generate_asset_systems!(
-    (0, Mesh, AssetDeltaPhase::Priority2),
-    (1, StandardMaterial, AssetDeltaPhase::Priority2),
-    (2, PointsMaterial, AssetDeltaPhase::Priority2),
-    (3, Font, AssetDeltaPhase::Priority2),
-    (4, Image, AssetDeltaPhase::Priority1)
+    (0, Mesh, ()),
+    (1, StandardMaterial, ()),
+    (2, PointsMaterial, ()),
+    (3, Font, ()),
+    (4, Image, ()),
 );

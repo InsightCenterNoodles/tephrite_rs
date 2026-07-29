@@ -47,3 +47,7 @@ harness = false
 [[bench]]
 name = "asset_serialization"
 harness = false
+
+[[bench]]
+name = "replication_serialization"
+harness = false

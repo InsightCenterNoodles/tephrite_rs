@@ -1,84 +1,48 @@
-use super::instruction::*;
-use super::sets::*;
+use bevy::ecs::{entity::EntityHashSet, system::SystemState};
 use bevy::light::cascade::CascadeShadowConfig;
 use bevy::light::{NotShadowCaster, NotShadowReceiver};
 use bevy::prelude::*;
 
+use super::instruction::*;
 use crate::common::Head;
-
 use crate::prelude::PointsMaterial;
-use crate::serialize::transcript_writer::*;
+use crate::replication::components::IsReplicated;
+use crate::serialize::transcript_writer::TranscriptWriteStateResource;
 use crate::serialize::*;
 
-/// Builds systems to detect component changes
-macro_rules! detect_component_changes_impl {
-    ($app:expr) => {};
-
-    ($app:expr, $T:ty, $( $rest:ty ),+ ) => {
-        detect_component_changes_impl!($app, $T);
-        detect_component_changes_impl!($app, $($rest),*);
+macro_rules! component_helpers {
+    (collect, $world:expr, $out:expr) => {};
+    (collect, $world:expr, $out:expr, $T:ty $(, $rest:ty)* $(,)?) => {
+        collect_entities_with_component::<$T>($world, $out);
+        component_helpers!(collect, $world, $out $(, $rest)*);
     };
 
-    ($app:expr, $T:tt) => {
-        $app.add_systems(Last,
-            (| query: Query<(Entity, & $T), Changed<$T>>, mut writer: NonSendMut<TranscriptWriteStateResource>| {
-                for (e, component) in query.iter() {
-                    // println!("CHANGED {e:?} {component:?}");
-                    let dest: &mut TranscriptWriteStateResource = &mut writer;
-                    let component: & $T = component;
+    (baseline, $world:expr, $dest:expr, $entity:expr) => {};
+    (baseline, $world:expr, $dest:expr, $entity:expr, $T:ty $(, $rest:ty)* $(,)?) => {
+        write_component_baseline::<$T>($world, $dest, $entity);
+        component_helpers!(baseline, $world, $dest, $entity $(, $rest)*);
+    };
 
-                    unsafe {
-                            ServerInstruction::CAdd(
-                            ServerComponentAdded {
-                                entity: e,
-                                component: component.into()
-                            }
-                        ).write_fast(dest);
-                    }
-                }
-        }).in_set(ComponentDeltaPhase));
+    (changes, $world:expr, $dest:expr, $newly_tracked:expr) => {};
+    (changes, $world:expr, $dest:expr, $newly_tracked:expr, $T:ty $(, $rest:ty)* $(,)?) => {
+        write_component_changes::<$T>($world, $dest, $newly_tracked);
+        component_helpers!(changes, $world, $dest, $newly_tracked $(, $rest)*);
+    };
 
-        $app.add_systems(Last,
-            (|
-                mut removal: RemovedComponents<$T>,
-                mut writer: NonSendMut<TranscriptWriteStateResource>,
-                query: Query<Entity>,
-            | {
-                for e in removal.read() {
-                    let Ok(repli_ent) = query.get(e) else {
-                        continue;
-                    };
-
-                    {
-                        //println!("REMOVED {repli_ent:?} {}", stringify!($T));
-                        let dest: &mut TranscriptWriteStateResource = &mut writer;
-
-                        unsafe {
-                            ServerInstruction::CRemove(
-                                ServerComponentRemoved{ entity: repli_ent, component: <$T>::IDENTIFIER }
-                            ).write_fast(dest);
-                        }
-                    }
-
-                    //writer.add(Instruction::Removed(repli_ent.0, <$T>::IDENTIFIER))
-                }
-            }).in_set(ComponentDeltaPhase)
-        );
+    (removals, $world:expr, $dest:expr, $tracked:expr) => {};
+    (removals, $world:expr, $dest:expr, $tracked:expr, $T:ty $(, $rest:ty)* $(,)?) => {
+        write_component_removals::<$T>($world, $dest, $tracked);
+        component_helpers!(removals, $world, $dest, $tracked $(, $rest)*);
     };
 }
 
-/// Builds a lot of replecation machinery for components
 macro_rules! make_actual_enum {
-    // Match on a repeating pattern of (ident: type)
-    ($( $tag:expr, $T:tt ),* $(,)? ) => {
-
+    ($( $tag:expr, $T:tt ),* $(,)?) => {
         create_serialize_enum_simple!(
             ReplicatedComponentID,
             u8,
             {
-                $(
-                    ($tag, $T),
-                )*
+                $( ($tag, $T), )*
             }
         );
 
@@ -86,9 +50,7 @@ macro_rules! make_actual_enum {
             ReplicatedComponent,
             u8,
             {
-                $(
-                    ($tag, $T, $T),
-                )*
+                $( ($tag, $T, $T), )*
             }
         );
 
@@ -97,9 +59,7 @@ macro_rules! make_actual_enum {
             u8,
             lifetime: 'b,
             {
-                $(
-                    ($tag, $T, &'b $T),
-                )*
+                $( ($tag, $T, &'b $T), )*
             }
         );
 
@@ -112,15 +72,13 @@ macro_rules! make_actual_enum {
         )*
 
         trait IntoComponentID {
-            const IDENTIFIER : ReplicatedComponentID;
+            const IDENTIFIER: ReplicatedComponentID;
         }
 
         impl ReplicatedComponentID {
             pub fn remove_component(self, e: Entity, commands: &mut Commands) {
                 match self {
-                    $(
-                        ReplicatedComponentID::$T => commands.entity(e).remove::<$T>(),
-                    )*
+                    $( ReplicatedComponentID::$T => commands.entity(e).remove::<$T>(), )*
                 };
             }
         }
@@ -128,9 +86,7 @@ macro_rules! make_actual_enum {
         impl ReplicatedComponent {
             pub fn add_component(self, e: Entity, commands: &mut Commands) {
                 match self {
-                    $(
-                        ReplicatedComponent::$T(x) => commands.entity(e).insert(x),
-                    )*
+                    $( ReplicatedComponent::$T(x) => commands.entity(e).insert(x), )*
                 };
             }
         }
@@ -143,36 +99,128 @@ macro_rules! make_actual_enum {
     };
 }
 
-/// Macro to build machinery to detect changes to a list of components
 macro_rules! detect_component_changes {
-    ($( ($id:expr, $type:tt) ),* ) => {
-        make_actual_enum!(
+    ($( ($id:expr, $type:tt) ),* $(,)?) => {
+        make_actual_enum!( $( $id, $type ),* );
 
-            $(
-                $id, $type
-            ),*
+        pub(crate) fn collect_supported_component_entities(world: &mut World, out: &mut Vec<Entity>) {
+            component_helpers!(collect, world, out, $( $type ),*);
+        }
 
-        );
-        pub(crate) fn setup_replicated_systems(app: &mut App) {
-            detect_component_changes_impl!(app, $($type),*);
+        pub(crate) fn write_component_baselines(
+            world: &World,
+            dest: &mut TranscriptWriteStateResource,
+            entity: Entity,
+        ) {
+            component_helpers!(baseline, world, dest, entity, $( $type ),*);
+        }
 
-            $(
-                app.add_systems(
-                    Last,
-                    crate::replication::writer::tracker_listener_add::<$type>
-                        .in_set(EntityStartDeltaPhase),
-                );
+        pub(crate) fn write_changed_components(
+            world: &mut World,
+            dest: &mut TranscriptWriteStateResource,
+            newly_tracked: &EntityHashSet,
+        ) {
+            component_helpers!(changes, world, dest, newly_tracked, $( $type ),*);
+        }
 
-                app.add_systems(
-                    Last,
-                    crate::replication::writer::tracker_listener_snapshot::<$type>
-                        .in_set(ComponentDeltaPhase),
-                );
-            )*
-
-
+        pub(crate) fn write_removed_components(
+            world: &mut World,
+            dest: &mut TranscriptWriteStateResource,
+            tracked: &EntityHashSet,
+        ) {
+            component_helpers!(removals, world, dest, tracked, $( $type ),*);
         }
     }
+}
+
+#[derive(Resource)]
+struct CachedRemovedComponents<C: Component> {
+    state: SystemState<RemovedComponents<'static, 'static, C>>,
+}
+
+fn collect_entities_with_component<C: Component>(world: &mut World, out: &mut Vec<Entity>) {
+    let mut query = world.query_filtered::<Entity, With<C>>();
+    out.extend(query.iter(world));
+}
+
+fn write_component_baseline<C>(
+    world: &World,
+    dest: &mut TranscriptWriteStateResource,
+    entity: Entity,
+) where
+    C: Component + FastWrite,
+    for<'a> &'a C: Into<ReplicatedComponentRef<'a>>,
+{
+    let Some(component) = world.get::<C>(entity) else {
+        return;
+    };
+
+    unsafe {
+        ServerInstruction::CAdd(ServerComponentAdded {
+            entity,
+            component: component.into(),
+        })
+        .write_fast(dest);
+    }
+}
+
+fn write_component_changes<C>(
+    world: &mut World,
+    dest: &mut TranscriptWriteStateResource,
+    newly_tracked: &EntityHashSet,
+) where
+    C: Component + FastWrite,
+    for<'a> &'a C: Into<ReplicatedComponentRef<'a>>,
+{
+    let mut query = world.query_filtered::<(Entity, &C), (Changed<C>, With<IsReplicated>)>();
+    let mut items = Vec::new();
+
+    for (entity, component) in query.iter(world) {
+        if !newly_tracked.contains(&entity) {
+            items.push((entity, component));
+        }
+    }
+
+    for (entity, component) in items {
+        unsafe {
+            ServerInstruction::CAdd(ServerComponentAdded {
+                entity,
+                component: component.into(),
+            })
+            .write_fast(dest);
+        }
+    }
+}
+
+fn write_component_removals<C>(
+    world: &mut World,
+    dest: &mut TranscriptWriteStateResource,
+    tracked: &EntityHashSet,
+) where
+    C: Component + IntoComponentID,
+{
+    if !world.contains_resource::<CachedRemovedComponents<C>>() {
+        let state = SystemState::new(world);
+        world.insert_resource(CachedRemovedComponents::<C> { state });
+    }
+
+    world.resource_scope(|world, mut cached: Mut<CachedRemovedComponents<C>>| {
+        let Ok(mut removals) = cached.state.get_mut(world) else {
+            return;
+        };
+        for entity in removals.read() {
+            if tracked.contains(&entity) {
+                unsafe {
+                    ServerInstruction::CRemove(ServerComponentRemoved {
+                        entity,
+                        component: C::IDENTIFIER,
+                    })
+                    .write_fast(dest);
+                }
+            }
+        }
+        cached.state.apply(world);
+    });
 }
 
 type StandardMatComponent = MeshMaterial3d<StandardMaterial>;
@@ -197,5 +245,5 @@ detect_component_changes!(
     (14, TextFont),
     (15, TextLayout),
     (16, TextSpan),
-    (17, RLayers)
+    (17, RLayers),
 );

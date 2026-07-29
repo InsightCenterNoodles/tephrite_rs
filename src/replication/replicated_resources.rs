@@ -1,105 +1,31 @@
-use super::instruction::*;
-use super::sets::*;
+use bevy::ecs::system::SystemState;
+use bevy::light::DirectionalLightShadowMap;
 use bevy::prelude::*;
 
+use super::instruction::*;
 use crate::common::{
     DeferredRendering, EnvironmentLighting, OffAxisProjectionSettings,
     OrderIndependantTransparency, ScreenSpaceAmbientOcclusionSettings,
     ScreenSpaceReflectionsSettings,
 };
-use bevy::light::DirectionalLightShadowMap;
-
-use crate::serialize::transcript_writer::*;
+use crate::serialize::transcript_writer::TranscriptWriteStateResource;
 use crate::serialize::*;
 
-/// Builds systems to detect resource changes
-macro_rules! detect_resource_changes_impl {
-    ($app:expr) => {};
-
-    ($app:expr, $T:ty, $( $rest:ty ),+ ) => {
-        detect_resource_changes_impl!($app, $T);
-        detect_resource_changes_impl!($app, $($rest),*);
-    };
-
-    ($app:expr, $T:tt) => {
-        $app.add_systems(Last,
-            (
-                |
-                    query: Option<Res<$T>>,
-                    mut writer: NonSendMut<TranscriptWriteStateResource>
-                |
-                {
-                    let dest: &mut TranscriptWriteStateResource = &mut writer;
-                    let Some(resource) = &query else {
-                        return;
-                    };
-
-                    if !resource.is_changed() {
-                        return;
-                    }
-
-                    let resource : & $T = resource;
-
-                    unsafe {
-                        ServerInstruction::ResourceUpdate(
-                            ServerResourceUpdate {
-                                resource: resource.into()
-                            }
-                        ).write_fast(dest);
-                    }
-                }
-            ).in_set(ResourceSyncSet)
-        );
-
-        $app.add_systems(Last,
-            (
-                |
-                    query: Option<Res<$T>>,
-                    mut writer: NonSendMut<TranscriptWriteStateResource>,
-                    mut res_existed: Local<bool>,
-                |
-                {
-
-                    if query.is_some() {
-                        // the resource exists!
-                        *res_existed = true;
-
-                    } else if *res_existed {
-                        // the resource does not exist, but we remember it existed!
-                        // (it was removed)
-
-                        // forget about it!
-                        *res_existed = false;
-
-                        let dest: &mut TranscriptWriteStateResource = &mut writer;
-
-                        unsafe {
-                            ServerInstruction::ResourceDrop(
-                                ResourceDrop{ resource: <$T>::IDENTIFIER }
-                            ).write_fast(dest);
-                        }
-                    }
-
-
-                }
-            ).in_set(ResourceSyncSet)
-
-        );
+macro_rules! resource_helpers {
+    ($world:expr, $dest:expr) => {};
+    ($world:expr, $dest:expr, $T:ty $(, $rest:ty)* $(,)?) => {
+        write_resource_change::<$T>($world, $dest);
+        resource_helpers!($world, $dest $(, $rest)*);
     };
 }
 
-/// Builds a lot of replecation machinery for components
 macro_rules! make_actual_enum {
-    // Match on a repeating pattern of (ident: type)
-    ($( $tag:expr, $T:tt ),* $(,)? ) => {
-
+    ($( $tag:expr, $T:tt ),* $(,)?) => {
         create_serialize_enum_simple!(
             ReplicatedResourceID,
             u8,
             {
-                $(
-                    ($tag, $T),
-                )*
+                $( ($tag, $T), )*
             }
         );
 
@@ -107,9 +33,7 @@ macro_rules! make_actual_enum {
             ReplicatedResource,
             u8,
             {
-                $(
-                    ($tag, $T, $T),
-                )*
+                $( ($tag, $T, $T), )*
             }
         );
 
@@ -118,9 +42,7 @@ macro_rules! make_actual_enum {
             u8,
             lifetime: 'b,
             {
-                $(
-                    ($tag, $T, &'b $T),
-                )*
+                $( ($tag, $T, &'b $T), )*
             }
         );
 
@@ -133,15 +55,13 @@ macro_rules! make_actual_enum {
         )*
 
         trait IntoResourceID {
-            const IDENTIFIER : ReplicatedResourceID;
+            const IDENTIFIER: ReplicatedResourceID;
         }
 
         impl ReplicatedResourceID {
             pub fn remove_resource(self, commands: &mut Commands) {
                 match self {
-                    $(
-                        ReplicatedResourceID::$T => commands.remove_resource::<$T>(),
-                    )*
+                    $( ReplicatedResourceID::$T => commands.remove_resource::<$T>(), )*
                 };
             }
         }
@@ -149,9 +69,7 @@ macro_rules! make_actual_enum {
         impl ReplicatedResource {
             pub fn add_resource(self, commands: &mut Commands) {
                 match self {
-                    $(
-                        ReplicatedResource::$T(x) => commands.insert_resource(x),
-                    )*
+                    $( ReplicatedResource::$T(x) => commands.insert_resource(x), )*
                 };
             }
         }
@@ -164,20 +82,66 @@ macro_rules! make_actual_enum {
     };
 }
 
-/// Macro to build machinery to detect changes to a list of components
 macro_rules! detect_resource_changes {
-    ($( ($id:expr, $type:tt) ),* ) => {
-        make_actual_enum!(
+    ($( ($id:expr, $type:tt) ),* $(,)?) => {
+        make_actual_enum!( $( $id, $type ),* );
 
-            $(
-                $id, $type
-            ),*
-
-        );
-        pub(crate) fn setup_replicated_resource_systems(app: &mut App) {
-            detect_resource_changes_impl!(app, $($type),*);
+        pub(crate) fn write_changed_resources(
+            world: &mut World,
+            dest: &mut TranscriptWriteStateResource,
+        ) {
+            resource_helpers!(world, dest, $( $type ),*);
         }
     }
+}
+
+#[derive(Resource)]
+struct CachedResourceState<R: Resource> {
+    state: SystemState<Option<Res<'static, R>>>,
+    existed: bool,
+}
+
+fn write_resource_change<R>(world: &mut World, dest: &mut TranscriptWriteStateResource)
+where
+    R: Resource + FastWrite + IntoResourceID,
+    for<'a> &'a R: Into<ReplicatedResourceRef<'a>>,
+{
+    if !world.contains_resource::<CachedResourceState<R>>() {
+        let state = SystemState::new(world);
+        world.insert_resource(CachedResourceState::<R> {
+            state,
+            existed: false,
+        });
+    }
+
+    world.resource_scope(|world, mut cached: Mut<CachedResourceState<R>>| {
+        let resource = cached.state.get_mut(world);
+        match resource {
+            Ok(Some(resource)) => {
+                if resource.is_changed() {
+                    unsafe {
+                        ServerInstruction::ResourceUpdate(ServerResourceUpdate {
+                            resource: (&*resource).into(),
+                        })
+                        .write_fast(dest);
+                    }
+                }
+                cached.existed = true;
+            }
+            Ok(None) if cached.existed => {
+                cached.existed = false;
+                unsafe {
+                    ServerInstruction::ResourceDrop(ResourceDrop {
+                        resource: R::IDENTIFIER,
+                    })
+                    .write_fast(dest);
+                }
+            }
+            Ok(None) => {}
+            Err(_) => {}
+        }
+        cached.state.apply(world);
+    });
 }
 
 detect_resource_changes!(
@@ -187,5 +151,5 @@ detect_resource_changes!(
     (3, ScreenSpaceReflectionsSettings),
     (4, DeferredRendering),
     (5, DirectionalLightShadowMap),
-    (6, OffAxisProjectionSettings)
+    (6, OffAxisProjectionSettings),
 );

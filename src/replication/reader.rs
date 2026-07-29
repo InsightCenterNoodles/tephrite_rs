@@ -29,11 +29,12 @@ impl Plugin for ReplicationReaderPlugin {
 struct EntityMap(EntityHashMap<Entity>);
 
 impl EntityMap {
-    fn ensure(&mut self, foreign: Entity, commands: &mut Commands) -> Entity {
-        *(self
-            .0
-            .entry(foreign)
-            .or_insert_with(|| commands.spawn_empty().id()))
+    fn add(&mut self, foreign: Entity, commands: &mut Commands) -> Entity {
+        *(self.0.entry(foreign).or_insert_with(|| {
+            commands
+                .spawn((Transform::default(), InheritedVisibility::default()))
+                .id()
+        }))
     }
 
     fn map_opt(&self, foreign: Entity) -> Option<Entity> {
@@ -102,7 +103,10 @@ fn consume_buffer(
 
         match instruction {
             ClientInstruction::CAdd(item) => {
-                let local = map.ensure(item.entity, commands);
+                let Some(local) = map.map_opt(item.entity) else {
+                    warn!("Skipping component update for unmapped entity {:?}", item.entity);
+                    continue;
+                };
 
                 item.component.add_component(local, commands);
             }
@@ -148,7 +152,7 @@ fn consume_buffer(
                 };
             }
             ClientInstruction::EAdd(entity) => {
-                map.ensure(entity, commands);
+                map.add(entity, commands);
             }
             ClientInstruction::HChange(item) => {
                 // Remap foreign IDs to local before applying hierarchy changes
@@ -165,7 +169,6 @@ fn consume_buffer(
                                 "Skipping hierarchy parent {:?} for child {:?}: parent not mapped",
                                 parent, item.child
                             );
-                            commands.entity(child_local).remove::<ChildOf>();
                         }
                     }
                     None => {
@@ -182,5 +185,89 @@ fn consume_buffer(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bevy::ecs::world::CommandQueue;
+
+    use super::*;
+    use crate::serialize::*;
+
+    fn encode_frame(write: impl FnOnce(&mut ByteWriter<'_>)) -> Vec<u8> {
+        let mut bytes = vec![0; 4096];
+        let mut writer = ByteWriter::new(&mut bytes);
+        write(&mut writer);
+        let len = writer.position();
+        bytes.truncate(len);
+        bytes
+    }
+
+    fn consume_test_frame(bytes: &[u8], world: &mut World, map: &mut EntityMap) {
+        let mut queue = CommandQueue::default();
+        let mut commands = Commands::new(&mut queue, world);
+        let mut meshes = Assets::<Mesh>::default();
+        let mut materials = Assets::<StandardMaterial>::default();
+        let mut point_materials = Assets::<PointsMaterial>::default();
+        let mut images = Assets::<Image>::default();
+        let mut fonts = Assets::<Font>::default();
+
+        consume_buffer(
+            bytes,
+            map,
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            &mut point_materials,
+            &mut images,
+            &mut fonts,
+        );
+
+        queue.apply(world);
+    }
+
+    #[test]
+    fn component_update_without_entity_add_does_not_create_mapping() {
+        let remote = Entity::from_bits(100);
+        let transform = Transform::from_xyz(1.0, 2.0, 3.0);
+        let bytes = encode_frame(|writer| unsafe {
+            ServerInstruction::CAdd(ServerComponentAdded {
+                entity: remote,
+                component: (&transform).into(),
+            })
+            .write_fast(writer);
+            ServerInstruction::EFrame(EndFrame).write_fast(writer);
+        });
+
+        let mut world = World::new();
+        let mut map = EntityMap::default();
+        consume_test_frame(&bytes, &mut world, &mut map);
+
+        assert!(map.map_opt(remote).is_none());
+        let mut query = world.query::<&Transform>();
+        assert_eq!(query.iter(&world).count(), 0);
+    }
+
+    #[test]
+    fn entity_add_then_component_update_creates_mapped_entity() {
+        let remote = Entity::from_bits(101);
+        let transform = Transform::from_xyz(1.0, 2.0, 3.0);
+        let bytes = encode_frame(|writer| unsafe {
+            ServerInstruction::EAdd(remote).write_fast(writer);
+            ServerInstruction::CAdd(ServerComponentAdded {
+                entity: remote,
+                component: (&transform).into(),
+            })
+            .write_fast(writer);
+            ServerInstruction::EFrame(EndFrame).write_fast(writer);
+        });
+
+        let mut world = World::new();
+        let mut map = EntityMap::default();
+        consume_test_frame(&bytes, &mut world, &mut map);
+
+        let local = map.map_opt(remote).expect("entity should be mapped");
+        assert_eq!(world.entity(local).get::<Transform>(), Some(&transform));
     }
 }
