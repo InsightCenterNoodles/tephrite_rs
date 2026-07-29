@@ -15,6 +15,8 @@ impl Plugin for MyPlugin {
     }
 }
 
+impl tephrite_rs::TephriteApp for MyPlugin {}
+
 /// set up a simple 3D scene
 fn setup(
     mut commands: Commands,
@@ -27,7 +29,6 @@ fn setup(
         Mesh3d(meshes.add(Circle::new(4.0))),
         MeshMaterial3d(materials.add(Color::WHITE)),
         Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
-        Replicated,
     ));
 
     let points = vec![
@@ -60,17 +61,15 @@ fn setup(
             ..Default::default()
         })),
         Transform::from_xyz(0.2, 1.0, 0.0),
-        Replicated,
     ));
 
     // light
     commands.spawn((
         DirectionalLight {
-            shadows_enabled: true,
+            shadow_maps_enabled: true,
             ..default()
         },
         Transform::from_xyz(0.0, 5.0, 3.0).looking_at((0.0, 0.0, 0.0).into(), Dir3::Y),
-        Replicated,
     ));
 }
 

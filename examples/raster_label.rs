@@ -1,5 +1,4 @@
 use bevy::prelude::*;
-use tephrite_rs::prelude::*;
 use tephrite_rs::ui::prelude::*;
 
 struct MyPlugin;
@@ -10,6 +9,8 @@ impl Plugin for MyPlugin {
         app.add_plugins(BillboardPlugin);
     }
 }
+
+impl tephrite_rs::TephriteApp for MyPlugin {}
 
 /// set up a simple 3D scene
 fn setup(
@@ -23,7 +24,6 @@ fn setup(
         Mesh3d(meshes.add(Circle::new(4.0))),
         MeshMaterial3d(materials.add(Color::WHITE)),
         Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
-        Replicated,
     ));
 
     // label
@@ -38,7 +38,6 @@ fn setup(
             &mut meshes,
             &mut materials,
         )?,
-        Replicated,
         Transform::from_xyz(0.0, 1.0, 0.0),
         Billboard::FullGimbal,
     ));
@@ -46,11 +45,10 @@ fn setup(
     // light
     commands.spawn((
         DirectionalLight {
-            shadows_enabled: true,
+            shadow_maps_enabled: true,
             ..default()
         },
         Transform::from_xyz(0.0, 5.0, 3.0).looking_at((0.0, 0.0, 0.0).into(), Dir3::Y),
-        Replicated,
     ));
     // camera
     commands.spawn((

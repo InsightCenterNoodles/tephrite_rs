@@ -14,17 +14,18 @@ impl Plugin for MyPlugin {
     }
 }
 
+impl tephrite_rs::TephriteApp for MyPlugin {}
+
 fn setup(mut commands: Commands, server: Res<AssetServer>, mut known: ResMut<KnownScenes>) {
     // light
     commands.spawn((
         DirectionalLight {
             color: Color::srgb_u8(255, 224, 141),
-            shadows_enabled: true,
+            shadow_maps_enabled: true,
             illuminance: 5000.0,
             ..default()
         },
         Transform::from_xyz(4.0, 4.0, 3.0).looking_at((0.0, 0.0, 0.0).into(), Dir3::Y),
-        Replicated,
     ));
 
     commands.insert_resource(EnvironmentLighting {
@@ -34,9 +35,7 @@ fn setup(mut commands: Commands, server: Res<AssetServer>, mut known: ResMut<Kno
         skybox_color: Color::srgb(0.5, 0.5, 1.0).into(),
     });
 
-    let root = commands
-        .spawn((Transform::default(), Replicated, NavigatorMarker))
-        .id();
+    let root = commands.spawn((Transform::default(), NavigatorMarker)).id();
 
     let mut iter = std::env::args();
     while let Some(arg) = iter.next() {
@@ -55,9 +54,12 @@ fn setup(mut commands: Commands, server: Res<AssetServer>, mut known: ResMut<Kno
 
             let id = commands
                 .spawn((
-                    SceneRoot(server.load_override(GltfAssetLabel::Scene(0).from_asset(val))),
-                    Replicated,
-                    PropagateReplication::default(),
+                    WorldAssetRoot(
+                        server
+                            .load_builder()
+                            .override_unapproved()
+                            .load(GltfAssetLabel::Scene(0).from_asset(val)),
+                    ),
                     ChildOf(root),
                     vis,
                 ))

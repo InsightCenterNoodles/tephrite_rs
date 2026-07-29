@@ -9,7 +9,6 @@ use bevy::prelude::*;
 
 use crate::{
     input::{AxisMessage, ButtonMessage, InputButton, Interactor},
-    prelude::{PropagateReplication, Replicated},
     remote_control::{
         RemoteControlDefinitions,
         events::RemoteControlEvent,
@@ -41,7 +40,6 @@ fn setup_joystick(
     for (entity, name) in query {
         let mut ec = commands.entity(entity);
         ec.insert(JoyManaged);
-        ec.insert((Replicated, PropagateReplication::default()));
         ec.insert(RemoteControlTransform {
             position: true,
             rotation: true,

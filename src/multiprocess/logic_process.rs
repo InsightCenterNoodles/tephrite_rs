@@ -7,7 +7,6 @@ use crate::{
     config::{InteractorType, get_configuration},
     input::{Interactor, InteractorState},
     multiprocess::app::make_common_app,
-    prelude::Replicated,
     serialize::transcript_writer::TranscriptWriterResource,
     vrpn::VRPNObject,
 };
@@ -105,14 +104,13 @@ fn setup_tracked_head(mut commands: Commands) {
 
     if let Some(h) = config.vrpn.head.clone() {
         commands.spawn((
-            Replicated,
             Transform::default(),
             Head,
             VRPNObject(vec![h]),
             Name::new("Head"),
         ));
     } else {
-        commands.spawn((Replicated, Transform::default(), Head, Name::new("Head")));
+        commands.spawn((Transform::default(), Head, Name::new("Head")));
     }
 
     // TODO we should reconsider our config with a dedicated sim mode flag or something.

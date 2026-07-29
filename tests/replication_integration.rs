@@ -12,7 +12,6 @@ use bevy::prelude::*;
 use bevy::time::TimePlugin;
 
 use tephrite_rs::multiprocess::{generate_session_id, install_ids, install_session_id};
-use tephrite_rs::prelude::Replicated;
 
 // Build a minimal headless Bevy app that supports Assets<Mesh> and Assets<StandardMaterial>
 fn build_headless_app() -> App {
@@ -95,7 +94,6 @@ fn replicates_mesh_and_material() {
 
     // Spawn replicated entity
     app.world_mut().spawn((
-        Replicated,
         Mesh3d(mesh_handle.clone()),
         MeshMaterial3d::<StandardMaterial>(mat_handle.clone()),
         Transform::from_xyz(1.0, 2.0, 3.0),

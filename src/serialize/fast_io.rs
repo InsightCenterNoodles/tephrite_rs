@@ -14,6 +14,7 @@
 //! local multi-process usage where both ends share the same CPU endianness.
 use bytemuck::{Pod, Zeroable};
 use core::{fmt, mem, ptr};
+use half::f16;
 
 #[inline(always)]
 #[cold]
@@ -84,6 +85,10 @@ pub trait ByteSink {
     }
     #[inline(always)]
     fn put_i64(&mut self, v: i64) {
+        self.put_pod(&v)
+    }
+    #[inline(always)]
+    fn put_f16(&mut self, v: f16) {
         self.put_pod(&v)
     }
     #[inline(always)]
@@ -187,6 +192,10 @@ pub trait ByteSource<'a> {
     }
     #[inline(always)]
     fn get_i64(&mut self) -> i64 {
+        self.get_pod()
+    }
+    #[inline(always)]
+    fn get_f16(&mut self) -> f16 {
         self.get_pod()
     }
     #[inline(always)]

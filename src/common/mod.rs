@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use bevy::pbr::ScreenSpaceAmbientOcclusionQualityLevel;
 use bevy::prelude::*;
 
@@ -20,14 +22,16 @@ pub struct EnvironmentLighting {
 /// transparent objects and can eliminate flickering. Comes at a high memory cost.
 #[derive(Debug, Resource)]
 pub struct OrderIndependantTransparency {
-    pub layer_count: i32,
+    pub sorted_fragment_max_count: u32,
+    pub fragments_per_pixel_average: f32,
     pub alpha_threshold: f32,
 }
 
 impl Default for OrderIndependantTransparency {
     fn default() -> Self {
         Self {
-            layer_count: 8,
+            sorted_fragment_max_count: 8,
+            fragments_per_pixel_average: 4.0,
             alpha_threshold: 0.0,
         }
     }
@@ -78,12 +82,14 @@ impl Default for ScreenSpaceAmbientOcclusionSettings {
 /// Add this resource to enable screen space reflections on the render camera.
 /// This is a camera-attached Bevy component represented as a resource because Tephrite owns
 /// the replicated render camera.
-#[derive(Debug, Clone, Copy, PartialEq, Resource)]
+#[derive(Debug, Clone, PartialEq, Resource)]
 pub struct ScreenSpaceReflectionsSettings {
-    pub perceptual_roughness_threshold: f32,
+    pub min_perceptual_roughness: Range<f32>,
+    pub max_perceptual_roughness: Range<f32>,
     pub thickness: f32,
     pub linear_steps: u32,
     pub linear_march_exponent: f32,
+    pub edge_fadeout: Range<f32>,
     pub bisection_steps: u32,
     pub use_secant: bool,
 }
@@ -91,12 +97,14 @@ pub struct ScreenSpaceReflectionsSettings {
 impl Default for ScreenSpaceReflectionsSettings {
     fn default() -> Self {
         Self {
-            perceptual_roughness_threshold: 0.25,
-            thickness: 0.08,
-            linear_steps: 8,
-            linear_march_exponent: 1.0,
-            bisection_steps: 4,
+            min_perceptual_roughness: 0.08..0.12,
+            max_perceptual_roughness: 0.55..0.6,
+            linear_steps: 10,
+            bisection_steps: 5,
             use_secant: true,
+            thickness: 0.25,
+            linear_march_exponent: 1.0,
+            edge_fadeout: 0.0..0.0,
         }
     }
 }

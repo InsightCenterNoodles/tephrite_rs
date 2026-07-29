@@ -1,5 +1,4 @@
 use bevy::{light::CascadeShadowConfigBuilder, prelude::*};
-use tephrite_rs::prelude::*;
 
 struct MyPlugin;
 
@@ -8,6 +7,8 @@ impl Plugin for MyPlugin {
         app.add_systems(Startup, setup);
     }
 }
+
+impl tephrite_rs::TephriteApp for MyPlugin {}
 
 fn setup(
     mut commands: Commands,
@@ -18,18 +19,12 @@ fn setup(
         Mesh3d(meshes.add(Cuboid::new(2.0, 0.1, 2.0))),
         MeshMaterial3d(materials.add(Color::srgb_u8(220, 220, 220))),
         Transform::from_xyz(0.0, -0.05, 0.0),
-        Replicated,
     ));
 
     let cube_mesh = meshes.add(Cuboid::from_length(0.15));
     let cube_material = materials.add(Color::srgb_u8(80, 150, 240));
 
-    let grid_root = commands
-        .spawn((
-            Transform::from_xyz(0.0, 1.0, 0.0),
-            PropagateReplication::default(),
-        ))
-        .id();
+    let grid_root = commands.spawn((Transform::from_xyz(0.0, 1.0, 0.0),)).id();
 
     for x in -2..=2 {
         for z in -2..=2 {
@@ -44,12 +39,11 @@ fn setup(
 
     commands.spawn((
         DirectionalLight {
-            shadows_enabled: true,
+            shadow_maps_enabled: true,
             illuminance: 20_000.0,
             ..default()
         },
         Transform::from_xyz(0.0, 4.0, 0.0).looking_at(Vec3::ZERO, Dir3::Z),
-        Replicated,
         CascadeShadowConfigBuilder {
             num_cascades: 1,
             minimum_distance: 0.05,

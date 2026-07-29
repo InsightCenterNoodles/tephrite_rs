@@ -3,7 +3,6 @@ use bevy::{asset::embedded_asset, prelude::*};
 use crate::{
     common::Head,
     config::{AlertImage, get_configuration},
-    replication::components::Replicated,
 };
 
 pub(crate) fn environment_plugin(app: &mut App) {
@@ -87,7 +86,6 @@ fn setup_alerts(
     let mesh = meshes.add(Rectangle::new(1.0, 1.0));
 
     commands.spawn((
-        Replicated,
         AlertDisplay {
             offset: config.alert_offset.into(),
             scale: config.alert_scale,
@@ -114,7 +112,6 @@ fn setup_alerts(
         }
 
         commands.spawn((
-            Replicated,
             AlertCube,
             Mesh3d(meshes.add(Cuboid::new(
                 half_extents.x * 2.0,

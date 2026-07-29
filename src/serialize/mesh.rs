@@ -165,6 +165,74 @@ impl FastWrite for VertexAttributeValues {
                 27i8.write_fast(w);
                 values.write_fast(w);
             },
+            VertexAttributeValues::Uint8(items) => unsafe {
+                28i8.write_fast(w);
+                items.write_fast(w);
+            },
+            VertexAttributeValues::Sint8(items) => unsafe {
+                29i8.write_fast(w);
+                items.write_fast(w);
+            },
+            VertexAttributeValues::Unorm8(items) => unsafe {
+                30i8.write_fast(w);
+                items.write_fast(w);
+            },
+            VertexAttributeValues::Snorm8(items) => unsafe {
+                31i8.write_fast(w);
+                items.write_fast(w);
+            },
+            VertexAttributeValues::Uint16(items) => unsafe {
+                32i8.write_fast(w);
+                items.write_fast(w);
+            },
+            VertexAttributeValues::Sint16(items) => unsafe {
+                33i8.write_fast(w);
+                items.write_fast(w);
+            },
+            VertexAttributeValues::Unorm16(items) => unsafe {
+                34i8.write_fast(w);
+                items.write_fast(w);
+            },
+            VertexAttributeValues::Snorm16(items) => unsafe {
+                35i8.write_fast(w);
+                items.write_fast(w);
+            },
+            VertexAttributeValues::Float16(f16s) => unsafe {
+                36i8.write_fast(w);
+                f16s.write_fast(w);
+            },
+            VertexAttributeValues::Float16x2(items) => unsafe {
+                37i8.write_fast(w);
+                items.write_fast(w);
+            },
+            VertexAttributeValues::Float16x4(items) => unsafe {
+                38i8.write_fast(w);
+                items.write_fast(w);
+            },
+            VertexAttributeValues::Float64(items) => unsafe {
+                39i8.write_fast(w);
+                items.write_fast(w);
+            },
+            VertexAttributeValues::Float64x2(items) => unsafe {
+                40i8.write_fast(w);
+                items.write_fast(w);
+            },
+            VertexAttributeValues::Float64x3(items) => unsafe {
+                41i8.write_fast(w);
+                items.write_fast(w);
+            },
+            VertexAttributeValues::Float64x4(items) => unsafe {
+                42i8.write_fast(w);
+                items.write_fast(w);
+            },
+            VertexAttributeValues::Unorm10_10_10_2(items) => unsafe {
+                43i8.write_fast(w);
+                items.write_fast(w);
+            },
+            VertexAttributeValues::Unorm8x4Bgra(items) => unsafe {
+                44i8.write_fast(w);
+                items.write_fast(w);
+            },
         }
     }
 }
@@ -204,7 +272,24 @@ impl FastRead for VertexAttributeValues {
             25 => VertexAttributeValues::Snorm8x4(read_fast(r)),
             26 => VertexAttributeValues::Uint8x4(read_fast(r)),
             27 => VertexAttributeValues::Unorm8x4(read_fast(r)),
-            _ => panic!("Unknown attribute value type!"),
+            28 => VertexAttributeValues::Uint8(read_fast(r)),
+            29 => VertexAttributeValues::Sint8(read_fast(r)),
+            30 => VertexAttributeValues::Unorm8(read_fast(r)),
+            31 => VertexAttributeValues::Snorm8(read_fast(r)),
+            32 => VertexAttributeValues::Uint16(read_fast(r)),
+            33 => VertexAttributeValues::Sint16(read_fast(r)),
+            34 => VertexAttributeValues::Unorm16(read_fast(r)),
+            35 => VertexAttributeValues::Snorm16(read_fast(r)),
+            36 => VertexAttributeValues::Float16(read_fast(r)),
+            37 => VertexAttributeValues::Float16x2(read_fast(r)),
+            38 => VertexAttributeValues::Float16x4(read_fast(r)),
+            39 => VertexAttributeValues::Float64(read_fast(r)),
+            40 => VertexAttributeValues::Float64x2(read_fast(r)),
+            41 => VertexAttributeValues::Float64x3(read_fast(r)),
+            42 => VertexAttributeValues::Float64x4(read_fast(r)),
+            43 => VertexAttributeValues::Unorm10_10_10_2(read_fast(r)),
+            44 => VertexAttributeValues::Unorm8x4Bgra(read_fast(r)),
+            _ => panic!("Unknown vertex attribute type. This should not happen."),
         }
     }
 }

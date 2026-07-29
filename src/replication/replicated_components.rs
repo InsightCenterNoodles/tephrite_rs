@@ -1,4 +1,3 @@
-pub(crate) use super::components::Replicated;
 use super::instruction::*;
 use super::sets::*;
 use bevy::light::cascade::CascadeShadowConfig;
@@ -22,8 +21,8 @@ macro_rules! detect_component_changes_impl {
 
     ($app:expr, $T:tt) => {
         $app.add_systems(Last,
-            (| query: Query<(Entity, &Replicated, & $T), Changed<$T>>, mut writer: NonSendMut<TranscriptWriteStateResource>| {
-                for (e, _, component) in query.iter() {
+            (| query: Query<(Entity, & $T), Changed<$T>>, mut writer: NonSendMut<TranscriptWriteStateResource>| {
+                for (e, component) in query.iter() {
                     // println!("CHANGED {e:?} {component:?}");
                     let dest: &mut TranscriptWriteStateResource = &mut writer;
                     let component: & $T = component;
@@ -43,7 +42,7 @@ macro_rules! detect_component_changes_impl {
             (|
                 mut removal: RemovedComponents<$T>,
                 mut writer: NonSendMut<TranscriptWriteStateResource>,
-                query: Query<(Entity, &Replicated)>,
+                query: Query<Entity>,
             | {
                 for e in removal.read() {
                     let Ok(repli_ent) = query.get(e) else {
@@ -56,7 +55,7 @@ macro_rules! detect_component_changes_impl {
 
                         unsafe {
                             ServerInstruction::CRemove(
-                                ServerComponentRemoved{ entity: repli_ent.0, component: <$T>::IDENTIFIER }
+                                ServerComponentRemoved{ entity: repli_ent, component: <$T>::IDENTIFIER }
                             ).write_fast(dest);
                         }
                     }
@@ -156,6 +155,12 @@ macro_rules! detect_component_changes {
         );
         pub(crate) fn setup_replicated_systems(app: &mut App) {
             detect_component_changes_impl!(app, $($type),*);
+
+            $(
+                app.add_systems(Last, (crate::replication::writer::tracker_listener_add::<$type>));
+            )*
+
+
         }
     }
 }

@@ -15,7 +15,7 @@ impl Plugin for ReplicationReaderPlugin {
     fn build(&self, app: &mut App) {
         let transcript = TranscriptReaderResource::new();
 
-        app.insert_non_send_resource(transcript);
+        app.insert_non_send(transcript);
         app.init_resource::<EntityMap>();
 
         app.add_systems(PreUpdate, child_system);
@@ -29,16 +29,19 @@ impl Plugin for ReplicationReaderPlugin {
 struct EntityMap(EntityHashMap<Entity>);
 
 impl EntityMap {
-    fn map(&self, foreign: Entity) -> Entity {
-        *self.0.get(&foreign).expect("unknown entity")
+    fn ensure(&mut self, foreign: Entity, commands: &mut Commands) -> Entity {
+        *(self
+            .0
+            .entry(foreign)
+            .or_insert_with(|| commands.spawn_empty().id()))
     }
 
     fn map_opt(&self, foreign: Entity) -> Option<Entity> {
         self.0.get(&foreign).copied()
     }
 
-    fn map_remove(&mut self, foreign: Entity) -> Entity {
-        self.0.remove(&foreign).expect("unknown entity")
+    fn map_remove(&mut self, foreign: Entity) -> Option<Entity> {
+        self.0.remove(&foreign)
     }
 }
 
@@ -98,26 +101,13 @@ fn consume_buffer(
         //println!("CHILD: {instruction:?}");
 
         match instruction {
-            ClientInstruction::EAdd(entity) => {
-                let local = commands.spawn((InheritedVisibility::default(), Transform::default()));
-
-                map.0.insert(entity, local.id());
-                // debug!("Mapping entity {:?} -> {:?}", entity, local.id());
-            }
-            ClientInstruction::ERemove(entity) => {
-                let local = map.map_remove(entity);
-                if let Ok(mut x) = commands.get_entity(local) {
-                    x.despawn();
-                }
-                // debug!("Removing entity {:?} -> {:?}", entity, local);
-            }
             ClientInstruction::CAdd(item) => {
-                let local = map.map(item.entity);
+                let local = map.ensure(item.entity, commands);
 
                 item.component.add_component(local, commands);
             }
             ClientInstruction::CRemove(item) => {
-                let local = map.map(item.entity);
+                let local = map.ensure(item.entity, commands);
 
                 item.component.remove_component(local, commands);
             }
@@ -159,7 +149,7 @@ fn consume_buffer(
             }
             ClientInstruction::HChange(item) => {
                 // Remap foreign IDs to local before applying hierarchy changes
-                let child_local = map.map(item.child);
+                let child_local = map.ensure(item.child, commands);
                 match item.new_parent {
                     Some(parent) => {
                         if let Some(parent_local) = map.map_opt(parent) {
@@ -179,6 +169,11 @@ fn consume_buffer(
             }
             ClientInstruction::EFrame(_) => {
                 return;
+            }
+            ClientInstruction::ERemove(entity) => {
+                if let Some(e) = map.map_remove(entity) {
+                    commands.entity(e).despawn();
+                }
             }
         }
     }

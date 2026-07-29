@@ -4,7 +4,6 @@ use bevy::{ecs::entity::EntityHashMap, platform::collections::HashSet, prelude::
 
 use crate::{
     input::{ButtonEventKind, ButtonMessage, InputButton, Interactor, InteractorState},
-    prelude::{PropagateReplication, Replicated},
     ui::{
         label::make_label,
         rounded_rect::{RoundedRectOptions, rounded_rect_mesh},
@@ -250,8 +249,6 @@ fn apply_populate_responses(
                 Name::new("RadialComboRoot"),
                 Transform::from_xyz(0.0, opts.up_offset, opts.forward_offset),
                 Visibility::Visible,
-                Replicated,
-                PropagateReplication::default(),
             ))
             .id();
 
@@ -329,7 +326,7 @@ fn apply_populate_responses(
             };
 
             let MeshMaterial3d(mat_handle) = &label.material;
-            if let Some(mat) = materials.get_mut(mat_handle) {
+            if let Some(mut mat) = materials.get_mut(mat_handle) {
                 mat.base_color = item.color;
             }
 

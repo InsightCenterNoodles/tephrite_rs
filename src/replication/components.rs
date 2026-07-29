@@ -1,5 +1,9 @@
 use bevy::{app::Propagate, camera::visibility::*, ecs::bundle::Bundle, prelude::Component};
 
+#[derive(Component, Debug, Default, Clone, Copy, PartialEq)]
+pub(crate) struct IsReplicated;
+
+/*
 /// A component indicating that the entity should be replicated.
 ///
 /// When added to an entity, the entity and supported components will be
@@ -120,3 +124,5 @@ mod tests {
         assert!(!app.world().entity(child).contains::<Replicated>());
     }
 }
+
+*/

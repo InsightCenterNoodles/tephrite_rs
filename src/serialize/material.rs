@@ -5,7 +5,8 @@
 //! required on the receiving side (e.g. `specular_tint`).
 use std::sync::{LazyLock, RwLock};
 
-use bevy::pbr::{OpaqueRendererMethod, UvChannel};
+use bevy::material::OpaqueRendererMethod;
+use bevy::mesh::UvChannel;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::render::render_resource::Face;

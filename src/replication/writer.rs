@@ -1,38 +1,13 @@
-use crate::replication::components::Replicated;
+use crate::replication::components::IsReplicated;
 use crate::replication::replicated_resources::setup_replicated_resource_systems;
 use crate::serialize::transcript_writer::*;
 use crate::serialize::*;
-use bevy::app::HierarchyPropagatePlugin;
 use bevy::prelude::*;
 
 use super::instruction::*;
 
 // ============================================================================
 // We HAVE to use systems here, as triggers cannot order against asset messages!
-
-/// Check for any added replicated entities. We use a marker to see who we should replicate
-fn added_rep_check(
-    query: Query<Entity, Added<Replicated>>,
-    mut writer: NonSendMut<TranscriptWriteStateResource>,
-) {
-    for e in query.iter() {
-        //println!("EVENT NEW ENTITY {e:?}");
-        let dest: &mut TranscriptWriteStateResource = &mut writer;
-        unsafe { ServerInstruction::EAdd(e).write_fast(dest) };
-    }
-}
-
-/// Check for any removed replicated entities.
-fn removed_rep_check(
-    mut removal: RemovedComponents<Replicated>,
-    mut writer: NonSendMut<TranscriptWriteStateResource>,
-) {
-    for e in removal.read() {
-        //println!("EVENT DEL ENTITY {e:?}");
-        let dest: &mut TranscriptWriteStateResource = &mut writer;
-        unsafe { ServerInstruction::ERemove(e).write_fast(dest) };
-    }
-}
 
 /// Plugin to replicate components
 pub struct ReplicationWriterPlugin {
@@ -58,7 +33,7 @@ impl Plugin for ReplicationWriterPlugin {
 
         let transcript = TranscriptWriterResource::new(self.children_count);
 
-        app.insert_non_send_resource(transcript);
+        app.insert_non_send(transcript);
 
         // we want
         // - all asset deltas
@@ -92,17 +67,16 @@ impl Plugin for ReplicationWriterPlugin {
 
         app.add_systems(Update, watch_for_exit);
 
-        app.add_plugins(HierarchyPropagatePlugin::<Replicated>::new(PostUpdate));
-
-        app.add_systems(Last, added_rep_check.in_set(EntityStartDeltaPhase));
         app.add_systems(
             Last,
-            (hierarchy_change_listener, hierarchy_remove_listener)
+            (
+                hierarchy_change_listener,
+                hierarchy_remove_listener,
+                tracker_listener_remove,
+            )
                 .chain()
-                .after(added_rep_check)
                 .in_set(EntityStartDeltaPhase),
         );
-        app.add_systems(Last, removed_rep_check.in_set(EntityEndDeltaPhase));
 
         app.add_systems(Last, root_system.in_set(FinalSyncPhase));
 
@@ -115,24 +89,36 @@ impl Plugin for ReplicationWriterPlugin {
 
 // =============================================================================
 
+pub(crate) fn tracker_listener_add<C: Component>(
+    query: Query<Entity, (Added<C>, Without<IsReplicated>)>,
+    mut commands: Commands,
+) {
+    for e in query {
+        commands.entity(e).insert(IsReplicated);
+    }
+
+    //commands.insert_batch(query.iter().map(|x| (x, IsReplicated)));
+}
+
+fn tracker_listener_remove(
+    mut h_event: RemovedComponents<IsReplicated>,
+    mut transcript: NonSendMut<TranscriptWriteStateResource>,
+) {
+    let dest: &mut TranscriptWriteStateResource = &mut transcript;
+
+    for e in h_event.read() {
+        unsafe { ServerInstruction::ERemove(e).write_fast(dest) };
+    }
+}
+
 /// Watch for changes to parent-child relationships and write them to the
 /// transcript
 fn hierarchy_change_listener(
-    h_event: Query<(Entity, &ChildOf), (Changed<ChildOf>, With<Replicated>)>,
-    has_replicated: Query<(), With<Replicated>>,
+    h_event: Query<(Entity, &ChildOf), Changed<ChildOf>>,
     mut transcript: NonSendMut<TranscriptWriteStateResource>,
 ) {
     for (child, parent) in h_event.iter() {
-        let new_parent = if has_replicated.contains(parent.0) {
-            Some(parent.0)
-        } else {
-            // Parent is outside the replicated set; keep child rooted on readers.
-            // debug!(
-            //     "HCHANGE {child} has non-replicated parent {}, replicating as root",
-            //     parent.0
-            // );
-            None
-        };
+        let new_parent = Some(parent.0);
 
         let dest: &mut TranscriptWriteStateResource = &mut transcript;
         unsafe {
@@ -143,14 +129,9 @@ fn hierarchy_change_listener(
 
 fn hierarchy_remove_listener(
     mut h_event: RemovedComponents<ChildOf>,
-    has_replicate: Query<&Replicated>,
     mut transcript: NonSendMut<TranscriptWriteStateResource>,
 ) {
     for child in h_event.read() {
-        if !has_replicate.contains(child) {
-            continue;
-        }
-
         let dest: &mut TranscriptWriteStateResource = &mut transcript;
         unsafe {
             ServerInstruction::HChange(HierarchyChange {
@@ -170,11 +151,11 @@ struct FinalSyncPhase;
 
 fn setup_shmem(world: &mut World) {
     debug!("Starting up shared memory");
-    let mut transcript = world.non_send_resource_mut::<TranscriptWriterResource>();
+    let mut transcript = world.non_send_mut::<TranscriptWriterResource>();
 
     let session = transcript.prepare().expect("should not fail at start");
 
-    world.insert_non_send_resource(session);
+    world.insert_non_send(session);
 }
 
 fn watch_for_exit(mut res: NonSendMut<TranscriptWriterResource>, reader: MessageReader<AppExit>) {
@@ -188,7 +169,7 @@ fn watch_for_exit(mut res: NonSendMut<TranscriptWriterResource>, reader: Message
 fn root_system(world: &mut World) {
     let state = {
         let mut dest = world
-            .remove_non_send_resource::<TranscriptWriteStateResource>()
+            .remove_non_send::<TranscriptWriteStateResource>()
             .unwrap();
 
         // finish transcript
@@ -199,7 +180,7 @@ fn root_system(world: &mut World) {
 
     // Commit all changes
 
-    let Some(mut res) = world.get_non_send_resource_mut::<TranscriptWriterResource>() else {
+    let Some(mut res) = world.get_non_send_mut::<TranscriptWriterResource>() else {
         return;
     };
 
@@ -211,7 +192,7 @@ fn root_system(world: &mut World) {
         return;
     };
 
-    world.insert_non_send_resource(res);
+    world.insert_non_send(res);
 
     // if let Some(n) = world
     //     .get_non_send_resource_mut::<TranscriptWriterResource>()
