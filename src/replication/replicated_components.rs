@@ -157,7 +157,11 @@ macro_rules! detect_component_changes {
             detect_component_changes_impl!(app, $($type),*);
 
             $(
-                app.add_systems(Last, (crate::replication::writer::tracker_listener_add::<$type>));
+                app.add_systems(
+                    Last,
+                    crate::replication::writer::tracker_listener_add::<$type>
+                        .in_set(EntityStartDeltaPhase),
+                );
             )*
 
 

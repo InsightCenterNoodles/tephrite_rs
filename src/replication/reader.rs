@@ -107,9 +107,9 @@ fn consume_buffer(
                 item.component.add_component(local, commands);
             }
             ClientInstruction::CRemove(item) => {
-                let local = map.ensure(item.entity, commands);
-
-                item.component.remove_component(local, commands);
+                if let Some(local) = map.map_opt(item.entity) {
+                    item.component.remove_component(local, commands);
+                }
             }
             ClientInstruction::ResourceUpdate(item) => {
                 item.resource.add_resource(commands);
@@ -147,9 +147,15 @@ fn consume_buffer(
                     ReplicatedAssetID::Font(id) => Font::clear_mapping(id, fonts),
                 };
             }
+            ClientInstruction::EAdd(entity) => {
+                map.ensure(entity, commands);
+            }
             ClientInstruction::HChange(item) => {
                 // Remap foreign IDs to local before applying hierarchy changes
-                let child_local = map.ensure(item.child, commands);
+                let Some(child_local) = map.map_opt(item.child) else {
+                    continue;
+                };
+
                 match item.new_parent {
                     Some(parent) => {
                         if let Some(parent_local) = map.map_opt(parent) {

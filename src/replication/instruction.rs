@@ -176,6 +176,7 @@ create_serialize_enum_write_only!(
         (6, HChange, HierarchyChange),
         (7, ERemove, Entity),
         (8, EFrame, EndFrame),
+        (9, EAdd, Entity),
     }
 );
 
@@ -270,5 +271,6 @@ create_serialize_enum!(
         (6, HChange, HierarchyChange),
         (7, ERemove, Entity),
         (8, EFrame, EndFrame),
+        (9, EAdd, Entity),
     }
 );

@@ -9,8 +9,10 @@ use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
 use bevy::pbr::{MaterialPlugin, MeshMaterial3d, StandardMaterial};
 use bevy::prelude::*;
+use bevy::text::TextPlugin;
 use bevy::time::TimePlugin;
 
+use tephrite_rs::material::PointsMaterial;
 use tephrite_rs::multiprocess::{generate_session_id, install_ids, install_session_id};
 
 // Build a minimal headless Bevy app that supports Assets<Mesh> and Assets<StandardMaterial>
@@ -27,6 +29,8 @@ fn build_headless_app() -> App {
             bevy::mesh::MeshPlugin,
             bevy::image::ImagePlugin::default(),
             MaterialPlugin::<StandardMaterial>::default(),
+            MaterialPlugin::<PointsMaterial>::default(),
+            TextPlugin,
         ));
     app
 }

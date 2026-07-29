@@ -75,7 +75,7 @@ impl Plugin for ReplicationWriterPlugin {
                 tracker_listener_remove,
             )
                 .chain()
-                .in_set(EntityStartDeltaPhase),
+                .in_set(EntityEndDeltaPhase),
         );
 
         app.add_systems(Last, root_system.in_set(FinalSyncPhase));
@@ -92,8 +92,12 @@ impl Plugin for ReplicationWriterPlugin {
 pub(crate) fn tracker_listener_add<C: Component>(
     query: Query<Entity, (Added<C>, Without<IsReplicated>)>,
     mut commands: Commands,
+    mut transcript: NonSendMut<TranscriptWriteStateResource>,
 ) {
+    let dest: &mut TranscriptWriteStateResource = &mut transcript;
+
     for e in query {
+        unsafe { ServerInstruction::EAdd(e).write_fast(dest) };
         commands.entity(e).insert(IsReplicated);
     }
 
