@@ -1,7 +1,7 @@
 //! Strict-lockstep shared-memory publisher with per-consumer acks.
-//! Works cross-process on Linux/macOS (Windows later with same atomics).
+//! Works cross-process on Linux/macOS (Windows later with same atomics?).
 //! Hot path = Acquire/Release atomics; no global barriers.
-//! Children are assumed to NOT attach late
+//! Children are assumed to NOT attach late. All or nothing!
 
 use core::mem::size_of;
 use core::sync::atomic::{
@@ -11,7 +11,7 @@ use core::sync::atomic::{
 use std::io::Result;
 use std::{ptr, thread};
 
-use bevy::log::{debug, warn};
+use bevy::log::{debug, info, warn};
 
 use crate::multiprocess::shared_mem::SharedMemory;
 
@@ -218,7 +218,7 @@ impl Producer {
             self.control_block_mut()
                 .shutdown
                 .store(1, std::sync::atomic::Ordering::Relaxed);
-            warn!("(wait ready) Caught interrupt!");
+            info!("Closing session...");
             return Err(RunResultError::Interrupt);
         }
 

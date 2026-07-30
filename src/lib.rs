@@ -38,6 +38,11 @@ pub mod prelude {
     pub use crate::common::ScreenSpaceAmbientOcclusionSettings;
     pub use crate::common::ScreenSpaceReflectionsSettings;
 
+    pub use crate::serialize::ByteSink;
+    pub use crate::serialize::ByteSource;
+    pub use crate::serialize::FastRead;
+    pub use crate::serialize::FastWrite;
+
     pub use crate::input::*;
     pub use crate::material::*;
 }
