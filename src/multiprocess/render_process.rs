@@ -70,6 +70,10 @@ pub(crate) fn run<T: crate::TephriteApp>() -> AppExit {
                 level: Level::ERROR,
                 ..Default::default()
             })
+            .set(AssetPlugin {
+                unapproved_path_mode: bevy::asset::UnapprovedPathMode::Allow,
+                ..default()
+            })
             .set(TaskPoolPlugin {
                 task_pool_options: TaskPoolOptions {
                     min_total_threads: 1,
