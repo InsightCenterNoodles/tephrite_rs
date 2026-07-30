@@ -13,15 +13,17 @@ struct TrackedEntities {
     entities: EntityHashSet,
 }
 
-#[derive(Default, Resource)]
-struct TranscriptTablesPublished(bool);
-
 #[derive(Resource)]
 struct CachedRemovedChildOf {
     state: SystemState<RemovedComponents<'static, 'static, ChildOf>>,
 }
 
 /// Plugin to replicate world state into the transcript.
+///
+/// The writer assumes [`ReplicationRegistry`] has already been populated by the
+/// shared Tephrite app configuration before this plugin is added. That is what
+/// gives the logic and render processes matching table IDs without sending table
+/// definitions over shared memory.
 pub struct ReplicationWriterPlugin {
     children_count: u32,
 }
@@ -37,21 +39,12 @@ impl Plugin for ReplicationWriterPlugin {
         let transcript = TranscriptWriterResource::new(self.children_count);
 
         app.init_resource::<ReplicationRegistry>();
-        register_builtin_replication_types(app.world_mut());
         app.insert_non_send(transcript);
         app.init_resource::<TrackedEntities>();
-        app.init_resource::<TranscriptTablesPublished>();
         app.add_systems(Startup, setup_shmem);
         app.add_systems(Update, watch_for_exit);
         app.add_systems(Last, write_replication_frame);
     }
-}
-
-fn register_builtin_replication_types(world: &mut World) {
-    let mut registry = world.resource_mut::<ReplicationRegistry>();
-    crate::replication::replicated_components::register_builtin_components(&mut registry);
-    crate::replication::replicated_assets::register_builtin_assets(&mut registry);
-    crate::replication::replicated_resources::register_builtin_resources(&mut registry);
 }
 
 fn setup_shmem(world: &mut World) {
@@ -76,6 +69,10 @@ fn write_replication_frame(world: &mut World) {
     let mut tracked = world
         .remove_resource::<TrackedEntities>()
         .unwrap_or_default();
+    // Clone the descriptor tables before mutating the world. Each descriptor is
+    // just a small bundle of table ID and function pointers, so this keeps the
+    // exclusive system simple without holding long-lived borrows on the
+    // registry resource.
     let component_entries = world
         .resource::<ReplicationRegistry>()
         .components()
@@ -83,8 +80,10 @@ fn write_replication_frame(world: &mut World) {
     let asset_entries = world.resource::<ReplicationRegistry>().assets().to_vec();
     let resource_entries = world.resource::<ReplicationRegistry>().resources().to_vec();
 
-    write_transcript_tables(world, &mut dest);
-
+    // Entity tracking is implicit: any entity with a mirrored component is
+    // tracked, and every ancestor up to the root is tracked too. That preserves
+    // hierarchy and transform context in the renderer even when only a leaf has
+    // a renderable component.
     let mut newly_tracked = EntityHashSet::default();
     discover_tracked_entities(
         world,
@@ -97,6 +96,9 @@ fn write_replication_frame(world: &mut World) {
         unsafe { ServerInstruction::EAdd(entity).write_fast(&mut dest) };
     }
 
+    // Assets/resources are emitted before component baselines so handles in
+    // newly mirrored components can be resolved by the render process in the
+    // same frame.
     for entry in &asset_entries {
         (entry.write_changes)(world, &mut dest, entry.id);
     }
@@ -111,6 +113,9 @@ fn write_replication_frame(world: &mut World) {
         }
     }
 
+    // Non-baseline component changes follow. New entities are excluded inside
+    // each table entry's callback so a freshly tracked component is not sent
+    // twice.
     for entry in &component_entries {
         (entry.write_changes)(world, &mut dest, &newly_tracked, entry.id);
     }
@@ -126,30 +131,6 @@ fn write_replication_frame(world: &mut World) {
     unsafe { ServerInstruction::EFrame(EndFrame).write_fast(&mut dest) };
     world.insert_resource(tracked);
     commit_frame(world, dest);
-}
-
-fn write_transcript_tables(world: &mut World, dest: &mut TranscriptWriteStateResource) {
-    let mut published = world.resource_mut::<TranscriptTablesPublished>();
-    if published.0 {
-        return;
-    }
-    published.0 = true;
-
-    let registry = world.resource::<ReplicationRegistry>();
-    unsafe {
-        for entry in registry.components() {
-            write_table_definition(dest, INSTRUCTION_COMPONENT_TABLE, entry.id, entry.name);
-        }
-        for entry in registry.assets() {
-            write_table_definition(dest, INSTRUCTION_ASSET_TABLE, entry.id, entry.name);
-        }
-        for entry in registry.resources() {
-            write_table_definition(dest, INSTRUCTION_RESOURCE_TABLE, entry.id, entry.name);
-        }
-        for plugin in registry.renderer_plugins() {
-            write_renderer_plugin(dest, plugin);
-        }
-    }
 }
 
 fn commit_frame(world: &mut World, state: TranscriptWriteStateResource) {
@@ -200,6 +181,9 @@ fn track_entity_and_ancestors(
 
         if tracked.insert(entity) {
             newly_tracked.insert(entity);
+            // `IsReplicated` is internal bookkeeping used by filtered change
+            // queries. It is intentionally not part of the mirrored component
+            // table.
             world.entity_mut(entity).insert(IsReplicated);
         }
     }
@@ -211,6 +195,9 @@ fn write_hierarchy_changes(
     tracked: &EntityHashSet,
     newly_tracked: &EntityHashSet,
 ) {
+    // Newly tracked entities need an initial hierarchy snapshot. Later frames
+    // only send ChildOf changes/removals for entities already in the tracked
+    // set.
     for entity in newly_tracked.iter().copied() {
         write_hierarchy_for_entity(world, dest, tracked, entity);
     }

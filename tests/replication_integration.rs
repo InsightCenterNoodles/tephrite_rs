@@ -66,6 +66,7 @@ fn replicates_mesh_and_material() {
     install_session_id(&session);
 
     let mut app = build_headless_app();
+    tephrite_rs::TephriteAppConfig::default().apply_to(&mut app);
 
     // One child (reader)
     app.add_plugins(tephrite_rs::replication::writer::ReplicationWriterPlugin::new(1));
@@ -120,6 +121,7 @@ fn replicates_mesh_and_material() {
 fn replicates_mesh_and_material_client() {
     // Spawn reader thread
     let mut app = build_headless_app();
+    tephrite_rs::TephriteAppConfig::default().apply_to(&mut app);
     app.add_plugins(tephrite_rs::replication::reader::ReplicationReaderPlugin);
 
     // Step until at least some frames are consumed

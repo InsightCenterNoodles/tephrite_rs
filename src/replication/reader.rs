@@ -9,7 +9,13 @@ use super::instruction::*;
 
 // =============================================================================
 
-/// Plugin for child processes. Reads a transcript and replicates entities, components, and assets.
+/// Plugin for child processes. Reads a transcript and mirrors logic-world ECS
+/// state into the render app.
+///
+/// Like the writer, this plugin expects [`ReplicationRegistry`] to have already
+/// been populated by the shared Tephrite app configuration. The transcript only
+/// carries compact table IDs, so table construction must be deterministic across
+/// processes.
 pub struct ReplicationReaderPlugin;
 
 impl Plugin for ReplicationReaderPlugin {
@@ -17,7 +23,6 @@ impl Plugin for ReplicationReaderPlugin {
         let transcript = TranscriptReaderResource::new();
 
         app.init_resource::<ReplicationRegistry>();
-        register_builtin_replication_types(app.world_mut());
         app.insert_non_send(transcript);
         app.init_resource::<EntityMap>();
 
@@ -25,16 +30,13 @@ impl Plugin for ReplicationReaderPlugin {
     }
 }
 
-fn register_builtin_replication_types(world: &mut World) {
-    let mut registry = world.resource_mut::<ReplicationRegistry>();
-    crate::replication::replicated_components::register_builtin_components(&mut registry);
-    crate::replication::replicated_assets::register_builtin_assets(&mut registry);
-    crate::replication::replicated_resources::register_builtin_resources(&mut registry);
-}
-
 // =============================================================================
 
 /// Remap foreign entities to local
+///
+/// Entity IDs are process-local in Bevy. The transcript uses logic-process
+/// entity IDs as stable foreign keys; this map stores the render-process entity
+/// that represents each foreign entity.
 #[derive(Resource, Default)]
 struct EntityMap(EntityHashMap<Entity>);
 
@@ -58,11 +60,14 @@ impl EntityMap {
 
 // =============================================================================
 
-/// Primary child system to be run every update to obtain new records from the
-/// transcript
+/// Primary reader system.
 ///
+/// This is an exclusive world system because applying a transcript can touch
+/// arbitrary registered component, asset, and resource types. Keeping this as a
+/// single system also preserves exact instruction ordering within each frame.
 fn child_system(world: &mut World) {
-    // wait for transcript to be finished
+    // Temporarily remove the non-send transcript reader so the consume callback
+    // can borrow `world` exclusively while parsing the frame.
     let Some(mut transcript) = world.remove_non_send::<TranscriptReaderResource>() else {
         return;
     };
@@ -86,6 +91,8 @@ fn consume_buffer(bytes: &[u8], world: &mut World) {
     let mut bytes = ByteReader::new(bytes);
 
     loop {
+        // Every instruction begins with a compact opcode. Dynamic payloads then
+        // carry a per-table `TableId` that dispatches into `ReplicationRegistry`.
         let instruction = unsafe { u8::read_fast(&mut bytes) };
 
         //println!("CHILD: {instruction:?}");
@@ -106,6 +113,9 @@ fn consume_buffer(bytes: &[u8], world: &mut World) {
 
                 let Some(local) = world.resource::<EntityMap>().map_opt(entity) else {
                     warn!("Skipping component update for unmapped entity {:?}", entity);
+                    // Component payloads are typed but not length-prefixed, so
+                    // use the table entry's typed skip function to keep parsing
+                    // aligned after this update.
                     (entry.skip)(&mut bytes);
                     continue;
                 };
@@ -172,6 +182,9 @@ fn consume_buffer(bytes: &[u8], world: &mut World) {
             INSTRUCTION_ENTITY_ADD => {
                 let entity = unsafe { Entity::read_fast(&mut bytes) };
                 world.resource_scope(|world, mut map: Mut<EntityMap>| {
+                    // EAdd is the only instruction allowed to create a foreign
+                    // entity mapping. Component updates for unknown entities are
+                    // ignored instead of implicitly spawning.
                     map.add(entity, world);
                 });
             }
@@ -208,46 +221,7 @@ fn consume_buffer(bytes: &[u8], world: &mut World) {
                     world.entity_mut(e).despawn();
                 }
             }
-            INSTRUCTION_COMPONENT_TABLE => {
-                let id = unsafe { TableId::read_fast(&mut bytes) };
-                let name = unsafe { String::read_fast(&mut bytes) };
-                validate_table_name(world, "component", id, &name);
-            }
-            INSTRUCTION_ASSET_TABLE => {
-                let id = unsafe { TableId::read_fast(&mut bytes) };
-                let name = unsafe { String::read_fast(&mut bytes) };
-                validate_table_name(world, "asset", id, &name);
-            }
-            INSTRUCTION_RESOURCE_TABLE => {
-                let id = unsafe { TableId::read_fast(&mut bytes) };
-                let name = unsafe { String::read_fast(&mut bytes) };
-                validate_table_name(world, "resource", id, &name);
-            }
-            INSTRUCTION_RENDERER_PLUGIN => {
-                let plugin = unsafe { String::read_fast(&mut bytes) };
-                debug!("Transcript requires renderer plugin {plugin}");
-            }
             _ => panic!("unknown transcript instruction {instruction}"),
-        }
-    }
-}
-
-fn validate_table_name(world: &World, kind: &str, id: TableId, remote_name: &str) {
-    let registry = world.resource::<ReplicationRegistry>();
-    let local_name = match kind {
-        "component" => registry.component(id).map(|entry| entry.name),
-        "asset" => registry.asset(id).map(|entry| entry.name),
-        "resource" => registry.resource(id).map(|entry| entry.name),
-        _ => None,
-    };
-
-    match local_name {
-        Some(local_name) if local_name == remote_name => {}
-        Some(local_name) => warn!(
-            "Transcript {kind} table id {id} mismatch: logic has {remote_name}, renderer has {local_name}"
-        ),
-        None => {
-            warn!("Transcript {kind} table id {id} is not registered on renderer: {remote_name}")
         }
     }
 }
@@ -269,7 +243,7 @@ mod tests {
     fn consume_test_frame(bytes: &[u8], world: &mut World) {
         if !world.contains_resource::<ReplicationRegistry>() {
             world.init_resource::<ReplicationRegistry>();
-            register_builtin_replication_types(world);
+            crate::replication::register_builtin_replication_types(world);
         }
         if !world.contains_resource::<EntityMap>() {
             world.init_resource::<EntityMap>();

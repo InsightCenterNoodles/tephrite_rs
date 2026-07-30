@@ -13,10 +13,6 @@ pub(crate) const INSTRUCTION_HIERARCHY_CHANGE: u8 = 6;
 pub(crate) const INSTRUCTION_ENTITY_REMOVE: u8 = 7;
 pub(crate) const INSTRUCTION_END_FRAME: u8 = 8;
 pub(crate) const INSTRUCTION_ENTITY_ADD: u8 = 9;
-pub(crate) const INSTRUCTION_COMPONENT_TABLE: u8 = 10;
-pub(crate) const INSTRUCTION_ASSET_TABLE: u8 = 11;
-pub(crate) const INSTRUCTION_RESOURCE_TABLE: u8 = 12;
-pub(crate) const INSTRUCTION_RENDERER_PLUGIN: u8 = 13;
 
 #[inline(always)]
 pub(crate) unsafe fn write_component_add<T: FastWrite>(
@@ -92,28 +88,6 @@ pub(crate) unsafe fn write_resource_drop(w: &mut impl ByteSink, resource_type: T
     unsafe {
         INSTRUCTION_RESOURCE_DROP.write_fast(w);
         resource_type.write_fast(w);
-    }
-}
-
-#[inline(always)]
-pub(crate) unsafe fn write_table_definition(
-    w: &mut impl ByteSink,
-    instruction: u8,
-    id: TableId,
-    name: &str,
-) {
-    unsafe {
-        instruction.write_fast(w);
-        id.write_fast(w);
-        name.write_fast(w);
-    }
-}
-
-#[inline(always)]
-pub(crate) unsafe fn write_renderer_plugin(w: &mut impl ByteSink, plugin: &str) {
-    unsafe {
-        INSTRUCTION_RENDERER_PLUGIN.write_fast(w);
-        plugin.write_fast(w);
     }
 }
 

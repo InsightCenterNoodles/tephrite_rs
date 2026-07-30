@@ -1,3 +1,15 @@
+//! Runtime tables for mirrored ECS data.
+//!
+//! The replication protocol sends compact table IDs, not Rust type names or
+//! enum tags. These tables provide the mapping from a `u16` table ID to the
+//! concrete functions that know how to write, skip, apply, and remove a
+//! particular component, asset, or resource type.
+//!
+//! The tables are intentionally built outside the transcript. `tephrite_rs::run`
+//! applies the same [`crate::TephriteAppConfig`] to the logic and render apps,
+//! so both processes register the same types in the same order. That deterministic
+//! insertion order is the protocol contract.
+
 use std::{any::TypeId, fmt::Debug};
 
 use bevy::ecs::{entity::EntityHashSet, system::SystemState};
@@ -7,6 +19,10 @@ use crate::replication::components::IsReplicated;
 use crate::serialize::transcript_writer::TranscriptWriteStateResource;
 use crate::serialize::{ByteReader, FastRead, FastWrite, RemappableAsset};
 
+/// Compact identifier used on the wire for component, asset, and resource kinds.
+///
+/// IDs are assigned by registration order within each table. They are local to
+/// their table: component `1`, asset `1`, and resource `1` are unrelated.
 pub(crate) type TableId = u16;
 
 pub(crate) type CollectComponentEntitiesFn = fn(&mut World, &mut Vec<Entity>);
@@ -60,6 +76,12 @@ pub(crate) struct ResourceTableEntry {
 }
 
 #[derive(Resource, Default)]
+/// Registry of mirrored component, asset, and resource types.
+///
+/// Users normally populate this through [`crate::TephriteAppConfig`] methods
+/// such as `mirror_component::<T>()`. The lower-level
+/// [`ReplicationRegistryAppExt`] trait is available when constructing Bevy apps
+/// manually in tests or custom harnesses.
 pub struct ReplicationRegistry {
     components: Vec<ComponentTableEntry>,
     component_types: std::collections::HashMap<TypeId, TableId>,
@@ -67,28 +89,15 @@ pub struct ReplicationRegistry {
     asset_types: std::collections::HashMap<TypeId, TableId>,
     resources: Vec<ResourceTableEntry>,
     resource_types: std::collections::HashMap<TypeId, TableId>,
-    renderer_plugins: Vec<&'static str>,
 }
 
 impl ReplicationRegistry {
-    pub fn register_renderer_plugin(&mut self, plugin: &'static str) -> &mut Self {
-        if !self.renderer_plugins.contains(&plugin) {
-            self.renderer_plugins.push(plugin);
-        }
-        self
-    }
-
+    /// Register a component for mirrored entity replication.
+    ///
+    /// Registration is idempotent for the same concrete type. The first
+    /// successful registration assigns the next component table ID and stores
+    /// the type-specific writer/reader callbacks used by the hot path.
     pub fn register_component<C>(&mut self) -> &mut Self
-    where
-        C: Component + FastWrite + FastRead<Ret = C> + 'static,
-    {
-        self.register_component_with_plugins::<C>(&[])
-    }
-
-    pub fn register_component_with_plugins<C>(
-        &mut self,
-        renderer_plugins: &[&'static str],
-    ) -> &mut Self
     where
         C: Component + FastWrite + FastRead<Ret = C> + 'static,
     {
@@ -98,9 +107,6 @@ impl ReplicationRegistry {
         }
 
         let id = self.components.len() as TableId;
-        for plugin in renderer_plugins {
-            self.register_renderer_plugin(plugin);
-        }
         self.component_types.insert(type_id, id);
         self.components.push(ComponentTableEntry {
             id,
@@ -116,14 +122,12 @@ impl ReplicationRegistry {
         self
     }
 
+    /// Register an asset type for mirroring.
+    ///
+    /// The asset callback watches Bevy `AssetEvent<A>` messages on the logic
+    /// side. The render callback updates the local `Assets<A>` collection and
+    /// maintains the remote-to-local handle mapping through [`RemappableAsset`].
     pub fn register_asset<A>(&mut self) -> &mut Self
-    where
-        A: Asset + FastWrite + FastRead<Ret = A> + RemappableAsset + Debug + 'static,
-    {
-        self.register_asset_with_plugins::<A>(&[])
-    }
-
-    pub fn register_asset_with_plugins<A>(&mut self, renderer_plugins: &[&'static str]) -> &mut Self
     where
         A: Asset + FastWrite + FastRead<Ret = A> + RemappableAsset + Debug + 'static,
     {
@@ -133,9 +137,6 @@ impl ReplicationRegistry {
         }
 
         let id = self.assets.len() as TableId;
-        for plugin in renderer_plugins {
-            self.register_renderer_plugin(plugin);
-        }
         self.asset_types.insert(type_id, id);
         self.assets.push(AssetTableEntry {
             id,
@@ -147,17 +148,12 @@ impl ReplicationRegistry {
         self
     }
 
+    /// Register a resource type for mirroring.
+    ///
+    /// Resources are sent as complete values when changed. If a previously
+    /// existing resource disappears on the logic side, the render side removes
+    /// its local copy.
     pub fn register_resource<R>(&mut self) -> &mut Self
-    where
-        R: Resource + FastWrite + FastRead<Ret = R> + 'static,
-    {
-        self.register_resource_with_plugins::<R>(&[])
-    }
-
-    pub fn register_resource_with_plugins<R>(
-        &mut self,
-        renderer_plugins: &[&'static str],
-    ) -> &mut Self
     where
         R: Resource + FastWrite + FastRead<Ret = R> + 'static,
     {
@@ -167,9 +163,6 @@ impl ReplicationRegistry {
         }
 
         let id = self.resources.len() as TableId;
-        for plugin in renderer_plugins {
-            self.register_renderer_plugin(plugin);
-        }
         self.resource_types.insert(type_id, id);
         self.resources.push(ResourceTableEntry {
             id,
@@ -179,6 +172,24 @@ impl ReplicationRegistry {
             drop: drop_resource::<R>,
         });
         self
+    }
+
+    /// Names of registered component types in table order.
+    ///
+    /// Intended for diagnostics and tests. The transcript does not depend on
+    /// these names in normal operation.
+    pub fn component_names(&self) -> impl Iterator<Item = &'static str> + '_ {
+        self.components.iter().map(|entry| entry.name)
+    }
+
+    /// Names of registered asset types in table order.
+    pub fn asset_names(&self) -> impl Iterator<Item = &'static str> + '_ {
+        self.assets.iter().map(|entry| entry.name)
+    }
+
+    /// Names of registered resource types in table order.
+    pub fn resource_names(&self) -> impl Iterator<Item = &'static str> + '_ {
+        self.resources.iter().map(|entry| entry.name)
     }
 
     pub(crate) fn components(&self) -> &[ComponentTableEntry] {
@@ -191,10 +202,6 @@ impl ReplicationRegistry {
 
     pub(crate) fn resources(&self) -> &[ResourceTableEntry] {
         &self.resources
-    }
-
-    pub(crate) fn renderer_plugins(&self) -> &[&'static str] {
-        &self.renderer_plugins
     }
 
     pub(crate) fn component(&self, id: TableId) -> Option<&ComponentTableEntry> {
@@ -215,37 +222,20 @@ impl ReplicationRegistry {
 }
 
 pub trait ReplicationRegistryAppExt {
+    /// Register a component type on this app's [`ReplicationRegistry`].
     fn replicate_component<C>(&mut self) -> &mut Self
     where
         C: Component + FastWrite + FastRead<Ret = C> + 'static;
 
-    fn replicate_component_with_plugins<C>(
-        &mut self,
-        renderer_plugins: &[&'static str],
-    ) -> &mut Self
-    where
-        C: Component + FastWrite + FastRead<Ret = C> + 'static;
-
+    /// Register an asset type on this app's [`ReplicationRegistry`].
     fn replicate_asset<A>(&mut self) -> &mut Self
     where
         A: Asset + FastWrite + FastRead<Ret = A> + RemappableAsset + Debug + 'static;
 
-    fn replicate_asset_with_plugins<A>(&mut self, renderer_plugins: &[&'static str]) -> &mut Self
-    where
-        A: Asset + FastWrite + FastRead<Ret = A> + RemappableAsset + Debug + 'static;
-
+    /// Register a resource type on this app's [`ReplicationRegistry`].
     fn replicate_resource<R>(&mut self) -> &mut Self
     where
         R: Resource + FastWrite + FastRead<Ret = R> + 'static;
-
-    fn replicate_resource_with_plugins<R>(
-        &mut self,
-        renderer_plugins: &[&'static str],
-    ) -> &mut Self
-    where
-        R: Resource + FastWrite + FastRead<Ret = R> + 'static;
-
-    fn require_renderer_plugin(&mut self, renderer_plugin: &'static str) -> &mut Self;
 }
 
 impl ReplicationRegistryAppExt for App {
@@ -260,20 +250,6 @@ impl ReplicationRegistryAppExt for App {
         self
     }
 
-    fn replicate_component_with_plugins<C>(
-        &mut self,
-        renderer_plugins: &[&'static str],
-    ) -> &mut Self
-    where
-        C: Component + FastWrite + FastRead<Ret = C> + 'static,
-    {
-        self.init_resource::<ReplicationRegistry>();
-        self.world_mut()
-            .resource_mut::<ReplicationRegistry>()
-            .register_component_with_plugins::<C>(renderer_plugins);
-        self
-    }
-
     fn replicate_asset<A>(&mut self) -> &mut Self
     where
         A: Asset + FastWrite + FastRead<Ret = A> + RemappableAsset + Debug + 'static,
@@ -285,17 +261,6 @@ impl ReplicationRegistryAppExt for App {
         self
     }
 
-    fn replicate_asset_with_plugins<A>(&mut self, renderer_plugins: &[&'static str]) -> &mut Self
-    where
-        A: Asset + FastWrite + FastRead<Ret = A> + RemappableAsset + Debug + 'static,
-    {
-        self.init_resource::<ReplicationRegistry>();
-        self.world_mut()
-            .resource_mut::<ReplicationRegistry>()
-            .register_asset_with_plugins::<A>(renderer_plugins);
-        self
-    }
-
     fn replicate_resource<R>(&mut self) -> &mut Self
     where
         R: Resource + FastWrite + FastRead<Ret = R> + 'static,
@@ -304,25 +269,6 @@ impl ReplicationRegistryAppExt for App {
         self.world_mut()
             .resource_mut::<ReplicationRegistry>()
             .register_resource::<R>();
-        self
-    }
-
-    fn replicate_resource_with_plugins<R>(&mut self, renderer_plugins: &[&'static str]) -> &mut Self
-    where
-        R: Resource + FastWrite + FastRead<Ret = R> + 'static,
-    {
-        self.init_resource::<ReplicationRegistry>();
-        self.world_mut()
-            .resource_mut::<ReplicationRegistry>()
-            .register_resource_with_plugins::<R>(renderer_plugins);
-        self
-    }
-
-    fn require_renderer_plugin(&mut self, renderer_plugin: &'static str) -> &mut Self {
-        self.init_resource::<ReplicationRegistry>();
-        self.world_mut()
-            .resource_mut::<ReplicationRegistry>()
-            .register_renderer_plugin(renderer_plugin);
         self
     }
 }
@@ -381,6 +327,10 @@ fn write_component_changes<C>(
 ) where
     C: Component + FastWrite,
 {
+    // Changed components on newly tracked entities are handled by the baseline
+    // pass, which sends every registered component currently present on that
+    // entity. Skipping them here prevents duplicate component payloads in the
+    // first tracked frame.
     let mut query = world.query_filtered::<(Entity, &C), (Changed<C>, With<IsReplicated>)>();
     let mut items = Vec::new();
 
@@ -410,6 +360,9 @@ fn write_component_removals<C>(
 ) where
     C: Component,
 {
+    // RemovedComponents readers are system state, so cache one per mirrored
+    // component type. This lets the exclusive writer system keep precise
+    // ordering without allocating a Bevy system per component type.
     if !world.contains_resource::<CachedRemovedComponents<C>>() {
         let state = SystemState::new(world);
         world.insert_resource(CachedRemovedComponents::<C> { state });
@@ -448,6 +401,9 @@ fn skip_component<C>(reader: &mut ByteReader<'_>)
 where
     C: Component + FastRead<Ret = C>,
 {
+    // Component payloads are not length-prefixed. If a component update targets
+    // an unmapped entity, we still need to deserialize and discard the payload
+    // so the instruction stream remains aligned.
     let _ = unsafe { C::read_fast(reader) };
 }
 
@@ -526,6 +482,9 @@ fn write_resource_change<R>(
 ) where
     R: Resource + FastWrite,
 {
+    // The resource tracker remembers whether the resource existed last time so
+    // removal can be mirrored. Bevy's `Res<R>::is_changed` covers initial
+    // insertion and later mutations.
     if !world.contains_resource::<CachedResourceState<R>>() {
         let state = SystemState::new(world);
         world.insert_resource(CachedResourceState::<R> {

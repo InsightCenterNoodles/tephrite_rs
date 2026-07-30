@@ -27,8 +27,6 @@ pub(crate) fn setup() -> App {
 
     // Having zero children makes no sense
     let child_count = config.child_count().max(1);
-    let vulkan_support_host =
-        crate::multiprocess::vulkan_support::init_host(&config.vulkan_support, child_count);
 
     app.add_plugins(crate::input::InputPlugin);
 
@@ -39,10 +37,6 @@ pub(crate) fn setup() -> App {
     app.add_plugins(crate::material::builtin_materials_plugin);
     app.add_plugins(crate::environment::environment_plugin);
 
-    app.add_plugins(crate::replication::ReplicationWriterPlugin::new(
-        child_count,
-    ));
-
     // this adds AABB calc, and visibility
     app.add_plugins(bevy::camera::visibility::VisibilityPlugin);
 
@@ -52,7 +46,34 @@ pub(crate) fn setup() -> App {
         app.add_plugins(crate::simulator::SimulatorPlugin);
     }
 
-    // set up children
+    app.add_observer(on_exit);
+
+    app.insert_resource(LogicLaunchState {
+        session_id,
+        child_count,
+    });
+
+    app
+}
+
+#[derive(Debug, Resource)]
+struct LogicLaunchState {
+    session_id: crate::multiprocess::SessionID,
+    child_count: u32,
+}
+
+pub(crate) fn finish_setup(app: &mut App) {
+    let launch = app.world().resource::<LogicLaunchState>();
+    let session_id = launch.session_id.clone();
+    let child_count = launch.child_count;
+
+    app.add_plugins(crate::replication::ReplicationWriterPlugin::new(
+        child_count,
+    ));
+
+    let config = get_configuration();
+    let vulkan_support_host =
+        crate::multiprocess::vulkan_support::init_host(&config.vulkan_support, child_count);
 
     let current_exe = std::env::current_exe()
         .expect("determine current executable")
@@ -66,7 +87,6 @@ pub(crate) fn setup() -> App {
         .map(|i| {
             let current_exe = current_exe.clone();
             let session_clone = session_id.clone();
-            //info!("Spawning {i}...");
 
             let mut command = std::process::Command::new(current_exe);
             crate::multiprocess::install_ids(&mut command, &session_clone, i);
@@ -85,10 +105,6 @@ pub(crate) fn setup() -> App {
         children,
         vulkan_support_host,
     });
-
-    app.add_observer(on_exit);
-
-    app
 }
 
 #[derive(Debug, Resource)]
@@ -128,6 +144,7 @@ fn setup_tracked_head(mut commands: Commands) {
             interactor_type,
             InteractorState::default(),
             Name::new("Joystick"),
+            InheritedVisibility::default(),
         ))
         .id();
 

@@ -22,7 +22,7 @@ use crate::{
 };
 
 /// Function to run a render (or child) process
-pub(crate) fn run() -> AppExit {
+pub(crate) fn run<T: crate::TephriteApp>() -> AppExit {
     // Get child config
     let child_config = get_render_configuration();
     let rank = child_config.process_rank;
@@ -153,6 +153,8 @@ pub(crate) fn run() -> AppExit {
 
     // Materials
     app.add_plugins(crate::material::builtin_materials_plugin);
+
+    crate::apply_tephrite_config::<T>(&mut app);
 
     // Add in replication components
     app.add_plugins(crate::replication::reader::ReplicationReaderPlugin);
