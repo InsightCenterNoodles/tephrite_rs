@@ -142,8 +142,7 @@ fn consume_buffer(bytes: &[u8], world: &mut World) {
                     .resource(resource_type)
                     .cloned()
                 else {
-                    warn!("Skipping unknown resource table id {resource_type}");
-                    continue;
+                    panic!("Failing on unknown resource table id {resource_type}");
                 };
                 (entry.apply)(world, &mut bytes);
             }
@@ -164,8 +163,7 @@ fn consume_buffer(bytes: &[u8], world: &mut World) {
                     .asset(asset_type)
                     .cloned()
                 else {
-                    warn!("Skipping unknown asset table id {asset_type}");
-                    continue;
+                    panic!("Failing on unknown asset table id {asset_type}");
                 };
                 (entry.apply)(world, &mut bytes);
             }

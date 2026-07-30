@@ -27,6 +27,7 @@ use replication::ReplicationRegistryAppExt;
 use serialize::{FastRead, FastWrite, RemappableAsset};
 
 pub mod prelude {
+    pub use super::ApplyMode;
     pub use super::TephriteApp;
     pub use super::TephriteAppConfig;
     pub use super::run;
@@ -84,6 +85,12 @@ pub trait TephriteApp: Plugin {
 
 type AppConfigurator = Box<dyn FnOnce(&mut App) + Send + 'static>;
 
+#[derive(Debug, Clone, Copy)]
+pub enum ApplyMode {
+    Both,
+    RenderOnly,
+}
+
 /// Shared Tephrite configuration applied to both logic and render apps.
 ///
 /// `TephriteAppConfig` stores an ordered list of app mutations. The list is
@@ -95,7 +102,8 @@ type AppConfigurator = Box<dyn FnOnce(&mut App) + Send + 'static>;
 /// when a type must be mirrored. Deterministic insertion order is what gives the
 /// replication registry stable compact table IDs.
 pub struct TephriteAppConfig {
-    configurators: Vec<AppConfigurator>,
+    // Plugins can be split between both worlds or only render
+    configurators: Vec<(AppConfigurator, ApplyMode)>,
 }
 
 impl TephriteAppConfig {
@@ -117,17 +125,17 @@ impl TephriteAppConfig {
     /// This is the escape hatch for setup that is more specific than the mirror
     /// helpers below. The closure is stored and executed later, preserving the
     /// order in which calls were made.
-    pub fn configure_app<F>(&mut self, configure: F) -> &mut Self
+    pub fn configure_app<F>(&mut self, configure: F, mode: ApplyMode) -> &mut Self
     where
         F: FnOnce(&mut App) + Send + 'static,
     {
-        self.configurators.push(Box::new(configure));
+        self.configurators.push((Box::new(configure), mode));
         self
     }
 
     /// Add Bevy plugins to both logic and render apps.
     ///
-    /// Use this for renderer support plugins required by mirrored data. The
+    /// Use this for renderer support plugins required by mirrored data that should be created on both logic and render processes. The
     /// plugin value is consumed by the queued closure, so construct it directly
     /// in the call.
     pub fn add_plugins<M, Marker>(&mut self, plugins: M) -> &mut Self
@@ -135,9 +143,30 @@ impl TephriteAppConfig {
         M: Plugins<Marker> + Send + 'static,
         Marker: 'static,
     {
-        self.configure_app(|app| {
-            app.add_plugins(plugins);
-        })
+        self.configure_app(
+            |app| {
+                app.add_plugins(plugins);
+            },
+            ApplyMode::Both,
+        )
+    }
+
+    /// Add Bevy plugins to only render apps.
+    ///
+    /// Use this for renderer support plugins required by mirrored data. The
+    /// plugin value is consumed by the queued closure, so construct it directly
+    /// in the call.
+    pub fn add_plugins_render_only<M, Marker>(&mut self, plugins: M) -> &mut Self
+    where
+        M: Plugins<Marker> + Send + 'static,
+        Marker: 'static,
+    {
+        self.configure_app(
+            |app| {
+                app.add_plugins(plugins);
+            },
+            ApplyMode::RenderOnly,
+        )
     }
 
     /// Register a component type for automatic entity replication.
@@ -149,9 +178,12 @@ impl TephriteAppConfig {
     where
         C: Component + FastWrite + FastRead<Ret = C> + 'static,
     {
-        self.configure_app(|app| {
-            app.replicate_component::<C>();
-        })
+        self.configure_app(
+            |app| {
+                app.replicate_component::<C>();
+            },
+            ApplyMode::Both,
+        )
     }
 
     /// Register an asset type for mirroring through the transcript.
@@ -162,9 +194,12 @@ impl TephriteAppConfig {
     where
         A: Asset + FastWrite + FastRead<Ret = A> + RemappableAsset + Debug + 'static,
     {
-        self.configure_app(|app| {
-            app.replicate_asset::<A>();
-        })
+        self.configure_app(
+            |app| {
+                app.replicate_asset::<A>();
+            },
+            ApplyMode::Both,
+        )
     }
 
     /// Register a resource type for mirroring through the transcript.
@@ -175,9 +210,12 @@ impl TephriteAppConfig {
     where
         R: Resource + FastWrite + FastRead<Ret = R> + 'static,
     {
-        self.configure_app(|app| {
-            app.replicate_resource::<R>();
-        })
+        self.configure_app(
+            |app| {
+                app.replicate_resource::<R>();
+            },
+            ApplyMode::Both,
+        )
     }
 
     /// Apply all queued configuration to an app.
@@ -185,16 +223,26 @@ impl TephriteAppConfig {
     /// Normal applications do not need to call this directly; [`run`] applies
     /// the config to both process roles. It is public for tests and custom app
     /// harnesses that construct writer/reader apps manually.
-    pub fn apply_to(self, app: &mut App) {
+    pub fn apply_to(self, app: &mut App, is_render_process: bool) {
         for configurator in self.configurators {
-            configurator(app);
+            match configurator.1 {
+                ApplyMode::Both => configurator.0(app),
+                ApplyMode::RenderOnly => {
+                    if is_render_process {
+                        configurator.0(app);
+                    }
+                }
+            }
         }
     }
 
     fn register_builtin_mirrors(&mut self) {
-        self.configure_app(|app| {
-            crate::replication::register_builtin_replication_types(app.world_mut());
-        });
+        self.configure_app(
+            |app| {
+                crate::replication::register_builtin_replication_types(app.world_mut());
+            },
+            ApplyMode::Both,
+        );
     }
 }
 
@@ -204,10 +252,10 @@ impl Default for TephriteAppConfig {
     }
 }
 
-fn apply_tephrite_config<T: TephriteApp>(app: &mut App) {
+fn apply_tephrite_config<T: TephriteApp>(app: &mut App, is_render_process: bool) {
     let mut config = TephriteAppConfig::new();
     T::configure_tephrite(&mut config);
-    config.apply_to(app);
+    config.apply_to(app, is_render_process);
 }
 
 /// Primary entry point for your application
@@ -223,7 +271,7 @@ pub fn run<T: TephriteApp>(user_plugin: T) -> bevy::app::AppExit {
         app.add_plugins(DefaultPlugins);
         app.add_plugins(user_plugin);
         app.add_plugins(T::non_teprite_plugin());
-        apply_tephrite_config::<T>(&mut app);
+        apply_tephrite_config::<T>(&mut app, true);
 
         return app.run();
     }
@@ -239,7 +287,7 @@ pub fn run<T: TephriteApp>(user_plugin: T) -> bevy::app::AppExit {
         }
 
         app.add_plugins(user_plugin);
-        apply_tephrite_config::<T>(&mut app);
+        apply_tephrite_config::<T>(&mut app, false);
         multiprocess::logic_process::finish_setup(&mut app);
 
         let result = app.run();

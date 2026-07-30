@@ -154,7 +154,7 @@ pub(crate) fn run<T: crate::TephriteApp>() -> AppExit {
     // Materials
     app.add_plugins(crate::material::builtin_materials_plugin);
 
-    crate::apply_tephrite_config::<T>(&mut app);
+    crate::apply_tephrite_config::<T>(&mut app, true);
 
     // Add in replication components
     app.add_plugins(crate::replication::reader::ReplicationReaderPlugin);
