@@ -1,0 +1,13 @@
+use_offaxis = true
+
+[[displays]]
+id = 0
+lower_left = [-2.5, 0.0, -1.768]
+lower_right = [2.5, 0.0, -1.768]
+upper_right = [2.5, 2.5, -1.768]
+resolution = [1920, 1200]
+
+[[screens]]
+display = 0
+card_index = 4
+x_display = ":0.0"

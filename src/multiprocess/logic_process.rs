@@ -42,7 +42,7 @@ pub(crate) fn setup() -> App {
 
     app.add_systems(Startup, setup_tracked_head);
 
-    if use_simulator_mode {
+    if use_simulator_mode || std::env::var("TEPH_FORCE_SIMULATOR").is_ok() {
         app.add_plugins(crate::simulator::SimulatorPlugin);
     }
 
