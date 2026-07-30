@@ -1,8 +1,9 @@
 use bevy::ecs::entity::EntityHashMap;
 use bevy::prelude::*;
 
-use crate::prelude::PointsMaterial;
+use crate::replication::registry::{ReplicationRegistry, TableId};
 use crate::serialize::transcript_reader::TranscriptReaderResource;
+use crate::serialize::{ByteReader, FastRead};
 
 use super::instruction::*;
 
@@ -15,11 +16,20 @@ impl Plugin for ReplicationReaderPlugin {
     fn build(&self, app: &mut App) {
         let transcript = TranscriptReaderResource::new();
 
+        app.init_resource::<ReplicationRegistry>();
+        register_builtin_replication_types(app.world_mut());
         app.insert_non_send(transcript);
         app.init_resource::<EntityMap>();
 
         app.add_systems(PreUpdate, child_system);
     }
+}
+
+fn register_builtin_replication_types(world: &mut World) {
+    let mut registry = world.resource_mut::<ReplicationRegistry>();
+    crate::replication::replicated_components::register_builtin_components(&mut registry);
+    crate::replication::replicated_assets::register_builtin_assets(&mut registry);
+    crate::replication::replicated_resources::register_builtin_resources(&mut registry);
 }
 
 // =============================================================================
@@ -29,9 +39,9 @@ impl Plugin for ReplicationReaderPlugin {
 struct EntityMap(EntityHashMap<Entity>);
 
 impl EntityMap {
-    fn add(&mut self, foreign: Entity, commands: &mut Commands) -> Entity {
+    fn add(&mut self, foreign: Entity, world: &mut World) -> Entity {
         *(self.0.entry(foreign).or_insert_with(|| {
-            commands
+            world
                 .spawn((Transform::default(), InheritedVisibility::default()))
                 .id()
         }))
@@ -51,122 +61,131 @@ impl EntityMap {
 /// Primary child system to be run every update to obtain new records from the
 /// transcript
 ///
-fn child_system(
-    mut transcript: NonSendMut<TranscriptReaderResource>,
-    mut map: ResMut<EntityMap>,
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut point_materials: ResMut<Assets<PointsMaterial>>,
-    mut images: ResMut<Assets<Image>>,
-    mut fonts: ResMut<Assets<Font>>,
-    mut exit_event: MessageWriter<AppExit>,
-) {
+fn child_system(world: &mut World) {
     // wait for transcript to be finished
+    let Some(mut transcript) = world.remove_non_send::<TranscriptReaderResource>() else {
+        return;
+    };
+
     let result = transcript.consume_next(|_, _, slice| {
-        consume_buffer(
-            slice,
-            &mut map,
-            &mut commands,
-            &mut meshes,
-            &mut materials,
-            &mut point_materials,
-            &mut images,
-            &mut fonts,
-        );
+        consume_buffer(slice, world);
     });
+
+    world.insert_non_send(transcript);
 
     if result.is_err() {
         debug!("Logic is requesting terminate...");
-        exit_event.write(AppExit::Success);
+        if let Some(mut exit_events) = world.get_resource_mut::<Messages<AppExit>>() {
+            exit_events.write(AppExit::Success);
+        }
     }
 }
 
 #[inline(always)]
-fn consume_buffer(
-    bytes: &[u8],
-    map: &mut EntityMap,
-    commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<StandardMaterial>,
-    point_materials: &mut Assets<PointsMaterial>,
-    images: &mut Assets<Image>,
-    fonts: &mut Assets<Font>,
-) {
-    use crate::serialize::*;
+fn consume_buffer(bytes: &[u8], world: &mut World) {
     let mut bytes = ByteReader::new(bytes);
 
     loop {
-        let instruction = unsafe { ClientInstruction::read_fast(&mut bytes) };
+        let instruction = unsafe { u8::read_fast(&mut bytes) };
 
         //println!("CHILD: {instruction:?}");
 
         match instruction {
-            ClientInstruction::CAdd(item) => {
-                let Some(local) = map.map_opt(item.entity) else {
-                    warn!(
-                        "Skipping component update for unmapped entity {:?}",
-                        item.entity
+            INSTRUCTION_COMPONENT_ADD => {
+                let entity = unsafe { Entity::read_fast(&mut bytes) };
+                let component_type = unsafe { TableId::read_fast(&mut bytes) };
+                let Some(entry) = world
+                    .resource::<ReplicationRegistry>()
+                    .component(component_type)
+                    .cloned()
+                else {
+                    panic!(
+                        "unknown component table id {component_type}; cannot skip unsized payload"
                     );
+                };
+
+                let Some(local) = world.resource::<EntityMap>().map_opt(entity) else {
+                    warn!("Skipping component update for unmapped entity {:?}", entity);
+                    (entry.skip)(&mut bytes);
                     continue;
                 };
 
-                item.component.add_component(local, commands);
+                (entry.apply)(local, world, &mut bytes);
             }
-            ClientInstruction::CRemove(item) => {
-                if let Some(local) = map.map_opt(item.entity) {
-                    item.component.remove_component(local, commands);
+            INSTRUCTION_COMPONENT_REMOVE => {
+                let entity = unsafe { Entity::read_fast(&mut bytes) };
+                let component_type = unsafe { TableId::read_fast(&mut bytes) };
+                if let Some(local) = world.resource::<EntityMap>().map_opt(entity) {
+                    if let Some(entry) = world
+                        .resource::<ReplicationRegistry>()
+                        .component(component_type)
+                        .cloned()
+                    {
+                        (entry.remove)(local, world);
+                    }
                 }
             }
-            ClientInstruction::ResourceUpdate(item) => {
-                item.resource.add_resource(commands);
-            }
-            ClientInstruction::ResourceDrop(item) => {
-                item.resource.remove_resource(commands);
-            }
-            ClientInstruction::CAsset(item) => {
-                use crate::replication::replicated_assets::AssetEnum;
-
-                match *item.asset {
-                    AssetEnum::Mesh(x) => Mesh::set_mapping(x.id, x.data, meshes),
-                    AssetEnum::StandardMaterial(x) => {
-                        StandardMaterial::set_mapping(x.id, x.data, materials);
-                    }
-                    AssetEnum::PointsMaterial(x) => {
-                        PointsMaterial::set_mapping(x.id, x.data, point_materials);
-                    }
-                    AssetEnum::Image(x) => Image::set_mapping(x.id, x.data, images),
-                    AssetEnum::Font(x) => Font::set_mapping(x.id, x.data, fonts),
-                }
-            }
-            ClientInstruction::CDropAsset(drop_asset) => {
-                use crate::replication::replicated_assets::ReplicatedAssetID;
-
-                match drop_asset.id {
-                    ReplicatedAssetID::Mesh(id) => Mesh::clear_mapping(id, meshes),
-                    ReplicatedAssetID::StandardMaterial(id) => {
-                        StandardMaterial::clear_mapping(id, materials);
-                    }
-                    ReplicatedAssetID::PointsMaterial(id) => {
-                        PointsMaterial::clear_mapping(id, point_materials);
-                    }
-                    ReplicatedAssetID::Image(id) => Image::clear_mapping(id, images),
-                    ReplicatedAssetID::Font(id) => Font::clear_mapping(id, fonts),
+            INSTRUCTION_RESOURCE_UPDATE => {
+                let resource_type = unsafe { TableId::read_fast(&mut bytes) };
+                let Some(entry) = world
+                    .resource::<ReplicationRegistry>()
+                    .resource(resource_type)
+                    .cloned()
+                else {
+                    warn!("Skipping unknown resource table id {resource_type}");
+                    continue;
                 };
+                (entry.apply)(world, &mut bytes);
             }
-            ClientInstruction::EAdd(entity) => {
-                map.add(entity, commands);
+            INSTRUCTION_RESOURCE_DROP => {
+                let resource_type = unsafe { TableId::read_fast(&mut bytes) };
+                if let Some(entry) = world
+                    .resource::<ReplicationRegistry>()
+                    .resource(resource_type)
+                    .cloned()
+                {
+                    (entry.drop)(world);
+                }
             }
-            ClientInstruction::HChange(item) => {
+            INSTRUCTION_ASSET_UPDATE => {
+                let asset_type = unsafe { TableId::read_fast(&mut bytes) };
+                let Some(entry) = world
+                    .resource::<ReplicationRegistry>()
+                    .asset(asset_type)
+                    .cloned()
+                else {
+                    warn!("Skipping unknown asset table id {asset_type}");
+                    continue;
+                };
+                (entry.apply)(world, &mut bytes);
+            }
+            INSTRUCTION_ASSET_DROP => {
+                let asset_type = unsafe { TableId::read_fast(&mut bytes) };
+                if let Some(entry) = world
+                    .resource::<ReplicationRegistry>()
+                    .asset(asset_type)
+                    .cloned()
+                {
+                    (entry.drop)(world, &mut bytes);
+                }
+            }
+            INSTRUCTION_ENTITY_ADD => {
+                let entity = unsafe { Entity::read_fast(&mut bytes) };
+                world.resource_scope(|world, mut map: Mut<EntityMap>| {
+                    map.add(entity, world);
+                });
+            }
+            INSTRUCTION_HIERARCHY_CHANGE => {
+                let item = unsafe { HierarchyChange::read_fast(&mut bytes) };
                 // Remap foreign IDs to local before applying hierarchy changes
-                let Some(child_local) = map.map_opt(item.child) else {
+                let Some(child_local) = world.resource::<EntityMap>().map_opt(item.child) else {
                     continue;
                 };
 
                 match item.new_parent {
                     Some(parent) => {
-                        if let Some(parent_local) = map.map_opt(parent) {
-                            commands.entity(parent_local).add_child(child_local);
+                        if let Some(parent_local) = world.resource::<EntityMap>().map_opt(parent) {
+                            world.entity_mut(parent_local).add_child(child_local);
                         } else {
                             warn!(
                                 "Skipping hierarchy parent {:?} for child {:?}: parent not mapped",
@@ -175,26 +194,66 @@ fn consume_buffer(
                         }
                     }
                     None => {
-                        commands.entity(child_local).remove::<ChildOf>();
+                        world.entity_mut(child_local).remove::<ChildOf>();
                     }
                 }
             }
-            ClientInstruction::EFrame(_) => {
+            INSTRUCTION_END_FRAME => {
                 return;
             }
-            ClientInstruction::ERemove(entity) => {
-                if let Some(e) = map.map_remove(entity) {
-                    commands.entity(e).despawn();
+            INSTRUCTION_ENTITY_REMOVE => {
+                let entity = unsafe { Entity::read_fast(&mut bytes) };
+                let local = world.resource_mut::<EntityMap>().map_remove(entity);
+                if let Some(e) = local {
+                    world.entity_mut(e).despawn();
                 }
             }
+            INSTRUCTION_COMPONENT_TABLE => {
+                let id = unsafe { TableId::read_fast(&mut bytes) };
+                let name = unsafe { String::read_fast(&mut bytes) };
+                validate_table_name(world, "component", id, &name);
+            }
+            INSTRUCTION_ASSET_TABLE => {
+                let id = unsafe { TableId::read_fast(&mut bytes) };
+                let name = unsafe { String::read_fast(&mut bytes) };
+                validate_table_name(world, "asset", id, &name);
+            }
+            INSTRUCTION_RESOURCE_TABLE => {
+                let id = unsafe { TableId::read_fast(&mut bytes) };
+                let name = unsafe { String::read_fast(&mut bytes) };
+                validate_table_name(world, "resource", id, &name);
+            }
+            INSTRUCTION_RENDERER_PLUGIN => {
+                let plugin = unsafe { String::read_fast(&mut bytes) };
+                debug!("Transcript requires renderer plugin {plugin}");
+            }
+            _ => panic!("unknown transcript instruction {instruction}"),
+        }
+    }
+}
+
+fn validate_table_name(world: &World, kind: &str, id: TableId, remote_name: &str) {
+    let registry = world.resource::<ReplicationRegistry>();
+    let local_name = match kind {
+        "component" => registry.component(id).map(|entry| entry.name),
+        "asset" => registry.asset(id).map(|entry| entry.name),
+        "resource" => registry.resource(id).map(|entry| entry.name),
+        _ => None,
+    };
+
+    match local_name {
+        Some(local_name) if local_name == remote_name => {}
+        Some(local_name) => warn!(
+            "Transcript {kind} table id {id} mismatch: logic has {remote_name}, renderer has {local_name}"
+        ),
+        None => {
+            warn!("Transcript {kind} table id {id} is not registered on renderer: {remote_name}")
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use bevy::ecs::world::CommandQueue;
-
     use super::*;
     use crate::serialize::*;
 
@@ -207,27 +266,15 @@ mod tests {
         bytes
     }
 
-    fn consume_test_frame(bytes: &[u8], world: &mut World, map: &mut EntityMap) {
-        let mut queue = CommandQueue::default();
-        let mut commands = Commands::new(&mut queue, world);
-        let mut meshes = Assets::<Mesh>::default();
-        let mut materials = Assets::<StandardMaterial>::default();
-        let mut point_materials = Assets::<PointsMaterial>::default();
-        let mut images = Assets::<Image>::default();
-        let mut fonts = Assets::<Font>::default();
-
-        consume_buffer(
-            bytes,
-            map,
-            &mut commands,
-            &mut meshes,
-            &mut materials,
-            &mut point_materials,
-            &mut images,
-            &mut fonts,
-        );
-
-        queue.apply(world);
+    fn consume_test_frame(bytes: &[u8], world: &mut World) {
+        if !world.contains_resource::<ReplicationRegistry>() {
+            world.init_resource::<ReplicationRegistry>();
+            register_builtin_replication_types(world);
+        }
+        if !world.contains_resource::<EntityMap>() {
+            world.init_resource::<EntityMap>();
+        }
+        consume_buffer(bytes, world);
     }
 
     #[test]
@@ -235,19 +282,14 @@ mod tests {
         let remote = Entity::from_bits(100);
         let transform = Transform::from_xyz(1.0, 2.0, 3.0);
         let bytes = encode_frame(|writer| unsafe {
-            ServerInstruction::CAdd(ServerComponentAdded {
-                entity: remote,
-                component: (&transform).into(),
-            })
-            .write_fast(writer);
+            write_component_add(writer, remote, 1, &transform);
             ServerInstruction::EFrame(EndFrame).write_fast(writer);
         });
 
         let mut world = World::new();
-        let mut map = EntityMap::default();
-        consume_test_frame(&bytes, &mut world, &mut map);
+        consume_test_frame(&bytes, &mut world);
 
-        assert!(map.map_opt(remote).is_none());
+        assert!(world.resource::<EntityMap>().map_opt(remote).is_none());
         let mut query = world.query::<&Transform>();
         assert_eq!(query.iter(&world).count(), 0);
     }
@@ -258,19 +300,17 @@ mod tests {
         let transform = Transform::from_xyz(1.0, 2.0, 3.0);
         let bytes = encode_frame(|writer| unsafe {
             ServerInstruction::EAdd(remote).write_fast(writer);
-            ServerInstruction::CAdd(ServerComponentAdded {
-                entity: remote,
-                component: (&transform).into(),
-            })
-            .write_fast(writer);
+            write_component_add(writer, remote, 1, &transform);
             ServerInstruction::EFrame(EndFrame).write_fast(writer);
         });
 
         let mut world = World::new();
-        let mut map = EntityMap::default();
-        consume_test_frame(&bytes, &mut world, &mut map);
+        consume_test_frame(&bytes, &mut world);
 
-        let local = map.map_opt(remote).expect("entity should be mapped");
+        let local = world
+            .resource::<EntityMap>()
+            .map_opt(remote)
+            .expect("entity should be mapped");
         assert_eq!(world.entity(local).get::<Transform>(), Some(&transform));
     }
 }

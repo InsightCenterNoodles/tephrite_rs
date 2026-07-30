@@ -1,119 +1,121 @@
-use std::fmt::Debug;
+use bevy::prelude::{Asset, AssetId, Entity};
 
-use bevy::prelude::Entity;
-
-use crate::replication::replicated_assets::{AssetEnum, AssetEnumRef};
-use crate::replication::replicated_components::{ReplicatedComponent, ReplicatedComponentRef};
-use crate::replication::replicated_resources::{
-    ReplicatedResource, ReplicatedResourceID, ReplicatedResourceRef,
-};
-use crate::replication::{
-    replicated_assets::ReplicatedAssetID, replicated_components::ReplicatedComponentID,
-};
+use crate::replication::registry::TableId;
 use crate::serialize::*;
 
-// MARK: Server side
+pub(crate) const INSTRUCTION_COMPONENT_ADD: u8 = 0;
+pub(crate) const INSTRUCTION_COMPONENT_REMOVE: u8 = 1;
+pub(crate) const INSTRUCTION_ASSET_UPDATE: u8 = 2;
+pub(crate) const INSTRUCTION_ASSET_DROP: u8 = 3;
+pub(crate) const INSTRUCTION_RESOURCE_UPDATE: u8 = 4;
+pub(crate) const INSTRUCTION_RESOURCE_DROP: u8 = 5;
+pub(crate) const INSTRUCTION_HIERARCHY_CHANGE: u8 = 6;
+pub(crate) const INSTRUCTION_ENTITY_REMOVE: u8 = 7;
+pub(crate) const INSTRUCTION_END_FRAME: u8 = 8;
+pub(crate) const INSTRUCTION_ENTITY_ADD: u8 = 9;
+pub(crate) const INSTRUCTION_COMPONENT_TABLE: u8 = 10;
+pub(crate) const INSTRUCTION_ASSET_TABLE: u8 = 11;
+pub(crate) const INSTRUCTION_RESOURCE_TABLE: u8 = 12;
+pub(crate) const INSTRUCTION_RENDERER_PLUGIN: u8 = 13;
 
-/// An instruction where a component has been added to an entity.
-#[derive(Debug)]
-pub(crate) struct ServerComponentAdded<'a> {
-    pub entity: Entity,
-    pub component: ReplicatedComponentRef<'a>,
-}
-
-impl<'a> FastWrite for ServerComponentAdded<'a> {
-    unsafe fn write_fast(&self, w: &mut impl ByteSink) {
-        unsafe {
-            self.entity.write_fast(w);
-            self.component.write_fast(w);
-        }
+#[inline(always)]
+pub(crate) unsafe fn write_component_add<T: FastWrite>(
+    w: &mut impl ByteSink,
+    entity: Entity,
+    component_type: TableId,
+    component: &T,
+) {
+    unsafe {
+        INSTRUCTION_COMPONENT_ADD.write_fast(w);
+        entity.write_fast(w);
+        component_type.write_fast(w);
+        component.write_fast(w);
     }
 }
 
-/// An instruction that a component should be removed.
-#[derive(Debug)]
-pub(crate) struct ServerComponentRemoved {
-    pub entity: Entity,
-    pub component: ReplicatedComponentID,
-}
-
-impl FastWrite for ServerComponentRemoved {
-    unsafe fn write_fast(&self, w: &mut impl ByteSink) {
-        unsafe {
-            self.entity.write_fast(w);
-            self.component.write_fast(w);
-        }
+#[inline(always)]
+pub(crate) unsafe fn write_component_remove(
+    w: &mut impl ByteSink,
+    entity: Entity,
+    component_type: TableId,
+) {
+    unsafe {
+        INSTRUCTION_COMPONENT_REMOVE.write_fast(w);
+        entity.write_fast(w);
+        component_type.write_fast(w);
     }
 }
 
-/// An instruction where a resource should be updated
-#[derive(Debug)]
-pub(crate) struct ServerResourceUpdate<'a> {
-    pub resource: ReplicatedResourceRef<'a>,
-}
-
-impl<'a> FastWrite for ServerResourceUpdate<'a> {
-    unsafe fn write_fast(&self, w: &mut impl ByteSink) {
-        unsafe {
-            self.resource.write_fast(w);
-        }
+#[inline(always)]
+pub(crate) unsafe fn write_asset_update<A: Asset + FastWrite>(
+    w: &mut impl ByteSink,
+    asset_type: TableId,
+    id: AssetId<A>,
+    asset: &A,
+) {
+    unsafe {
+        INSTRUCTION_ASSET_UPDATE.write_fast(w);
+        asset_type.write_fast(w);
+        id.write_fast(w);
+        asset.write_fast(w);
     }
 }
 
-/// An instruction that a resource should be removed.
-#[derive(Debug)]
-pub(crate) struct ResourceDrop {
-    pub resource: ReplicatedResourceID,
-}
-
-impl FastWrite for ResourceDrop {
-    unsafe fn write_fast(&self, w: &mut impl ByteSink) {
-        unsafe {
-            self.resource.write_fast(w);
-        }
+#[inline(always)]
+pub(crate) unsafe fn write_asset_drop<A: Asset>(
+    w: &mut impl ByteSink,
+    asset_type: TableId,
+    id: AssetId<A>,
+) {
+    unsafe {
+        INSTRUCTION_ASSET_DROP.write_fast(w);
+        asset_type.write_fast(w);
+        id.write_fast(w);
     }
 }
 
-impl FastRead for ResourceDrop {
-    type Ret = Self;
-
-    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret {
-        unsafe {
-            Self {
-                resource: ReplicatedResourceID::read_fast(r),
-            }
-        }
+#[inline(always)]
+pub(crate) unsafe fn write_resource_update<R: FastWrite>(
+    w: &mut impl ByteSink,
+    resource_type: TableId,
+    resource: &R,
+) {
+    unsafe {
+        INSTRUCTION_RESOURCE_UPDATE.write_fast(w);
+        resource_type.write_fast(w);
+        resource.write_fast(w);
     }
 }
 
-/// An instruction to replicate an asset.
-#[derive(Debug)]
-pub(crate) struct ServerReplicateAsset<'a> {
-    pub asset: AssetEnumRef<'a>,
+#[inline(always)]
+pub(crate) unsafe fn write_resource_drop(w: &mut impl ByteSink, resource_type: TableId) {
+    unsafe {
+        INSTRUCTION_RESOURCE_DROP.write_fast(w);
+        resource_type.write_fast(w);
+    }
 }
 
-impl_fast_serialize_write_only!(ServerReplicateAsset<'a>,
-    lifetime: 'a,
-    keep: {
-        asset
-    },
-    skip: {
+#[inline(always)]
+pub(crate) unsafe fn write_table_definition(
+    w: &mut impl ByteSink,
+    instruction: u8,
+    id: TableId,
+    name: &str,
+) {
+    unsafe {
+        instruction.write_fast(w);
+        id.write_fast(w);
+        name.write_fast(w);
     }
-);
-
-/// An instruction to remove an asset
-#[derive(Debug)]
-pub(crate) struct DropAsset {
-    pub id: ReplicatedAssetID,
 }
 
-impl_fast_serialize!(DropAsset,
-    keep: {
-        id
-    },
-    skip: {
+#[inline(always)]
+pub(crate) unsafe fn write_renderer_plugin(w: &mut impl ByteSink, plugin: &str) {
+    unsafe {
+        INSTRUCTION_RENDERER_PLUGIN.write_fast(w);
+        plugin.write_fast(w);
     }
-);
+}
 
 /// An instruction to change hierarchy of an entity.
 ///
@@ -161,24 +163,39 @@ impl FastRead for Halt {
     }
 }
 
-// Build the read/write machinery
-create_serialize_enum_write_only!(
-    ServerInstruction,
-    u8,
-    lifetime: 'a,
-    {
-        (0, CAdd, ServerComponentAdded<'a>),
-        (1, CRemove, ServerComponentRemoved),
-        (2, CAsset, ServerReplicateAsset<'a>),
-        (3, CDropAsset, DropAsset),
-        (4, ResourceUpdate, ServerResourceUpdate<'a>),
-        (5, ResourceDrop, ResourceDrop),
-        (6, HChange, HierarchyChange),
-        (7, ERemove, Entity),
-        (8, EFrame, EndFrame),
-        (9, EAdd, Entity),
+#[derive(Debug)]
+pub(crate) enum ServerInstruction {
+    HChange(HierarchyChange),
+    ERemove(Entity),
+    EFrame(EndFrame),
+    EAdd(Entity),
+}
+
+impl FastWrite for ServerInstruction {
+    #[inline(always)]
+    unsafe fn write_fast(&self, w: &mut impl ByteSink) {
+        unsafe {
+            match self {
+                Self::HChange(x) => {
+                    INSTRUCTION_HIERARCHY_CHANGE.write_fast(w);
+                    x.write_fast(w);
+                }
+                Self::ERemove(x) => {
+                    INSTRUCTION_ENTITY_REMOVE.write_fast(w);
+                    x.write_fast(w);
+                }
+                Self::EFrame(x) => {
+                    INSTRUCTION_END_FRAME.write_fast(w);
+                    x.write_fast(w);
+                }
+                Self::EAdd(x) => {
+                    INSTRUCTION_ENTITY_ADD.write_fast(w);
+                    x.write_fast(w);
+                }
+            }
+        }
     }
-);
+}
 
 impl FastWrite for Entity {
     #[inline(always)]
@@ -193,84 +210,3 @@ impl FastRead for Entity {
         Entity::from_bits(read_fast(r))
     }
 }
-
-// ==================================================================
-// MARK: Client side
-
-/// An instruction where a component has been added to an entity.
-#[derive(Debug)]
-pub(crate) struct ClientComponentAdded {
-    pub entity: Entity,
-    pub component: ReplicatedComponent,
-}
-
-impl_fast_serialize!(ClientComponentAdded,
-    keep: {
-        entity,
-        component
-    },
-    skip: {
-    }
-);
-
-/// An instruction that a component should be removed.
-#[derive(Debug)]
-pub(crate) struct ClientComponentRemoved {
-    pub entity: Entity,
-    pub component: ReplicatedComponentID,
-}
-
-impl_fast_serialize!(ClientComponentRemoved,
-    keep: {
-        entity,
-        component
-    },
-    skip: {
-    }
-);
-
-/// An instruction where a resource has been added.
-#[derive(Debug)]
-pub(crate) struct ClientResourceUpdate {
-    pub resource: ReplicatedResource,
-}
-
-impl_fast_serialize!(ClientResourceUpdate,
-    keep: {
-        resource
-    },
-    skip: {
-    }
-);
-
-/// An instruction to replicate an asset.
-#[derive(Debug)]
-pub(crate) struct ClientReplicateAsset {
-    pub asset: Box<AssetEnum>,
-}
-
-impl_fast_serialize!(ClientReplicateAsset,
-    keep: {
-        asset
-    },
-    skip: {
-    }
-);
-
-// Build the read/write machinery
-create_serialize_enum!(
-    ClientInstruction,
-    u8,
-    {
-        (0, CAdd, ClientComponentAdded),
-        (1, CRemove, ClientComponentRemoved),
-        (2, CAsset, ClientReplicateAsset),
-        (3, CDropAsset, DropAsset),
-        (4, ResourceUpdate, ClientResourceUpdate),
-        (5, ResourceDrop, ResourceDrop),
-        (6, HChange, HierarchyChange),
-        (7, ERemove, Entity),
-        (8, EFrame, EndFrame),
-        (9, EAdd, Entity),
-    }
-);

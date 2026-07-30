@@ -422,25 +422,6 @@ mod macros {
 
     pub(crate) use impl_fast_serialize;
 
-    macro_rules! impl_fast_serialize_write_only {
-        (
-            $T:ty,
-            $(lifetime: $lifetime:tt,)?
-            keep: {$($fld:ident),* },
-            skip: {$($sfld:ident),*}
-        ) => {
-            impl $(<$lifetime>)? crate::serialize::fast_ser::FastWrite for $T {
-                #[inline(always)]
-                #[allow(unused)]
-                unsafe fn write_fast(&self, w: &mut impl crate::serialize::fast_io::ByteSink) {
-                    $( unsafe {self. $fld.write_fast(w) }; )*
-                }
-            }
-        };
-    }
-
-    pub(crate) use impl_fast_serialize_write_only;
-
     /// Implement serialization for a foreign type that is a POD but might not be marked as such.
     /// This is incredibly dangerous. But for things like payload-less enums, we can just byte cast.
     macro_rules! impl_fast_raw_item {
@@ -488,154 +469,11 @@ mod macros {
     }
 
     pub(crate) use impl_fast_newtype;
-
-    macro_rules! create_serialize_enum {
-        (
-            $name:ident,
-            $repr:ty,
-            $(lifetime: $lifetime:tt,)?
-            {
-                $( ( $tag:tt, $var_name:tt, $var_type:ty ), )+
-            }
-        ) => {
-
-            #[derive(Debug)]
-            pub(crate) enum $name $(<$lifetime>)? {
-                $(
-                    $var_name ( $var_type ),
-                )+
-            }
-
-            impl$(<$lifetime>)? FastWrite for $name $(<$lifetime>)? {
-                #[inline(always)]
-                unsafe fn write_fast(&self, w: &mut impl ByteSink) {
-                    match self {
-                        $(
-                            Self:: $var_name (x) => unsafe {
-                                let d : $repr = $tag;
-                                d.write_fast(w);
-                                x.write_fast(w);
-                            }
-                        )+
-                    }
-                }
-            }
-
-            impl$(<$lifetime>)? FastRead for $name $(<$lifetime>)? {
-                type Ret = Self;
-                #[inline(always)]
-                unsafe fn read_fast<'z, S: ByteSource<'z>>(r: &mut S)  -> Self {
-                    let d : $repr = read_fast(r);
-
-                    match d {
-                        $(
-                            $tag => Self:: $var_name(read_fast(r)),
-                        )+
-                        _ => unreachable!(),
-                    }
-                }
-            }
-
-        };
-    }
-
-    pub(crate) use create_serialize_enum;
-
-    macro_rules! create_serialize_enum_write_only {
-        (
-            $name:ident,
-            $repr:ty,
-            $(lifetime: $lifetime:tt,)?
-            {
-                $( ( $tag:tt, $var_name:tt, $var_type:ty ), )+
-            }
-        ) => {
-
-            #[derive(Debug)]
-            pub(crate) enum $name $(<$lifetime>)? {
-                $(
-                    $var_name ( $var_type ),
-                )+
-            }
-
-            impl$(<$lifetime>)? FastWrite for $name $(<$lifetime>)? {
-                #[inline(always)]
-                unsafe fn write_fast(&self, w: &mut impl ByteSink) {
-                    match self {
-                        $(
-                            Self:: $var_name (x) => unsafe {
-                                let d : $repr = $tag;
-                                d.write_fast(w);
-                                x.write_fast(w);
-                            }
-                        )+
-                    }
-                }
-            }
-
-        };
-    }
-
-    pub(crate) use create_serialize_enum_write_only;
-
-    macro_rules! create_serialize_enum_simple {
-        (
-            $name:ident,
-            $repr:ty,
-            {
-                $( ( $tag:tt, $var_name:tt), )+
-            }
-        ) => {
-
-            #[derive(Debug)]
-            pub(crate) enum $name {
-                $(
-                    $var_name,
-                )+
-            }
-
-            impl FastWrite for $name {
-                #[inline(always)]
-                unsafe fn write_fast(&self, w: &mut impl ByteSink) {
-                    match self {
-                        $(
-                            Self:: $var_name => unsafe {
-                                let d : $repr = $tag;
-                                d.write_fast(w);
-                            }
-                        )+
-                    }
-                }
-            }
-
-            impl FastRead for $name {
-                type Ret = Self;
-                #[inline(always)]
-                unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S)  -> Self {
-                    let d = unsafe { <$repr>::read_fast(r) };
-
-                    match d {
-                        $(
-                            $tag => Self:: $var_name,
-                        )+
-                        _ => unreachable!(),
-                    }
-                }
-            }
-
-        };
-    }
-
-    pub(crate) use create_serialize_enum_simple;
 }
 
-pub(crate) use macros::create_serialize_enum;
-pub(crate) use macros::create_serialize_enum_simple;
-pub(crate) use macros::create_serialize_enum_write_only;
 pub(crate) use macros::impl_fast_newtype;
 pub(crate) use macros::impl_fast_raw_item;
 pub(crate) use macros::impl_fast_serialize;
-pub(crate) use macros::impl_fast_serialize_write_only;
 
 #[cfg(test)]
 pub(crate) fn test_serialization<A, F>(a: A, f: F)

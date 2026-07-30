@@ -2,6 +2,7 @@ use bevy::ecs::{entity::EntityHashSet, system::SystemState};
 use bevy::prelude::*;
 
 use crate::replication::components::IsReplicated;
+use crate::replication::registry::{ComponentTableEntry, ReplicationRegistry};
 use crate::serialize::transcript_writer::*;
 use crate::serialize::*;
 
@@ -11,6 +12,9 @@ use super::instruction::*;
 struct TrackedEntities {
     entities: EntityHashSet,
 }
+
+#[derive(Default, Resource)]
+struct TranscriptTablesPublished(bool);
 
 #[derive(Resource)]
 struct CachedRemovedChildOf {
@@ -32,14 +36,22 @@ impl Plugin for ReplicationWriterPlugin {
     fn build(&self, app: &mut App) {
         let transcript = TranscriptWriterResource::new(self.children_count);
 
+        app.init_resource::<ReplicationRegistry>();
+        register_builtin_replication_types(app.world_mut());
         app.insert_non_send(transcript);
         app.init_resource::<TrackedEntities>();
+        app.init_resource::<TranscriptTablesPublished>();
         app.add_systems(Startup, setup_shmem);
         app.add_systems(Update, watch_for_exit);
         app.add_systems(Last, write_replication_frame);
-
-        crate::replication::replicated_assets::init_replicated_asset_readers(app.world_mut());
     }
+}
+
+fn register_builtin_replication_types(world: &mut World) {
+    let mut registry = world.resource_mut::<ReplicationRegistry>();
+    crate::replication::replicated_components::register_builtin_components(&mut registry);
+    crate::replication::replicated_assets::register_builtin_assets(&mut registry);
+    crate::replication::replicated_resources::register_builtin_resources(&mut registry);
 }
 
 fn setup_shmem(world: &mut World) {
@@ -64,41 +76,80 @@ fn write_replication_frame(world: &mut World) {
     let mut tracked = world
         .remove_resource::<TrackedEntities>()
         .unwrap_or_default();
+    let component_entries = world
+        .resource::<ReplicationRegistry>()
+        .components()
+        .to_vec();
+    let asset_entries = world.resource::<ReplicationRegistry>().assets().to_vec();
+    let resource_entries = world.resource::<ReplicationRegistry>().resources().to_vec();
+
+    write_transcript_tables(world, &mut dest);
 
     let mut newly_tracked = EntityHashSet::default();
-    discover_tracked_entities(world, &mut tracked.entities, &mut newly_tracked);
+    discover_tracked_entities(
+        world,
+        &component_entries,
+        &mut tracked.entities,
+        &mut newly_tracked,
+    );
 
     for entity in newly_tracked.iter().copied() {
         unsafe { ServerInstruction::EAdd(entity).write_fast(&mut dest) };
     }
 
-    crate::replication::replicated_assets::write_changed_assets(world, &mut dest);
-    crate::replication::replicated_resources::write_changed_resources(world, &mut dest);
-
-    for entity in newly_tracked.iter().copied() {
-        crate::replication::replicated_components::write_component_baselines(
-            world, &mut dest, entity,
-        );
+    for entry in &asset_entries {
+        (entry.write_changes)(world, &mut dest, entry.id);
     }
 
-    crate::replication::replicated_components::write_changed_components(
-        world,
-        &mut dest,
-        &newly_tracked,
-    );
+    for entry in &resource_entries {
+        (entry.write_change)(world, &mut dest, entry.id);
+    }
+
+    for entity in newly_tracked.iter().copied() {
+        for entry in &component_entries {
+            (entry.write_baseline)(world, &mut dest, entity, entry.id);
+        }
+    }
+
+    for entry in &component_entries {
+        (entry.write_changes)(world, &mut dest, &newly_tracked, entry.id);
+    }
 
     write_hierarchy_changes(world, &mut dest, &tracked.entities, &newly_tracked);
-    crate::replication::replicated_components::write_removed_components(
-        world,
-        &mut dest,
-        &tracked.entities,
-    );
+
+    for entry in &component_entries {
+        (entry.write_removals)(world, &mut dest, &tracked.entities, entry.id);
+    }
 
     write_entity_removals(world, &mut dest, &mut tracked.entities);
 
     unsafe { ServerInstruction::EFrame(EndFrame).write_fast(&mut dest) };
     world.insert_resource(tracked);
     commit_frame(world, dest);
+}
+
+fn write_transcript_tables(world: &mut World, dest: &mut TranscriptWriteStateResource) {
+    let mut published = world.resource_mut::<TranscriptTablesPublished>();
+    if published.0 {
+        return;
+    }
+    published.0 = true;
+
+    let registry = world.resource::<ReplicationRegistry>();
+    unsafe {
+        for entry in registry.components() {
+            write_table_definition(dest, INSTRUCTION_COMPONENT_TABLE, entry.id, entry.name);
+        }
+        for entry in registry.assets() {
+            write_table_definition(dest, INSTRUCTION_ASSET_TABLE, entry.id, entry.name);
+        }
+        for entry in registry.resources() {
+            write_table_definition(dest, INSTRUCTION_RESOURCE_TABLE, entry.id, entry.name);
+        }
+        for plugin in registry.renderer_plugins() {
+            write_renderer_plugin(dest, plugin);
+        }
+    }
 }
 
 fn commit_frame(world: &mut World, state: TranscriptWriteStateResource) {
@@ -119,14 +170,14 @@ fn commit_frame(world: &mut World, state: TranscriptWriteStateResource) {
 
 fn discover_tracked_entities(
     world: &mut World,
+    component_entries: &[ComponentTableEntry],
     tracked: &mut EntityHashSet,
     newly_tracked: &mut EntityHashSet,
 ) {
     let mut candidates = Vec::new();
-    crate::replication::replicated_components::collect_supported_component_entities(
-        world,
-        &mut candidates,
-    );
+    for entry in component_entries {
+        (entry.collect_entities)(world, &mut candidates);
+    }
 
     for entity in candidates {
         track_entity_and_ancestors(world, tracked, newly_tracked, entity);
@@ -259,7 +310,16 @@ mod tests {
         let mut tracked = EntityHashSet::default();
         let mut newly_tracked = EntityHashSet::default();
 
-        discover_tracked_entities(&mut world, &mut tracked, &mut newly_tracked);
+        let mut registry = ReplicationRegistry::default();
+        crate::replication::replicated_components::register_builtin_components(&mut registry);
+        let component_entries = registry.components().to_vec();
+
+        discover_tracked_entities(
+            &mut world,
+            &component_entries,
+            &mut tracked,
+            &mut newly_tracked,
+        );
 
         assert!(tracked.contains(&root));
         assert!(tracked.contains(&mid));
@@ -276,11 +336,24 @@ mod tests {
 
         let mut tracked = EntityHashSet::default();
         let mut newly_tracked = EntityHashSet::default();
-        discover_tracked_entities(&mut world, &mut tracked, &mut newly_tracked);
+        let mut registry = ReplicationRegistry::default();
+        crate::replication::replicated_components::register_builtin_components(&mut registry);
+        let component_entries = registry.components().to_vec();
+        discover_tracked_entities(
+            &mut world,
+            &component_entries,
+            &mut tracked,
+            &mut newly_tracked,
+        );
 
         world.entity_mut(entity).remove::<Transform>();
         newly_tracked.clear();
-        discover_tracked_entities(&mut world, &mut tracked, &mut newly_tracked);
+        discover_tracked_entities(
+            &mut world,
+            &component_entries,
+            &mut tracked,
+            &mut newly_tracked,
+        );
 
         assert!(tracked.contains(&entity));
         assert!(newly_tracked.is_empty());
