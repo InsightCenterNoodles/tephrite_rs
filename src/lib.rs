@@ -19,7 +19,8 @@ pub use bevy;
 
 use bevy::{
     DefaultPlugins,
-    app::{App, Plugin, Plugins},
+    app::{App, Plugin, PluginGroup, Plugins},
+    asset::AssetPlugin,
     ecs::error::BevyError,
     prelude::{Asset, Component, Resource},
 };
@@ -268,7 +269,11 @@ pub fn run<T: TephriteApp>(user_plugin: T) -> bevy::app::AppExit {
     if std::env::var("TEPH_DISABLE").is_ok() {
         let mut app = App::new();
 
-        app.add_plugins(DefaultPlugins);
+        // Yes this is bad, and no I don't care.
+        app.add_plugins(DefaultPlugins.set(AssetPlugin {
+            unapproved_path_mode: bevy::asset::UnapprovedPathMode::Allow,
+            ..Default::default()
+        }));
         app.add_plugins(user_plugin);
         app.add_plugins(T::non_teprite_plugin());
         apply_tephrite_config::<T>(&mut app, true);
