@@ -297,3 +297,56 @@ pub fn run<T: TephriteApp>(user_plugin: T) -> bevy::app::AppExit {
         result
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Resource, Default)]
+    struct BothPluginApplied;
+
+    #[derive(Resource, Default)]
+    struct RenderOnlyPluginApplied;
+
+    struct InsertBothPlugin;
+
+    impl Plugin for InsertBothPlugin {
+        fn build(&self, app: &mut App) {
+            app.insert_resource(BothPluginApplied);
+        }
+    }
+
+    struct InsertRenderOnlyPlugin;
+
+    impl Plugin for InsertRenderOnlyPlugin {
+        fn build(&self, app: &mut App) {
+            app.insert_resource(RenderOnlyPluginApplied);
+        }
+    }
+
+    #[test]
+    fn tephrite_config_skips_render_only_plugins_for_logic_apps() {
+        let mut config = TephriteAppConfig::new();
+        config.add_plugins(InsertBothPlugin);
+        config.add_plugins_render_only(InsertRenderOnlyPlugin);
+
+        let mut app = App::new();
+        config.apply_to(&mut app, false);
+
+        assert!(app.world().contains_resource::<BothPluginApplied>());
+        assert!(!app.world().contains_resource::<RenderOnlyPluginApplied>());
+    }
+
+    #[test]
+    fn tephrite_config_applies_render_only_plugins_for_render_apps() {
+        let mut config = TephriteAppConfig::new();
+        config.add_plugins(InsertBothPlugin);
+        config.add_plugins_render_only(InsertRenderOnlyPlugin);
+
+        let mut app = App::new();
+        config.apply_to(&mut app, true);
+
+        assert!(app.world().contains_resource::<BothPluginApplied>());
+        assert!(app.world().contains_resource::<RenderOnlyPluginApplied>());
+    }
+}

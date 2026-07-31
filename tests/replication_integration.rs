@@ -59,6 +59,8 @@ fn mesh_positions(mesh: &Mesh) -> Option<Vec<[f32; 3]>> {
 // Expected data to confirm replication
 static EXPECTED_POSITIONS: [[f32; 3]; 3] = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
 static EXPECTED_COLOR: Color = Color::srgba(0.3, 0.6, 1.0, 0.8);
+static UPDATED_COLOR: Color = Color::srgba(1.0, 0.2, 0.1, 1.0);
+static UPDATED_TRANSLATION: Vec3 = Vec3::new(4.0, 5.0, 6.0);
 
 fn replicates_mesh_and_material() {
     // Unique session; both apps will share it via env.
@@ -98,14 +100,33 @@ fn replicates_mesh_and_material() {
     };
 
     // Spawn replicated entity
-    app.world_mut().spawn((
-        Mesh3d(mesh_handle.clone()),
-        MeshMaterial3d::<StandardMaterial>(mat_handle.clone()),
-        Transform::from_xyz(1.0, 2.0, 3.0),
-    ));
+    let entity = app
+        .world_mut()
+        .spawn((
+            Mesh3d(mesh_handle.clone()),
+            MeshMaterial3d::<StandardMaterial>(mat_handle.clone()),
+            Transform::from_xyz(1.0, 2.0, 3.0),
+        ))
+        .id();
+
+    // Publish an initial baseline, then mutate component and asset state so the
+    // reader must consume both initial replication and later delta updates.
+    app.update();
+
+    app.world_mut()
+        .entity_mut(entity)
+        .get_mut::<Transform>()
+        .unwrap()
+        .translation = UPDATED_TRANSLATION;
+
+    app.world_mut()
+        .resource_mut::<Assets<StandardMaterial>>()
+        .get_mut(mat_handle.id())
+        .unwrap()
+        .base_color = UPDATED_COLOR;
 
     // Run a few ticks to publish frames
-    for _ in 0..6 {
+    for _ in 0..15 {
         app.update();
     }
 
@@ -125,15 +146,15 @@ fn replicates_mesh_and_material_client() {
     app.add_plugins(tephrite_rs::replication::reader::ReplicationReaderPlugin);
 
     // Step until at least some frames are consumed
-    for _ in 0..6 {
+    for _ in 0..16 {
         app.update();
     }
 
     // Find the replicated entity and extract its mesh/material data
     let mut q = app
         .world_mut()
-        .query::<(&Mesh3d, &MeshMaterial3d<StandardMaterial>)>();
-    let Some((mesh_handle, mat_handle)) = q.iter(&app.world()).next() else {
+        .query::<(&Mesh3d, &MeshMaterial3d<StandardMaterial>, &Transform)>();
+    let Some((mesh_handle, mat_handle, transform)) = q.iter(&app.world()).next() else {
         panic!("expected a replicated entity with mesh+material");
     };
 
@@ -153,7 +174,8 @@ fn replicates_mesh_and_material_client() {
     let color = mat.base_color;
 
     assert_eq!(EXPECTED_POSITIONS.as_slice(), positions.as_slice());
-    assert_eq!(EXPECTED_COLOR, color);
+    assert_eq!(UPDATED_COLOR, color);
+    assert_eq!(UPDATED_TRANSLATION, transform.translation);
 }
 
 const PROCESS_KEY: &str = "REPLICATION_CHILD";

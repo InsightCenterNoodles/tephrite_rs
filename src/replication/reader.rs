@@ -285,4 +285,122 @@ mod tests {
             .expect("entity should be mapped");
         assert_eq!(world.entity(local).get::<Transform>(), Some(&transform));
     }
+
+    #[test]
+    fn component_remove_removes_mapped_component() {
+        let remote = Entity::from_bits(102);
+        let transform = Transform::from_xyz(1.0, 2.0, 3.0);
+        let bytes = encode_frame(|writer| unsafe {
+            ServerInstruction::EAdd(remote).write_fast(writer);
+            write_component_add(writer, remote, 1, &transform);
+            write_component_remove(writer, remote, 1);
+            ServerInstruction::EFrame(EndFrame).write_fast(writer);
+        });
+
+        let mut world = World::new();
+        consume_test_frame(&bytes, &mut world);
+
+        let local = world
+            .resource::<EntityMap>()
+            .map_opt(remote)
+            .expect("entity should stay mapped");
+        assert!(world.entity(local).get::<Transform>().is_none());
+    }
+
+    #[test]
+    fn entity_remove_despawns_mapped_entity_and_clears_mapping() {
+        let remote = Entity::from_bits(103);
+        let bytes = encode_frame(|writer| unsafe {
+            ServerInstruction::EAdd(remote).write_fast(writer);
+            ServerInstruction::ERemove(remote).write_fast(writer);
+            ServerInstruction::EFrame(EndFrame).write_fast(writer);
+        });
+
+        let mut world = World::new();
+        consume_test_frame(&bytes, &mut world);
+
+        assert!(world.resource::<EntityMap>().map_opt(remote).is_none());
+        let mut query = world.query::<&Transform>();
+        assert_eq!(query.iter(&world).count(), 0);
+    }
+
+    #[test]
+    fn hierarchy_change_reparents_mapped_entities() {
+        let parent = Entity::from_bits(104);
+        let child = Entity::from_bits(105);
+        let bytes = encode_frame(|writer| unsafe {
+            ServerInstruction::EAdd(parent).write_fast(writer);
+            ServerInstruction::EAdd(child).write_fast(writer);
+            ServerInstruction::HChange(HierarchyChange {
+                new_parent: Some(parent),
+                child,
+            })
+            .write_fast(writer);
+            ServerInstruction::EFrame(EndFrame).write_fast(writer);
+        });
+
+        let mut world = World::new();
+        consume_test_frame(&bytes, &mut world);
+
+        let parent_local = world.resource::<EntityMap>().map_opt(parent).unwrap();
+        let child_local = world.resource::<EntityMap>().map_opt(child).unwrap();
+
+        assert_eq!(
+            world.entity(child_local).get::<ChildOf>().map(|p| p.0),
+            Some(parent_local)
+        );
+    }
+
+    #[test]
+    fn hierarchy_change_to_none_unparents_mapped_entity() {
+        let parent = Entity::from_bits(106);
+        let child = Entity::from_bits(107);
+        let bytes = encode_frame(|writer| unsafe {
+            ServerInstruction::EAdd(parent).write_fast(writer);
+            ServerInstruction::EAdd(child).write_fast(writer);
+            ServerInstruction::HChange(HierarchyChange {
+                new_parent: Some(parent),
+                child,
+            })
+            .write_fast(writer);
+            ServerInstruction::HChange(HierarchyChange {
+                new_parent: None,
+                child,
+            })
+            .write_fast(writer);
+            ServerInstruction::EFrame(EndFrame).write_fast(writer);
+        });
+
+        let mut world = World::new();
+        consume_test_frame(&bytes, &mut world);
+
+        let child_local = world.resource::<EntityMap>().map_opt(child).unwrap();
+        assert!(world.entity(child_local).get::<ChildOf>().is_none());
+    }
+
+    #[test]
+    #[should_panic(expected = "Failing on unknown asset table id 999")]
+    fn unknown_asset_update_table_panics_before_stream_misalignment() {
+        let bytes = encode_frame(|writer| unsafe {
+            INSTRUCTION_ASSET_UPDATE.write_fast(writer);
+            999u16.write_fast(writer);
+            ServerInstruction::EFrame(EndFrame).write_fast(writer);
+        });
+
+        let mut world = World::new();
+        consume_test_frame(&bytes, &mut world);
+    }
+
+    #[test]
+    #[should_panic(expected = "Failing on unknown resource table id 999")]
+    fn unknown_resource_update_table_panics_before_stream_misalignment() {
+        let bytes = encode_frame(|writer| unsafe {
+            INSTRUCTION_RESOURCE_UPDATE.write_fast(writer);
+            999u16.write_fast(writer);
+            ServerInstruction::EFrame(EndFrame).write_fast(writer);
+        });
+
+        let mut world = World::new();
+        consume_test_frame(&bytes, &mut world);
+    }
 }
