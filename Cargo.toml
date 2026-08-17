@@ -6,12 +6,7 @@ edition = "2024"
 [dependencies]
 dirs = "6"
 bitflags = "2"
-bevy = { version = "0.19.0", features = [
-    "jpeg",
-    "exr",
-    "debug",
-    "bevy_remote",
-] }
+bevy = { version = "0.19.0", features = ["jpeg", "exr", "bevy_remote"] }
 bytemuck = "1"
 itertools = "*"
 thiserror = "*"
@@ -36,6 +31,13 @@ opt-level = 1
 opt-level = 3
 
 [dev-dependencies]
+bevy = { version = "0.19.0", features = [
+    "jpeg",
+    "exr",
+    "bevy_remote",
+    "debug",
+    "free_camera",
+] }
 criterion = "0.8"
 nix = "0.30"
 rand = "*"

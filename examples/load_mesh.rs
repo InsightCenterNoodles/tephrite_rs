@@ -1,6 +1,8 @@
 use bevy::prelude::*;
 use tephrite_rs::prelude::*;
 
+use bevy::camera_controller::free_camera::{FreeCamera, FreeCameraPlugin};
+
 struct MyPlugin;
 
 impl Plugin for MyPlugin {
@@ -14,9 +16,36 @@ impl Plugin for MyPlugin {
     }
 }
 
-impl tephrite_rs::TephriteApp for MyPlugin {}
+impl tephrite_rs::TephriteApp for MyPlugin {
+    fn non_tephrite_plugin() -> impl Plugin {
+        non_tephrite_content
+    }
+}
+
+fn non_tephrite_content(app: &mut App) {
+    app.add_plugins(FreeCameraPlugin);
+    app.add_systems(Startup, setup_non_teph);
+}
+
+fn setup_non_teph(mut commands: Commands) {
+    info!("Basic non-Teph scene setup");
+
+    commands.spawn((
+        Camera3d::default(),
+        Transform::from_xyz(0.0, 2.0, 8.0).looking_at(Vec3::ZERO, Vec3::Y),
+        FreeCamera {
+            sensitivity: 0.2,
+            friction: 25.0,
+            walk_speed: 3.0,
+            run_speed: 9.0,
+            ..default()
+        },
+    ));
+}
 
 fn setup(mut commands: Commands, server: Res<AssetServer>, mut known: ResMut<KnownScenes>) {
+    info!("Basic Teph scene setup");
+
     // light
     commands.spawn((
         DirectionalLight {

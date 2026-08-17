@@ -57,7 +57,7 @@ impl Plugin for NonTephDefaultPlugin {
 }
 
 pub trait TephriteApp: Plugin {
-    fn non_teprite_plugin() -> impl Plugin {
+    fn non_tephrite_plugin() -> impl Plugin {
         NonTephDefaultPlugin
     }
 
@@ -276,7 +276,7 @@ pub fn run<T: TephriteApp>(user_plugin: T) -> bevy::app::AppExit {
             ..Default::default()
         }));
         app.add_plugins(user_plugin);
-        app.add_plugins(T::non_teprite_plugin());
+        app.add_plugins(T::non_tephrite_plugin());
         apply_tephrite_config::<T>(&mut app, true);
 
         return app.run();
