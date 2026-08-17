@@ -159,7 +159,11 @@ pub(crate) fn render_controls(properties: &[PropertyDefinition]) -> String {
 }
 
 /// Build the page shell and JavaScript event-posting helpers.
-pub(crate) fn render_index_page(controls_html: &str) -> String {
+pub(crate) fn render_index_page(controls_html: &str, brp_port: Option<u16>) -> String {
+    let brp_url = brp_port
+        .map(|port| format!("'http://' + window.location.hostname + ':{port}/'"))
+        .unwrap_or_else(|| "null".into());
+
     format!(
         "<!doctype html>\
         <html>\
@@ -391,6 +395,126 @@ pub(crate) fn render_index_page(controls_html: &str) -> String {
                         body: 'id=' + encodeURIComponent(id) + '&value=' + encodeURIComponent(value),\
                     }});\
                 }}\
+                const TEPH_BRP_URL = {brp_url};\
+                let tephRequestId = 1;\
+                async function tephHttp(path, options = {{}}) {{\
+                    const response = await fetch(path, options);\
+                    const text = await response.text();\
+                    if (!response.ok) throw new Error(text || response.statusText);\
+                    const contentType = response.headers.get('content-type') || '';\
+                    return contentType.includes('application/json') ? JSON.parse(text) : text;\
+                }}\
+                async function tephBrp(method, params = undefined) {{\
+                    if (!TEPH_BRP_URL) throw new Error('Bevy Remote Protocol is not enabled for this page');\
+                    const response = await fetch(TEPH_BRP_URL, {{\
+                        method: 'POST',\
+                        headers: {{ 'Content-Type': 'text/plain;charset=UTF-8' }},\
+                        body: JSON.stringify({{ jsonrpc: '2.0', id: tephRequestId++, method, params }}),\
+                    }});\
+                    const body = await response.json();\
+                    if (body.error) throw new Error(body.error.message || JSON.stringify(body.error));\
+                    return body.result;\
+                }}\
+                function tephForm(values) {{\
+                    const body = new URLSearchParams();\
+                    for (const [key, value] of Object.entries(values)) {{\
+                        if (value !== undefined && value !== null) body.set(key, value);\
+                    }}\
+                    return {{\
+                        method: 'POST',\
+                        headers: {{ 'Content-Type': 'application/x-www-form-urlencoded' }},\
+                        body,\
+                    }};\
+                }}\
+                function tephVec3Args(x, y, z) {{\
+                    if (Array.isArray(x)) return {{ x: x[0], y: x[1], z: x[2] }};\
+                    if (typeof x === 'object' && x !== null) return {{ x: x.x, y: x.y, z: x.z }};\
+                    return {{ x, y, z }};\
+                }}\
+                function tephTarget(target) {{\
+                    if (target && typeof target === 'object' && 'id' in target) return target.id;\
+                    return target;\
+                }}\
+                const TEPH_COMPONENTS = {{\
+                    name: 'bevy_ecs::name::Name',\
+                    transform: 'bevy_transform::components::transform::Transform',\
+                }};\
+                function tephEntityId(target) {{\
+                    return Number(tephTarget(target));\
+                }}\
+                function tephVec3Object(value) {{\
+                    if (Array.isArray(value)) return {{ x: value[0], y: value[1], z: value[2] }};\
+                    if (value && typeof value === 'object' && 'x' in value) return value;\
+                    throw new Error('Expected Vec3 array or object');\
+                }}\
+                window.teph = {{\
+                    brp: tephBrp,\
+                    components: TEPH_COMPONENTS,\
+                    discover: () => tephBrp('rpc.discover'),\
+                    query: (params) => tephBrp('world.query', params),\
+                    get_components: (entity, components, strict = false) => tephBrp('world.get_components', {{ entity: tephEntityId(entity), components, strict }}),\
+                    spawn_entity: (components = {{}}) => tephBrp('world.spawn_entity', {{ components }}),\
+                    insert_components: (entity, components) => tephBrp('world.insert_components', {{ entity: tephEntityId(entity), components }}),\
+                    mutate_components: (entity, component, path, value) => tephBrp('world.mutate_components', {{ entity: tephEntityId(entity), component, path, value }}),\
+                    remove_components: (entity, components) => tephBrp('world.remove_components', {{ entity: tephEntityId(entity), components }}),\
+                    despawn_entity: (entity) => tephBrp('world.despawn_entity', {{ entity: tephEntityId(entity) }}),\
+                    reparent_entities: (entities, parent = null) => tephBrp('world.reparent_entities', {{ entities: entities.map(tephEntityId), parent: parent === null ? null : tephEntityId(parent) }}),\
+                    list_components: (entity = undefined) => tephBrp('world.list_components', entity === undefined ? undefined : {{ entity: tephEntityId(entity) }}),\
+                    get_resources: (resource) => tephBrp('world.get_resources', {{ resource }}),\
+                    insert_resources: (resource, value) => tephBrp('world.insert_resources', {{ resource, value }}),\
+                    mutate_resources: (resource, path, value) => tephBrp('world.mutate_resources', {{ resource, path, value }}),\
+                    remove_resources: (resource) => tephBrp('world.remove_resources', {{ resource }}),\
+                    list_resources: () => tephBrp('world.list_resources'),\
+                    trigger_event: (event, value = null) => tephBrp('world.trigger_event', {{ event, value }}),\
+                    write_message: (message, value = null) => tephBrp('world.write_message', {{ message, value }}),\
+                    registry_schema: (params = undefined) => tephBrp('registry.schema', params),\
+                    schedule_list: () => tephBrp('schedule.list'),\
+                    schedule_graph: (schedule_label) => tephBrp('schedule.graph', {{ schedule_label }}),\
+                }};\
+                window.teph_quick = {{\
+                    entities_named: async (name) => (await tephHttp('{API_ENTITIES_PATH}?name=' + encodeURIComponent(String(name)))).entities,\
+                    entity: async (nameOrId) => {{\
+                        if (nameOrId && typeof nameOrId === 'object' && 'id' in nameOrId) return nameOrId;\
+                        if (typeof nameOrId === 'number') return {{ id: nameOrId }};\
+                        const entities = await window.teph_quick.entities_named(nameOrId);\
+                        if (entities.length === 0) throw new Error('No entity named ' + nameOrId);\
+                        if (entities.length > 1) throw new Error('Multiple entities named ' + nameOrId);\
+                        return entities[0];\
+                    }},\
+                    transform: async (target) => {{\
+                        const entity = await window.teph_quick.entity(target);\
+                        const result = await window.teph.get_components(entity.id, [TEPH_COMPONENTS.transform], true);\
+                        return {{ entity: String(entity.id), ...result[TEPH_COMPONENTS.transform] }};\
+                    }},\
+                    position: async (target) => {{\
+                        const translation = (await window.teph_quick.transform(target)).translation;\
+                        return Array.isArray(translation) ? translation : [translation.x, translation.y, translation.z];\
+                    }},\
+                    set_position: async (target, x, y, z) => {{\
+                        const entity = await window.teph_quick.entity(target);\
+                        await window.teph.mutate_components(entity.id, TEPH_COMPONENTS.transform, 'translation', tephVec3Args(x, y, z));\
+                        return window.teph_quick.transform(entity);\
+                    }},\
+                    translate: async (target, x, y, z) => {{\
+                        const entity = await window.teph_quick.entity(target);\
+                        const transform = await window.teph_quick.transform(entity);\
+                        const delta = tephVec3Args(x, y, z);\
+                        const translation = tephVec3Object(transform.translation);\
+                        return window.teph_quick.set_position(entity, translation.x + delta.x, translation.y + delta.y, translation.z + delta.z);\
+                    }},\
+                    look_at: async (target, x, y, z, up = [0, 1, 0]) => {{\
+                        const entity = await window.teph_quick.entity(target);\
+                        const point = tephVec3Args(x, y, z);\
+                        const upVec = tephVec3Args(up);\
+                        return tephHttp('{API_TRANSFORM_LOOK_AT_PATH}', tephForm({{\
+                            target: entity.id,\
+                            ...point,\
+                            up_x: upVec.x,\
+                            up_y: upVec.y,\
+                            up_z: upVec.z,\
+                        }}));\
+                    }},\
+                }};\
                 function setLabel(id, value) {{\
                     const el = document.getElementById('value-' + id);\
                     if (el) el.innerText = value;\

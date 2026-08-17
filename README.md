@@ -94,6 +94,38 @@ Search order:
 
 You can start from `assets/config_example.toml`.
 
+## Environment variables
+
+### User-facing controls
+
+| Variable | Effect |
+| --- | --- |
+| `TEPH_CONFIG_PATH` | Overrides config file discovery with an explicit TOML path. The path must exist. |
+| `TEPH_DISABLE` | Runs the user app directly as a normal Bevy app instead of starting Teprite's multiprocess logic/render architecture. |
+| `TEPH_DEBUG` | Raises logic-process logging to debug level. |
+| `TEPH_FORCE_SIMULATOR` | Forces simulator mode in the logic process, even when the config has render screens. |
+| `TEPH_MONO` | Forces render configuration to use the left-eye/mono view by overriding `is_right` to `false`. |
+| `TEPH_SCENE_DEBUG` | Enables Bevy Remote Protocol scene debugging in the logic app. When set, Teprite adds Bevy's `RemotePlugin` and BRP `RemoteHttpPlugin`; when unset, the normal remote-control page remains available but BRP is not hosted. |
+
+### Internal process environment
+
+These are normally set by Teprite when it launches render processes or configures
+the optional Vulkan support layer. They are documented for debugging and
+deployment scripts, but they are not the preferred way to configure an app.
+
+| Variable | Effect |
+| --- | --- |
+| `TEPHRITE_CHILD_PROCESS` | Marks a process as a Teprite render child and stores that child's rank. |
+| `TEPHRITE_PROCESS_GROUP` | Carries the generated process-group/session id from the logic process to render children. |
+| `DISPLAY` | Set on render children from `[[screens]].x_display` before the render stack initializes. |
+| `TEPH_SUPPORT_KEY` | Shared key used by the optional Vulkan support host/client layer. |
+| `TEPH_SUPPORT_DEBUG` | Enables debug behavior in the optional Vulkan support layer when requested by config. |
+| `ENABLE_SUPPORT_LAYER` | Enables the optional Vulkan support layer for render children. |
+| `ENABLE_SWAP_BARRIER` | Enables swap-barrier support for render children when requested by config. |
+| `VULKAN_DEVICE_INDEX` | Selects the GPU device index for a render child when `card_index` is configured. |
+| `VK_ADD_IMPLICIT_LAYER_PATH` | Prepended with the configured Vulkan layer path for render children. |
+| `LD_LIBRARY_PATH` | Prepended with the configured Vulkan support library directory for render children. |
+
 ### Top-level fields
 
 ```toml

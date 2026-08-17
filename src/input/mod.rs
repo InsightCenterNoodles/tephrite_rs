@@ -26,7 +26,7 @@ pub struct CanActivate {
 /// The bounding box of an interactor, events inside this box will be channeled to the host entity
 #[derive(Debug, Component)]
 pub struct InteractionBounds {
-    aabb: Aabb3d,
+    pub aabb: Aabb3d,
 }
 
 pub(crate) struct InputPlugin;

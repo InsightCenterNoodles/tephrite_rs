@@ -11,6 +11,8 @@ use crate::{
     vrpn::VRPNObject,
 };
 
+const SCENE_DEBUG_ENV: &str = "TEPH_SCENE_DEBUG";
+
 pub(crate) fn setup() -> App {
     // session
     let session_id = crate::multiprocess::generate_session_id();
@@ -32,7 +34,13 @@ pub(crate) fn setup() -> App {
 
     app.add_plugins(crate::vrpn::VRPNPlugin);
 
-    app.add_plugins(crate::remote_control::RemoteControlPlugin::default());
+    let brp_port = std::env::var(SCENE_DEBUG_ENV)
+        .is_ok()
+        .then_some(bevy::remote::http::DEFAULT_PORT);
+    app.add_plugins(crate::remote_control::RemoteControlPlugin {
+        brp_port,
+        ..Default::default()
+    });
 
     app.add_plugins(crate::material::builtin_materials_plugin);
     app.add_plugins(crate::environment::environment_plugin);

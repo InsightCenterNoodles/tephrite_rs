@@ -4,6 +4,14 @@ use bevy::prelude::{Vec2, Vec3};
 pub(crate) const INDEX_PATH: &str = "/";
 /// URL path for property update POST requests.
 pub(crate) const EVENT_PATH: &str = "/event";
+/// URL path for lightweight scene inspection.
+pub(crate) const API_ENTITIES_PATH: &str = "/api/entities";
+/// URL path for transform inspection.
+pub(crate) const API_TRANSFORM_PATH: &str = "/api/transform";
+/// URL path for setting an entity translation.
+pub(crate) const API_TRANSFORM_POSITION_PATH: &str = "/api/transform/position";
+/// URL path for rotating an entity to look at a world-space point.
+pub(crate) const API_TRANSFORM_LOOK_AT_PATH: &str = "/api/transform/look_at";
 /// Special control ID used to request app shutdown.
 pub(crate) const QUIT_ID: &str = "__tephrite_quit";
 

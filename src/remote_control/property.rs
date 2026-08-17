@@ -1,5 +1,4 @@
 use bevy::prelude::*;
-use itertools::Itertools;
 
 use crate::remote_control::common::PropertyValue;
 
@@ -100,13 +99,7 @@ pub(crate) fn parse_property_value(
             let Some(raw) = provided_value else {
                 return Err("missing value");
             };
-            let parts: [f32; 2] = raw
-                .split(',')
-                .map(str::trim)
-                .take(2)
-                .filter_map(|x| x.parse::<f32>().ok())
-                .next_array()
-                .ok_or("invalid range slider value")?;
+            let parts = parse_f32_array::<2>(raw, "invalid range slider value")?;
             Ok(PropertyValue::Vec2(parts.into()))
         }
         PropertyControl::Toggle { .. } => match provided_value.map(String::as_str) {
@@ -134,13 +127,7 @@ pub(crate) fn parse_property_value(
             let Some(raw) = provided_value else {
                 return Err("missing value");
             };
-            let parts: [f32; 3] = raw
-                .split(',')
-                .map(str::trim)
-                .take(3)
-                .filter_map(|x| x.parse::<f32>().ok())
-                .next_array()
-                .ok_or("invalid vec3 value")?;
+            let parts = parse_f32_array::<3>(raw, "invalid vec3 value")?;
 
             Ok(PropertyValue::Vec3(parts.into()))
         }
@@ -148,16 +135,23 @@ pub(crate) fn parse_property_value(
             let Some(raw) = provided_value else {
                 return Err("missing value");
             };
-            let parts: [f32; 2] = raw
-                .split(',')
-                .map(str::trim)
-                .take(2)
-                .filter_map(|x| x.parse::<f32>().ok())
-                .next_array()
-                .ok_or("invalid vec2 value")?;
+            let parts = parse_f32_array::<2>(raw, "invalid vec2 value")?;
 
             Ok(PropertyValue::Vec2(parts.into()))
         }
         PropertyControl::Button => Ok(PropertyValue::Triggered),
     }
+}
+
+fn parse_f32_array<const N: usize>(
+    raw: &str,
+    error: &'static str,
+) -> Result<[f32; N], &'static str> {
+    let values = raw
+        .split(',')
+        .map(str::trim)
+        .map(|x| x.parse::<f32>().map_err(|_| error))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    values.try_into().map_err(|_| error)
 }

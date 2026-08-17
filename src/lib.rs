@@ -1,6 +1,7 @@
 pub(crate) mod common;
 pub(crate) mod config;
 pub mod environment;
+pub(crate) mod http;
 pub mod input;
 pub mod material;
 pub mod multiprocess;

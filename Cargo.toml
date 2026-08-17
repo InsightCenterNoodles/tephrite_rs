@@ -1,12 +1,17 @@
 [package]
 name = "tephrite_rs"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 
 [dependencies]
 dirs = "6"
 bitflags = "2"
-bevy = { version = "0.19.0", features = ["jpeg", "exr", "debug"] }
+bevy = { version = "0.19.0", features = [
+    "jpeg",
+    "exr",
+    "debug",
+    "bevy_remote",
+] }
 bytemuck = "1"
 itertools = "*"
 thiserror = "*"
@@ -17,6 +22,10 @@ toml = "0.9"
 cosmic-text = "*"
 crossbeam-queue = "*"
 bevy_rich_text3d = "0.7"
+http = "1.5"
+httparse = "1.10"
+bytes = "1.12"
+anyhow = "*"
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]
