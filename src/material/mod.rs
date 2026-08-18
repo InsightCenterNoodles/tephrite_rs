@@ -1,3 +1,4 @@
+pub mod instance;
 pub mod points;
 
 use bevy::{asset::embedded_asset, prelude::*};
@@ -14,8 +15,17 @@ pub fn points_material_plugin(app: &mut App) {
     app.add_plugins(MaterialPlugin::<points::PointsMaterial>::default());
 }
 
+/// Registers Tephrite's instancing shader.
+///
+/// Custom instance support is still under construction; this ensures the
+/// shader is available from its embedded asset path.
+pub fn instance_material_plugin(app: &mut App) {
+    embedded_asset!(app, "instance/instancing.wgsl");
+}
+
 pub(crate) fn builtin_materials_plugin(app: &mut App) {
     points_material_plugin(app);
+    instance_material_plugin(app);
 }
 
 #[cfg(test)]
@@ -42,5 +52,18 @@ mod tests {
         app.world_mut()
             .resource_mut::<Assets<PointsMaterial>>()
             .add(material);
+    }
+
+    #[test]
+    fn instance_material_plugin_is_publicly_usable() {
+        let mut app = App::new();
+        app.add_plugins(AssetPlugin::default());
+        app.init_asset::<Shader>();
+        app.add_plugins(instance_material_plugin);
+
+        assert_eq!(
+            instance::INSTANCING_SHADER_ASSET_PATH,
+            "embedded://tephrite_rs/material/instance/instancing.wgsl"
+        );
     }
 }

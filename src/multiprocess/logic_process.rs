@@ -48,6 +48,8 @@ pub(crate) fn setup() -> App {
     // this adds AABB calc, and visibility
     app.add_plugins(bevy::camera::visibility::VisibilityPlugin);
 
+    app.add_plugins(bevy::world_serialization::WorldSerializationPlugin);
+
     app.add_systems(Startup, setup_tracked_head);
 
     if use_simulator_mode || std::env::var("TEPH_FORCE_SIMULATOR").is_ok() {
