@@ -42,9 +42,12 @@ pub(crate) fn make_common_app() -> App {
         bevy::pbr::MaterialPlugin::<StandardMaterial>::default(),
         ColorMaterialPlugin::default(), // we dont use this directly, other things might
         bevy::gltf::GltfPlugin::default(),
+        crate::material::gltf_material_bridge_plugin,
         bevy::render::texture::TexturePlugin, // without this, AssetServer does not work.
         bevy::text::TextPlugin,
     ));
+
+    app.add_plugins((bevy::world_serialization::WorldSerializationPlugin,));
 
     app.world_mut()
         .insert_resource(CompressedImageFormatSupport(CompressedImageFormats::BC));

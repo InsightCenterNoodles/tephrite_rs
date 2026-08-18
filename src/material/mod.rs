@@ -1,9 +1,11 @@
+mod gltf;
 pub mod instance;
 pub mod points;
 
 use bevy::{asset::embedded_asset, prelude::*};
 
 pub use points::{PointsMaterial, PointsShaderSettings};
+pub use gltf::GltfSceneAssets;
 
 /// Registers Tephrite's point-cloud material and its embedded shader.
 ///
@@ -26,6 +28,11 @@ pub fn instance_material_plugin(app: &mut App) {
 pub(crate) fn builtin_materials_plugin(app: &mut App) {
     points_material_plugin(app);
     instance_material_plugin(app);
+}
+
+pub(crate) fn gltf_material_bridge_plugin(app: &mut App) {
+    gltf::gltf_scene_assets_plugin(app);
+    gltf::gltf_standard_material_bridge_plugin(app);
 }
 
 #[cfg(test)]

@@ -1,6 +1,5 @@
-use bevy::shader::ShaderDefVal;
 use bevy::{
-    camera::visibility::NoFrustumCulling,
+    camera::visibility::{NoFrustumCulling, ViewVisibility},
     core_pipeline::core_3d::{Transparent3d, TransparentSortingInfo3d},
     ecs::{
         query::QueryItem,
@@ -11,12 +10,14 @@ use bevy::{
     },
     mesh::{MeshVertexBufferLayoutRef, VertexBufferLayout},
     pbr::{
-        MATERIAL_BIND_GROUP_INDEX, MeshInputUniform, MeshPipeline, MeshPipelineKey,
-        MeshPipelineSystems, MeshUniform, RenderMeshInstances, SetMaterialBindGroup,
-        SetMeshViewBindGroup, SetMeshViewBindingArrayBindGroup, StandardMaterial, ViewKeyCache,
+        MATERIAL_BIND_GROUP_INDEX, MaterialExtractionSystems, MeshInputUniform, MeshPipeline,
+        MeshPipelineKey, MeshPipelineSystems, MeshUniform, RenderMaterialInstance,
+        RenderMaterialInstances, RenderMeshInstances, SetMaterialBindGroup, SetMeshViewBindGroup,
+        SetMeshViewBindingArrayBindGroup, StandardMaterial, ViewKeyCache,
     },
     prelude::*,
     render::{
+        Extract, ExtractSchedule,
         batching::gpu_preprocessing::BatchedInstanceBuffers,
         extract_component::*,
         mesh::{RenderMesh, RenderMeshBufferInfo, allocator::MeshAllocator},
@@ -29,6 +30,7 @@ use bevy::{
         view::ExtractedView,
         *,
     },
+    shader::ShaderDefVal,
 };
 use bytemuck::{Pod, Zeroable};
 
@@ -93,6 +95,15 @@ impl InstancedMaterial {
     }
 }
 
+#[derive(Component, Clone, Debug, Default, Deref, DerefMut, PartialEq, Eq)]
+pub struct InstanceMeshMaterial3d(pub Handle<StandardMaterial>);
+
+impl From<Handle<StandardMaterial>> for InstanceMeshMaterial3d {
+    fn from(handle: Handle<StandardMaterial>) -> Self {
+        Self(handle)
+    }
+}
+
 impl SyncComponent for InstancedMaterial {
     type Target = Self;
 }
@@ -113,6 +124,13 @@ impl Plugin for InstancedMaterialPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(ExtractComponentPlugin::<InstancedMaterial>::default());
         app.sub_app_mut(RenderApp)
+            .add_systems(
+                ExtractSchedule,
+                (
+                    extract_instance_mesh_materials.in_set(MaterialExtractionSystems),
+                    early_sweep_instance_mesh_materials.in_set(MaterialExtractionSystems),
+                ),
+            )
             .add_render_command::<Transparent3d, DrawCustom>()
             .init_resource::<SpecializedMeshPipelines<CustomPipeline>>()
             .add_systems(
@@ -126,6 +144,55 @@ impl Plugin for InstancedMaterialPlugin {
                     prepare_instance_buffers.in_set(RenderSystems::PrepareResources),
                 ),
             );
+    }
+}
+
+fn extract_instance_mesh_materials(
+    mut material_instances: ResMut<RenderMaterialInstances>,
+    changed_materials_query: Extract<
+        Query<
+            (Entity, &ViewVisibility, &InstanceMeshMaterial3d),
+            Or<(
+                Changed<ViewVisibility>,
+                Changed<InstanceMeshMaterial3d>,
+                Changed<InstancedMaterial>,
+            )>,
+        >,
+    >,
+) {
+    let last_change_tick = material_instances.current_change_tick;
+
+    for (entity, view_visibility, material) in &changed_materials_query {
+        let entity = MainEntity::from(entity);
+        if view_visibility.get() {
+            material_instances.instances.insert(
+                entity,
+                RenderMaterialInstance {
+                    asset_id: material.id().untyped(),
+                    last_change_tick,
+                },
+            );
+        } else {
+            material_instances.instances.remove(&entity);
+        }
+    }
+}
+
+fn early_sweep_instance_mesh_materials(
+    mut material_instances: ResMut<RenderMaterialInstances>,
+    mut removed_materials_query: Extract<RemovedComponents<InstanceMeshMaterial3d>>,
+) {
+    let last_change_tick = material_instances.current_change_tick;
+
+    for entity in removed_materials_query.read() {
+        let entity = MainEntity::from(entity);
+        let should_remove = material_instances
+            .instances
+            .get(&entity)
+            .is_some_and(|instance| instance.last_change_tick != last_change_tick);
+        if should_remove {
+            material_instances.instances.remove(&entity);
+        }
     }
 }
 

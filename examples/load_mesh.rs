@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy::{asset::AssetLoadFailedEvent, prelude::*};
 use tephrite_rs::prelude::*;
 
 use bevy::camera_controller::free_camera::{FreeCamera, FreeCameraPlugin};
@@ -13,6 +13,8 @@ impl Plugin for MyPlugin {
         app.add_observer(on_button);
 
         app.add_plugins(NavigationPlugin::new(NavigatorMode::ObjectCentric));
+
+        app.add_systems(Update, world_load_errors);
     }
 }
 
@@ -43,7 +45,12 @@ fn setup_non_teph(mut commands: Commands) {
     ));
 }
 
-fn setup(mut commands: Commands, server: Res<AssetServer>, mut known: ResMut<KnownScenes>) {
+fn setup(
+    mut commands: Commands,
+    server: Res<AssetServer>,
+    mut known: ResMut<KnownScenes>,
+    mut gltf_scenes: ResMut<GltfSceneAssets>,
+) {
     info!("Basic Teph scene setup");
 
     // light
@@ -64,7 +71,9 @@ fn setup(mut commands: Commands, server: Res<AssetServer>, mut known: ResMut<Kno
         skybox_color: Color::srgb(0.5, 0.5, 1.0).into(),
     });
 
-    let root = commands.spawn((Transform::default(), NavigatorMarker)).id();
+    let root = commands
+        .spawn((Transform::default(), NavigatorMarker, Visibility::Inherited))
+        .id();
 
     let mut iter = std::env::args();
     while let Some(arg) = iter.next() {
@@ -83,12 +92,7 @@ fn setup(mut commands: Commands, server: Res<AssetServer>, mut known: ResMut<Kno
 
             let id = commands
                 .spawn((
-                    WorldAssetRoot(
-                        server
-                            .load_builder()
-                            .override_unapproved()
-                            .load(GltfAssetLabel::Scene(0).from_asset(val)),
-                    ),
+                    WorldAssetRoot(gltf_scenes.load_scene(&server, val, 0)),
                     ChildOf(root),
                     vis,
                 ))
@@ -144,4 +148,13 @@ fn on_button(trigger: On<GlobalActivate>, mut known: ResMut<KnownScenes>, mut co
 
 fn main() {
     tephrite_rs::run(MyPlugin);
+}
+
+fn world_load_errors(mut failures: MessageReader<AssetLoadFailedEvent<WorldAsset>>) {
+    for failure in failures.read() {
+        error!(
+            "Failed to load world '{}':\n{:#?}",
+            failure.path, failure.error,
+        );
+    }
 }
