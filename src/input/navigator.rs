@@ -131,7 +131,7 @@ fn on_tick(
     // TODO: will fail if we add more interactors
     let Ok((interactor, joystick_global_tf, state, mut navigator_state)) = joystick.single_mut()
     else {
-        error_once!("Multiple interactors detected, refusing to navigate!");
+        warn_once!("Zero or multiple interactors detected, navigation system disabled.");
         return;
     };
 
