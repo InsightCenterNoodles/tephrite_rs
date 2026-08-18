@@ -150,7 +150,7 @@ fn setup_tracked_head(mut commands: Commands) {
         .spawn((
             Transform::default(),
             interactor_type,
-            InteractorState::default(),
+            InteractorState::new(interactor_type),
             Name::new("Joystick"),
             InheritedVisibility::default(),
         ))

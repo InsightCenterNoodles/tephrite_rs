@@ -26,6 +26,8 @@ pub enum ButtonEventKind {
     ButtonReleased(InputButton),
 }
 
+// Higher level eventing
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum InteractorAction {
     Primary,
@@ -37,8 +39,9 @@ pub enum InteractorAction {
 }
 
 /// A semantic action event from an [`Interactor`](crate::input::Interactor).
-#[derive(Debug, Clone, Copy, PartialEq, Event)]
+#[derive(Debug, Clone, Copy, PartialEq, EntityEvent)]
 pub struct InteractorActionEvent {
+    pub entity: Entity,
     pub interactor: Entity,
     pub kind: InteractorActionEventKind,
 }
@@ -59,6 +62,7 @@ pub struct Activate {
 /// Notification sent by input system that an undirected activation event has occured
 #[derive(Debug, Clone, Copy, PartialEq, Event)]
 pub struct GlobalActivate {
+    pub interactor: Entity,
     pub button: InputButton,
 }
 
@@ -66,5 +70,5 @@ pub struct GlobalActivate {
 #[derive(Debug, Clone, Copy, PartialEq, Event)]
 pub struct GlobalInteractorAction {
     pub interactor: Entity,
-    pub action: InteractorAction,
+    pub action: InteractorActionEventKind,
 }

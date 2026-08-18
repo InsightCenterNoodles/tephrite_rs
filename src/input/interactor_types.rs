@@ -15,6 +15,7 @@ pub trait InteractorTrait {
     fn reverse_translate_button(button: InputButton) -> Option<Self::Button>;
 
     fn action_for_button(button: InputButton) -> Option<InteractorAction>;
+    fn button_for_action(action: InteractorAction) -> Option<InputButton>;
 
     fn pressed(button: Self::Button, state: &super::InteractorState) -> bool {
         Self::translate_button(button)
@@ -113,6 +114,18 @@ impl InteractorTrait for Controller {
             ControllerButton::TR => Some(InteractorAction::Next),
             _ => None,
         }
+    }
+
+    fn button_for_action(action: InteractorAction) -> Option<InputButton> {
+        let b = match action {
+            InteractorAction::Primary => ControllerButton::A,
+            InteractorAction::Secondary => ControllerButton::B,
+            InteractorAction::Menu => ControllerButton::Y,
+            InteractorAction::ResetView => ControllerButton::Start,
+            InteractorAction::Previous => ControllerButton::TL,
+            InteractorAction::Next => ControllerButton::TR,
+        };
+        Self::translate_button(b)
     }
 }
 
@@ -215,5 +228,16 @@ impl InteractorTrait for DTrackFlystick {
             FlystickButton::JoystickButton => Some(InteractorAction::ResetView),
             _ => None,
         }
+    }
+
+    fn button_for_action(action: InteractorAction) -> Option<InputButton> {
+        let b = match action {
+            InteractorAction::Primary => FlystickButton::Trigger,
+            InteractorAction::Secondary => FlystickButton::RedButton,
+            InteractorAction::Menu => FlystickButton::BlackButton,
+            InteractorAction::ResetView => FlystickButton::JoystickButton,
+            _ => return None,
+        };
+        Self::translate_button(b)
     }
 }

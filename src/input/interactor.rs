@@ -24,21 +24,35 @@ pub enum InputButton {
 }
 
 /// Marker for the entity that represents a user's controller
-#[derive(Component, Default, Debug)]
+#[derive(Component, Default, Debug, Clone, Copy)]
 pub enum Interactor {
     #[default]
     Controller,
     Flystick,
 }
 
-#[derive(Debug, Default, Component)]
+#[derive(Debug, Component)]
 #[require(Interactor)]
 pub struct InteractorState {
     pub(crate) buttons: ButtonInput<InputButton>,
     pub(crate) analogs: Vec<Option<f32>>,
+
+    pub(crate) translate: fn(action: InteractorAction) -> Option<InputButton>,
 }
 
 impl InteractorState {
+    pub fn new(ty: Interactor) -> Self {
+        let f = match ty {
+            Interactor::Controller => Controller::button_for_action,
+            Interactor::Flystick => DTrackFlystick::button_for_action,
+        };
+        Self {
+            buttons: Default::default(),
+            analogs: Default::default(),
+            translate: f,
+        }
+    }
+
     pub(crate) fn get_axis_value(&self, axis: usize) -> Option<f32> {
         self.analogs.get(axis as usize).cloned().flatten()
     }
@@ -54,6 +68,48 @@ impl InteractorState {
             }
         }
     }
+
+    pub fn any_just_pressed(&self, inputs: impl IntoIterator<Item = InteractorAction>) -> bool {
+        self.buttons
+            .any_just_pressed(inputs.into_iter().filter_map(self.translate))
+    }
+
+    pub fn any_just_released(&self, inputs: impl IntoIterator<Item = InteractorAction>) -> bool {
+        self.buttons
+            .any_just_released(inputs.into_iter().filter_map(self.translate))
+    }
+
+    pub fn any_pressed(&self, inputs: impl IntoIterator<Item = InteractorAction>) -> bool {
+        self.buttons
+            .any_pressed(inputs.into_iter().filter_map(self.translate))
+    }
+
+    pub fn just_pressed(&self, input: InteractorAction) -> bool {
+        let Some(input_button) = (self.translate)(input) else {
+            return false;
+        };
+        self.buttons.just_pressed(input_button)
+    }
+
+    pub fn just_released(&self, input: InteractorAction) -> bool {
+        let Some(input_button) = (self.translate)(input) else {
+            return false;
+        };
+        self.buttons.just_released(input_button)
+    }
+
+    pub fn pressed(&self, input: InteractorAction) -> bool {
+        let Some(input_button) = (self.translate)(input) else {
+            return false;
+        };
+        self.buttons.pressed(input_button)
+    }
+}
+
+impl Default for InteractorState {
+    fn default() -> Self {
+        Self::new(Interactor::default())
+    }
 }
 
 pub struct InteractorPlugin;
@@ -64,13 +120,7 @@ impl Plugin for InteractorPlugin {
 
         app.add_systems(
             PreUpdate,
-            (
-                reset_current_states,
-                update_current_states,
-                translate_action_events,
-                read_events,
-            )
-                .chain(),
+            (reset_current_states, update_current_states, read_events).chain(),
         );
     }
 }
@@ -134,40 +184,6 @@ fn update_current_states(
     }
 }
 
-fn translate_action_events(
-    mut reader: MessageReader<ButtonMessage>,
-    interactors: Query<&Interactor>,
-    mut commands: Commands,
-) {
-    for event in reader.read() {
-        let Ok(interactor) = interactors.get(event.from) else {
-            continue;
-        };
-
-        let (button, pressed) = match event.kind {
-            ButtonEventKind::ButtonPressed(button) => (button, true),
-            ButtonEventKind::ButtonReleased(button) => (button, false),
-        };
-
-        let action = action_for_button(interactor, button);
-
-        let Some(action) = action else {
-            continue;
-        };
-
-        let kind = if pressed {
-            InteractorActionEventKind::Pressed(action)
-        } else {
-            InteractorActionEventKind::Released(action)
-        };
-
-        commands.trigger(InteractorActionEvent {
-            interactor: event.from,
-            kind,
-        });
-    }
-}
-
 // TODO: use something better than the global transform? itll be a frame out of date.
 // TODO: we are just picking our first intersection
 fn read_events(
@@ -183,7 +199,7 @@ fn read_events(
 ) {
     //let mut handled = false;
 
-    for event in reader.read() {
+    'events: for event in reader.read() {
         let Ok((interactor, joy_tf)) = joy_query.get(event.from) else {
             continue;
         };
@@ -193,6 +209,10 @@ fn read_events(
         let activation_point = Vec3::ZERO;
 
         for (this_entity, bounds, tf, mut active) in root_query.iter_mut() {
+            if !active.enable {
+                continue;
+            }
+
             // map to our local
 
             let local = map_point(activation_point, joy_tf, tf);
@@ -214,6 +234,15 @@ fn read_events(
                         .entry(event.from)
                         .or_default()
                         .insert(interactor_button);
+
+                    if let Some(action) = action_for_button(interactor, interactor_button) {
+                        commands.trigger(InteractorActionEvent {
+                            entity: this_entity,
+                            interactor: event.from,
+                            kind: InteractorActionEventKind::Pressed(action),
+                        });
+                    }
+                    continue 'events;
                 }
                 ButtonEventKind::ButtonReleased(interactor_button) => {
                     let was_down = active
@@ -223,14 +252,23 @@ fn read_events(
                         .remove(&interactor_button);
 
                     if was_down {
-                        // emit action
+                        if let Some(action) = action_for_button(interactor, interactor_button) {
+                            commands.trigger(InteractorActionEvent {
+                                entity: this_entity,
+                                interactor: event.from,
+                                kind: InteractorActionEventKind::Released(action),
+                            });
+                        }
+
                         commands.trigger(Activate {
                             entity: this_entity,
                             button: interactor_button,
                         });
 
-                        return;
+                        continue 'events;
                     }
+
+                    continue 'events;
                 }
             }
         }
@@ -240,17 +278,25 @@ fn read_events(
         match event.kind {
             ButtonEventKind::ButtonPressed(interactor_button) => {
                 commands.trigger(GlobalActivate {
+                    interactor: event.from,
                     button: interactor_button,
                 });
 
                 if let Some(action) = action_for_button(interactor, interactor_button) {
                     commands.trigger(GlobalInteractorAction {
                         interactor: event.from,
-                        action,
+                        action: InteractorActionEventKind::Pressed(action),
                     });
                 }
             }
-            ButtonEventKind::ButtonReleased(_interactor_button) => {}
+            ButtonEventKind::ButtonReleased(interactor_button) => {
+                if let Some(action) = action_for_button(interactor, interactor_button) {
+                    commands.trigger(GlobalInteractorAction {
+                        interactor: event.from,
+                        action: InteractorActionEventKind::Released(action),
+                    });
+                }
+            }
         }
     }
 }
@@ -259,5 +305,92 @@ fn action_for_button(interactor: &Interactor, button: InputButton) -> Option<Int
     match interactor {
         Interactor::Controller => super::interactor_types::Controller::action_for_button(button),
         Interactor::Flystick => super::interactor_types::DTrackFlystick::action_for_button(button),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, Default, Resource)]
+    struct ActionLog(Vec<(Entity, Entity, InteractorActionEventKind)>);
+
+    #[derive(Debug, Default, Resource)]
+    struct GlobalActionLog(Vec<GlobalInteractorAction>);
+
+    #[test]
+    fn targeted_entities_receive_interactor_action_events() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(crate::input::InputPlugin);
+        app.init_resource::<ActionLog>();
+        app.init_resource::<GlobalActionLog>();
+        app.add_observer(
+            |trigger: On<GlobalInteractorAction>, mut log: ResMut<GlobalActionLog>| {
+                log.0.push(*trigger.event());
+            },
+        );
+
+        let interactor = app
+            .world_mut()
+            .spawn((
+                Interactor::Controller,
+                InteractorState::new(Interactor::Controller),
+                GlobalTransform::IDENTITY,
+            ))
+            .id();
+
+        let bounds = Aabb3d::from_point_cloud(
+            Isometry3d::default(),
+            [Vec3::splat(-1.0), Vec3::splat(1.0)].into_iter(),
+        );
+
+        let target = app
+            .world_mut()
+            .spawn((
+                InteractionBounds { aabb: bounds },
+                CanActivate::default(),
+                GlobalTransform::IDENTITY,
+            ))
+            .observe(
+                |trigger: On<InteractorActionEvent>, mut log: ResMut<ActionLog>| {
+                    let event = trigger.event();
+                    log.0.push((event.entity, event.interactor, event.kind));
+                },
+            )
+            .id();
+
+        app.world_mut()
+            .resource_mut::<Messages<ButtonMessage>>()
+            .write(ButtonMessage {
+                from: interactor,
+                kind: ButtonEventKind::ButtonPressed(InputButton::Button1),
+            });
+        app.update();
+
+        app.world_mut()
+            .resource_mut::<Messages<ButtonMessage>>()
+            .write(ButtonMessage {
+                from: interactor,
+                kind: ButtonEventKind::ButtonReleased(InputButton::Button1),
+            });
+        app.update();
+
+        assert_eq!(
+            app.world().resource::<ActionLog>().0,
+            vec![
+                (
+                    target,
+                    interactor,
+                    InteractorActionEventKind::Pressed(InteractorAction::Primary),
+                ),
+                (
+                    target,
+                    interactor,
+                    InteractorActionEventKind::Released(InteractorAction::Primary),
+                ),
+            ]
+        );
+        assert!(app.world().resource::<GlobalActionLog>().0.is_empty());
     }
 }
