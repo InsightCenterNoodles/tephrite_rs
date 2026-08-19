@@ -3,6 +3,7 @@ pub mod points;
 
 use bevy::{asset::embedded_asset, prelude::*};
 
+pub use instance::{Instance, InstanceMeshMaterial3d, Instances};
 pub use points::{PointsMaterial, PointsShaderSettings};
 
 /// Registers Tephrite's point-cloud material and its embedded shader.
@@ -21,6 +22,7 @@ pub fn points_material_plugin(app: &mut App) {
 /// shader is available from its embedded asset path.
 pub fn instance_material_plugin(app: &mut App) {
     embedded_asset!(app, "instance/instancing.wgsl");
+    app.add_plugins(instance::InstancedMaterialPlugin);
 }
 
 pub(crate) fn builtin_materials_plugin(app: &mut App) {

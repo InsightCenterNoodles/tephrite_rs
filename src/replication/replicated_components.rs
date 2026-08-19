@@ -3,7 +3,7 @@ use bevy::light::{NotShadowCaster, NotShadowReceiver};
 use bevy::prelude::*;
 
 use crate::common::Head;
-use crate::prelude::PointsMaterial;
+use crate::prelude::{InstanceMeshMaterial3d, Instances, PointsMaterial};
 use crate::replication::registry::ReplicationRegistry;
 
 type StandardMatComponent = MeshMaterial3d<StandardMaterial>;
@@ -21,6 +21,8 @@ pub(crate) fn register_builtin_components(registry: &mut ReplicationRegistry) {
         .register_component::<Mesh3d>()
         .register_component::<StandardMatComponent>()
         .register_component::<PointsMatComponent>()
+        .register_component::<InstanceMeshMaterial3d>()
+        .register_component::<Instances>()
         .register_component::<InheritedVisibility>()
         .register_component::<NotShadowCaster>()
         .register_component::<NotShadowReceiver>()

@@ -7,6 +7,7 @@ use std::{fmt::Debug, marker::PhantomData};
 
 use bevy::{platform::collections::HashMap, prelude::*};
 
+use crate::material::InstanceMeshMaterial3d;
 use crate::{prelude::PointsMaterial, serialize::*};
 
 impl<A: Asset> FastWrite for AssetId<A> {
@@ -139,6 +140,8 @@ impl_fast_newtype!(Mesh3d);
 impl_fast_newtype!(MeshMaterial3d<StandardMaterial>);
 
 impl_fast_newtype!(MeshMaterial3d<PointsMaterial>);
+
+impl_fast_newtype!(InstanceMeshMaterial3d);
 
 // =============================================================================
 

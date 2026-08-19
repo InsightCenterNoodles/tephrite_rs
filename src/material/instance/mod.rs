@@ -11,14 +11,16 @@ use bevy::{
     mesh::{MeshVertexBufferLayoutRef, VertexBufferLayout},
     pbr::{
         MATERIAL_BIND_GROUP_INDEX, MaterialExtractionSystems, MeshInputUniform, MeshPipeline,
-        MeshPipelineKey, MeshPipelineSystems, MeshUniform, RenderMaterialInstance,
-        RenderMaterialInstances, RenderMeshInstances, SetMaterialBindGroup, SetMeshViewBindGroup,
-        SetMeshViewBindingArrayBindGroup, StandardMaterial, ViewKeyCache,
+        MeshPipelineKey, MeshPipelineSystems, MeshUniform, PreparedMaterial,
+        RenderMaterialInstance, RenderMaterialInstances, RenderMeshInstances, SetMaterialBindGroup,
+        SetMeshBindGroup, SetMeshViewBindGroup, SetMeshViewBindingArrayBindGroup, StandardMaterial,
+        ViewKeyCache, material_uses_bindless_resources,
     },
     prelude::*,
     render::{
         Extract, ExtractSchedule,
         batching::gpu_preprocessing::BatchedInstanceBuffers,
+        erased_render_asset::ErasedRenderAssets,
         extract_component::*,
         mesh::{RenderMesh, RenderMeshBufferInfo, allocator::MeshAllocator},
         render_asset::RenderAssets,
@@ -65,12 +67,15 @@ impl Instance {
         self.tex = Vec4::new(translation.x, translation.y, scale.x, scale.y);
         self
     }
+
+    pub fn set_position(&mut self, v: Vec3) {
+        self.pos = v.extend(self.pos.w);
+    }
 }
 
 fn pack_rgba8(color: LinearRgba) -> f32 {
-    let [r, g, b, a] = color
-        .to_f32_array()
-        .map(|channel| (channel.clamp(0.0, 1.0) * 255.0).round().clamp(0.0, 255.0) as u32);
+    let [r, g, b, a] = color.to_u8_array().map(|x| x as u32);
+    //dbg!(r, g, b, a);
     f32::from_bits(r | (g << 8) | (b << 16) | (a << 24))
 }
 
@@ -79,9 +84,9 @@ fn pack_rgba8(color: LinearRgba) -> f32 {
 /// It is required to disable frustum culling, as we cannot compute an efficient bounding box for instances.
 #[derive(Component, Clone)]
 #[require(NoFrustumCulling)]
-pub struct InstancedMaterial(Vec<Instance>);
+pub struct Instances(Vec<Instance>);
 
-impl InstancedMaterial {
+impl Instances {
     pub fn new(instances: impl Into<Vec<Instance>>) -> Self {
         Self(instances.into())
     }
@@ -104,12 +109,28 @@ impl From<Handle<StandardMaterial>> for InstanceMeshMaterial3d {
     }
 }
 
-impl SyncComponent for InstancedMaterial {
+impl crate::serialize::FastWrite for Instances {
+    #[inline(always)]
+    unsafe fn write_fast(&self, w: &mut impl crate::serialize::ByteSink) {
+        w.put_pod_slice(&self.0);
+    }
+}
+
+impl crate::serialize::FastRead for Instances {
+    type Ret = Self;
+
+    #[inline(always)]
+    unsafe fn read_fast<'a, S: crate::serialize::ByteSource<'a>>(r: &mut S) -> Self::Ret {
+        Self(r.get_pod_vec::<Instance>())
+    }
+}
+
+impl SyncComponent for Instances {
     type Target = Self;
 }
 
-impl ExtractComponent for InstancedMaterial {
-    type QueryData = &'static InstancedMaterial;
+impl ExtractComponent for Instances {
+    type QueryData = &'static Instances;
     type QueryFilter = ();
     type Out = Self;
 
@@ -122,8 +143,13 @@ pub struct InstancedMaterialPlugin;
 
 impl Plugin for InstancedMaterialPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(ExtractComponentPlugin::<InstancedMaterial>::default());
-        app.sub_app_mut(RenderApp)
+        app.add_plugins(ExtractComponentPlugin::<Instances>::default());
+
+        let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
+            return;
+        };
+
+        render_app
             .add_systems(
                 ExtractSchedule,
                 (
@@ -155,7 +181,7 @@ fn extract_instance_mesh_materials(
             Or<(
                 Changed<ViewVisibility>,
                 Changed<InstanceMeshMaterial3d>,
-                Changed<InstancedMaterial>,
+                Changed<Instances>,
             )>,
         >,
     >,
@@ -206,7 +232,7 @@ fn queue_custom(
     maybe_batched_instance_buffers: Option<
         Res<BatchedInstanceBuffers<MeshUniform, MeshInputUniform>>,
     >,
-    material_meshes: Query<(Entity, &MainEntity), With<InstancedMaterial>>,
+    material_meshes: Query<(Entity, &MainEntity), With<Instances>>,
     mut transparent_render_phases: ResMut<ViewSortedRenderPhases<Transparent3d>>,
     views: Query<&ExtractedView>,
     view_key_cache: Res<ViewKeyCache>,
@@ -275,18 +301,33 @@ struct InstanceBuffer {
 
 fn prepare_instance_buffers(
     mut commands: Commands,
-    query: Query<(Entity, &InstancedMaterial)>,
+    query: Query<(Entity, &MainEntity, &Instances)>,
     render_device: Res<RenderDevice>,
+    render_material_instances: Res<RenderMaterialInstances>,
+    render_materials: Res<ErasedRenderAssets<PreparedMaterial>>,
 ) {
-    for (entity, instance_data) in &query {
+    for (entity, main_entity, instance_data) in &query {
+        let mut instances = instance_data.instances().to_vec();
+        if let Some(material_instance) = render_material_instances
+            .instances
+            .get(main_entity)
+        {
+            if let Some(material) = render_materials.get(material_instance.asset_id) {
+                let slot = u32::from(material.binding.slot) as f32;
+                for instance in &mut instances {
+                    instance.sca.w = slot;
+                }
+            }
+        }
+
         let buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
             label: Some("instance data buffer"),
-            contents: bytemuck::cast_slice(instance_data.instances()),
+            contents: bytemuck::cast_slice(&instances),
             usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
         });
         commands.entity(entity).insert(InstanceBuffer {
             buffer,
-            length: instance_data.instances().len(),
+            length: instances.len(),
         });
     }
 }
@@ -296,6 +337,7 @@ struct CustomPipeline {
     shader: Handle<Shader>,
     mesh_pipeline: MeshPipeline,
     material_layout: BindGroupLayoutDescriptor,
+    bindless: bool,
 }
 
 fn init_custom_pipeline(
@@ -308,6 +350,7 @@ fn init_custom_pipeline(
         shader: asset_server.load(INSTANCING_SHADER_ASSET_PATH),
         mesh_pipeline: mesh_pipeline.clone(),
         material_layout: StandardMaterial::bind_group_layout_descriptor(&render_device),
+        bindless: material_uses_bindless_resources::<StandardMaterial>(&render_device),
     });
 }
 
@@ -325,30 +368,38 @@ impl SpecializedMeshPipeline for CustomPipeline {
             "MATERIAL_BIND_GROUP".into(),
             MATERIAL_BIND_GROUP_INDEX as u32,
         ));
+        if self.bindless {
+            descriptor.vertex.shader_defs.push("BINDLESS".into());
+        }
         descriptor.vertex.shader = self.shader.clone();
         descriptor.vertex.buffers.push(VertexBufferLayout {
             array_stride: size_of::<Instance>() as u64,
             step_mode: VertexStepMode::Instance,
             attributes: vec![
                 VertexAttribute {
-                    format: VertexFormat::Float32x4,
+                    format: VertexFormat::Float32x3,
                     offset: 0,
                     shader_location: 3, // shader locations 0-2 are taken up by Position, Normal and UV attributes
                 },
                 VertexAttribute {
-                    format: VertexFormat::Float32x4,
-                    offset: VertexFormat::Float32x4.size(),
+                    format: VertexFormat::Uint32,
+                    offset: VertexFormat::Float32x3.size(),
                     shader_location: 4,
                 },
                 VertexAttribute {
                     format: VertexFormat::Float32x4,
-                    offset: VertexFormat::Float32x4.size() * 2,
+                    offset: VertexFormat::Float32x4.size(),
                     shader_location: 5,
                 },
                 VertexAttribute {
                     format: VertexFormat::Float32x4,
-                    offset: VertexFormat::Float32x4.size() * 3,
+                    offset: VertexFormat::Float32x4.size() * 2,
                     shader_location: 6,
+                },
+                VertexAttribute {
+                    format: VertexFormat::Float32x4,
+                    offset: VertexFormat::Float32x4.size() * 3,
+                    shader_location: 7,
                 },
             ],
         });
@@ -361,6 +412,9 @@ impl SpecializedMeshPipeline for CustomPipeline {
             "MATERIAL_BIND_GROUP".into(),
             MATERIAL_BIND_GROUP_INDEX as u32,
         ));
+        if self.bindless {
+            fragment.shader_defs.push("BINDLESS".into());
+        }
         Ok(descriptor)
     }
 }
@@ -369,6 +423,7 @@ type DrawCustom = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
     SetMeshViewBindingArrayBindGroup<1>,
+    SetMeshBindGroup<2>,
     SetMaterialBindGroup<MATERIAL_BIND_GROUP_INDEX>,
     DrawMeshInstanced,
 );
@@ -460,5 +515,12 @@ mod tests {
         );
 
         assert_eq!(instance.pos.w.to_bits(), 0xff0080ff);
+    }
+
+    #[test]
+    fn instance_packs_white_as_rgba8() {
+        let instance = Instance::new(Vec3::ZERO, Quat::IDENTITY, Vec3::ONE, LinearRgba::WHITE);
+
+        assert_eq!(instance.pos.w.to_bits(), 0xffffffff);
     }
 }

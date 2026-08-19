@@ -12,15 +12,20 @@
     view_transformations::position_world_to_clip,
 }
 
+#ifdef BINDLESS
+#import bevy_render::bindless::{bindless_samplers_filtering, bindless_textures_2d}
+#endif
+
 struct Vertex {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
 
-    @location(3) i_pos: vec4<f32>,
-    @location(4) i_rot: vec4<f32>,
-    @location(5) i_sca: vec4<f32>,
-    @location(6) i_tex: vec4<f32>,
+    @location(3) i_pos: vec3<f32>,
+    @location(4) i_color: u32,
+    @location(5) i_rot: vec4<f32>,
+    @location(6) i_sca: vec4<f32>,
+    @location(7) i_tex: vec4<f32>,
 };
 
 struct VertexOutput {
@@ -29,6 +34,7 @@ struct VertexOutput {
     @location(1) world_normal: vec3<f32>,
     @location(2) color: vec4<f32>,
     @location(3) uv: vec2<f32>,
+    @location(4) @interpolate(flat) material_slot: u32,
 };
 
 struct FragmentOutput {
@@ -39,9 +45,7 @@ fn rotate_vertex_position(v: vec3<f32>, q: vec4<f32>) -> vec3<f32> {
     return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v);
 }
 
-fn unpack_rgba8(v: f32) -> vec4<u32> {
-    let x = bitcast<u32>(v);
-
+fn unpack_rgba8(x: u32) -> vec4<u32> {
     return vec4<u32>(
         (x >> 0u) & 0xffu,
         (x >> 8u) & 0xffu,
@@ -50,22 +54,24 @@ fn unpack_rgba8(v: f32) -> vec4<u32> {
     );
 }
 
-fn unpack_rgba8_norm(v: f32) -> vec4<f32> {
+fn unpack_rgba8_norm(v: u32) -> vec4<f32> {
     return vec4<f32>(unpack_rgba8(v)) / 255.0;
 }
 
 @vertex
 fn vertex(vertex: Vertex) -> VertexOutput {
     let position =
-        rotate_vertex_position(vertex.position * vertex.i_sca.xyz, vertex.i_rot) + vertex.i_pos.xyz;
+        rotate_vertex_position(vertex.position * vertex.i_sca.xyz, vertex.i_rot) + vertex.i_pos;
     let normal = normalize(rotate_vertex_position(vertex.normal, vertex.i_rot));
 
     var out: VertexOutput;
     out.clip_position = position_world_to_clip(position);
     out.world_position = vec4<f32>(position, 1.0);
     out.world_normal = normal;
-    out.color = unpack_rgba8_norm(vertex.i_pos.w);
+    out.color = unpack_rgba8_norm(vertex.i_color);
+    //out.color = vec4<f32>(1.0);
     out.uv = vertex.i_tex.xy + vertex.uv * vertex.i_tex.zw;
+    out.material_slot = u32(vertex.i_sca.w);
     return out;
 }
 
@@ -81,21 +87,46 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     pbr_input.N = normalize(pbr_input.world_normal);
     pbr_input.clearcoat_N = pbr_input.N;
 
+    pbr_input.material.base_color = vec4<f32>(1.0);
+
+#ifdef BINDLESS
+    let material_indices = pbr_bindings::material_indices[in.material_slot];
+    pbr_input.material = pbr_bindings::material_array[material_indices.material];
+#else
     pbr_input.material = pbr_bindings::material;
+#endif
+
     pbr_input.material.base_color *= in.color;
 
     if (pbr_input.material.flags & pbr_types::STANDARD_MATERIAL_FLAGS_BASE_COLOR_TEXTURE_BIT) != 0u {
+#ifdef BINDLESS
+        pbr_input.material.base_color *= textureSample(
+            bindless_textures_2d[material_indices.base_color_texture],
+            bindless_samplers_filtering[material_indices.base_color_sampler],
+            in.uv,
+        );
+#else
         pbr_input.material.base_color *= textureSample(
             pbr_bindings::base_color_texture,
             pbr_bindings::base_color_sampler,
             in.uv,
         );
+#endif
     }
+    
     pbr_input.material.base_color =
         alpha_discard(pbr_input.material, pbr_input.material.base_color);
 
+
     var out: FragmentOutput;
-    out.color = apply_pbr_lighting(pbr_input);
+
+    if (pbr_input.material.flags & pbr_types::STANDARD_MATERIAL_FLAGS_UNLIT_BIT) == 0u {
+        out.color = apply_pbr_lighting(pbr_input);
+    } else {
+        out.color = pbr_input.material.base_color;
+    }
+
     out.color = main_pass_post_lighting_processing(pbr_input, out.color);
+
     return out;
 }
