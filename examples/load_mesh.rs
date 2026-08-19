@@ -49,7 +49,7 @@ fn setup(
     mut commands: Commands,
     server: Res<AssetServer>,
     mut known: ResMut<KnownScenes>,
-    mut gltf_scenes: ResMut<GltfSceneAssets>,
+    //mut gltf_scenes: ResMut<GltfSceneAssets>,
 ) {
     info!("Basic Teph scene setup");
 
@@ -92,7 +92,13 @@ fn setup(
 
             let id = commands
                 .spawn((
-                    WorldAssetRoot(gltf_scenes.load_scene(&server, val, 0)),
+                    //WorldAssetRoot(gltf_scenes.load_scene(&server, val, 0)),
+                    WorldAssetRoot(
+                        server
+                            .load_builder()
+                            .override_unapproved()
+                            .load(GltfAssetLabel::Scene(0).from_asset(val)),
+                    ),
                     ChildOf(root),
                     vis,
                 ))

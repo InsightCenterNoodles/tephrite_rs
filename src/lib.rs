@@ -275,7 +275,6 @@ pub fn run<T: TephriteApp>(user_plugin: T) -> bevy::app::AppExit {
             unapproved_path_mode: bevy::asset::UnapprovedPathMode::Allow,
             ..Default::default()
         }));
-        app.init_resource::<crate::material::GltfSceneAssets>();
         app.add_plugins(user_plugin);
         app.add_plugins(T::non_tephrite_plugin());
         apply_tephrite_config::<T>(&mut app, true);

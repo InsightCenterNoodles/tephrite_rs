@@ -4,7 +4,7 @@ use bevy::{
     image::{CompressedImageFormatSupport, CompressedImageFormats},
     log::LogPlugin,
     prelude::*,
-    sprite_render::ColorMaterialPlugin,
+    sprite_render::{ColorMaterialPlugin, Mesh2dRenderPlugin},
     time::TimePlugin,
 };
 
@@ -35,19 +35,25 @@ pub(crate) fn make_common_app() -> App {
             unapproved_path_mode: bevy::asset::UnapprovedPathMode::Allow,
             ..Default::default()
         },
+        bevy::world_serialization::WorldSerializationPlugin,
+        bevy::input::InputPlugin,
+    ));
+
+    app.init_asset::<bevy::shader::Shader>()
+        .init_asset_loader::<bevy::shader::ShaderLoader>();
+
+    app.add_plugins((
         AnimationPlugin,
         bevy::scene::ScenePlugin,
         bevy::mesh::MeshPlugin,
         bevy::image::ImagePlugin::default(),
-        bevy::pbr::MaterialPlugin::<StandardMaterial>::default(),
+        bevy::core_pipeline::CorePipelinePlugin,
+        Mesh2dRenderPlugin::default(),
         ColorMaterialPlugin::default(), // we dont use this directly, other things might
         bevy::gltf::GltfPlugin::default(),
-        crate::material::gltf_material_bridge_plugin,
-        bevy::render::texture::TexturePlugin, // without this, AssetServer does not work.
+        bevy::pbr::PbrPlugin::default(),
         bevy::text::TextPlugin,
     ));
-
-    app.add_plugins((bevy::world_serialization::WorldSerializationPlugin,));
 
     app.world_mut()
         .insert_resource(CompressedImageFormatSupport(CompressedImageFormats::BC));
