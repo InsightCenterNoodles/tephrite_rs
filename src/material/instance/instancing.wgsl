@@ -1,4 +1,9 @@
 #import bevy_pbr::{
+    view_transformations::position_world_to_clip,
+}
+
+#ifndef PREPASS_PIPELINE
+#import bevy_pbr::{
     mesh_view_bindings::view,
     pbr_bindings,
     pbr_functions::{
@@ -9,11 +14,11 @@
         prepare_world_normal,
     },
     pbr_types,
-    view_transformations::position_world_to_clip,
 }
 
 #ifdef BINDLESS
 #import bevy_render::bindless::{bindless_samplers_filtering, bindless_textures_2d}
+#endif
 #endif
 
 struct Vertex {
@@ -37,9 +42,34 @@ struct VertexOutput {
     @location(4) @interpolate(flat) material_slot: u32,
 };
 
+struct ShadowVertex {
+    @location(0) position: vec3<f32>,
+
+    @location(3) i_pos: vec3<f32>,
+    @location(4) i_color: u32,
+    @location(5) i_rot: vec4<f32>,
+    @location(6) i_sca: vec4<f32>,
+    @location(7) i_tex: vec4<f32>,
+};
+
+struct ShadowVertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+#ifdef UNCLIPPED_DEPTH_ORTHO_EMULATION
+    @location(0) unclipped_depth: f32,
+#endif
+};
+
+#ifdef UNCLIPPED_DEPTH_ORTHO_EMULATION
+struct ShadowFragmentOutput {
+    @builtin(frag_depth) frag_depth: f32,
+};
+#endif
+
+#ifndef PREPASS_PIPELINE
 struct FragmentOutput {
     @location(0) color: vec4<f32>,
 };
+#endif
 
 fn rotate_vertex_position(v: vec3<f32>, q: vec4<f32>) -> vec3<f32> {
     return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v);
@@ -75,6 +105,30 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     return out;
 }
 
+@vertex
+fn shadow_vertex(vertex: ShadowVertex) -> ShadowVertexOutput {
+    let position =
+        rotate_vertex_position(vertex.position * vertex.i_sca.xyz, vertex.i_rot) + vertex.i_pos;
+
+    var out: ShadowVertexOutput;
+    out.clip_position = position_world_to_clip(position);
+#ifdef UNCLIPPED_DEPTH_ORTHO_EMULATION
+    out.unclipped_depth = out.clip_position.z;
+    out.clip_position.z = min(out.clip_position.z, 1.0);
+#endif
+    return out;
+}
+
+#ifdef UNCLIPPED_DEPTH_ORTHO_EMULATION
+@fragment
+fn shadow_fragment(in: ShadowVertexOutput) -> ShadowFragmentOutput {
+    var out: ShadowFragmentOutput;
+    out.frag_depth = in.unclipped_depth;
+    return out;
+}
+#endif
+
+#ifndef PREPASS_PIPELINE
 @fragment
 fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> FragmentOutput {
     var pbr_input: pbr_types::PbrInput = pbr_types::pbr_input_new();
@@ -130,3 +184,4 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
 
     return out;
 }
+#endif
