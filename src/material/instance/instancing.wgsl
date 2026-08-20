@@ -21,6 +21,15 @@
 #endif
 #endif
 
+struct InstanceEntity {
+    // xyz: entity translation, w: bindless material slot
+    pos: vec4<f32>,
+    rot: vec4<f32>,
+    sca: vec4<f32>,
+};
+
+@group(4) @binding(0) var<uniform> instance_entity: InstanceEntity;
+
 struct Vertex {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
@@ -80,6 +89,10 @@ fn transform_normal(n: vec3<f32>, q: vec4<f32>, scale: vec3<f32>) -> vec3<f32> {
     return normalize(rotate_vertex_position(n / safe_scale, q));
 }
 
+fn transform_position(position: vec3<f32>, rotation: vec4<f32>, scale: vec3<f32>, translation: vec3<f32>) -> vec3<f32> {
+    return rotate_vertex_position(position * scale, rotation) + translation;
+}
+
 fn unpack_rgba8(x: u32) -> vec4<u32> {
     return vec4<u32>(
         (x >> 0u) & 0xffu,
@@ -95,9 +108,16 @@ fn unpack_rgba8_norm(v: u32) -> vec4<f32> {
 
 @vertex
 fn vertex(vertex: Vertex) -> VertexOutput {
-    let position =
-        rotate_vertex_position(vertex.position * vertex.i_sca.xyz, vertex.i_rot) + vertex.i_pos;
-    let normal = transform_normal(vertex.normal, vertex.i_rot, vertex.i_sca.xyz);
+    let instance_position =
+        transform_position(vertex.position, vertex.i_rot, vertex.i_sca.xyz, vertex.i_pos);
+    let position = transform_position(
+        instance_position,
+        instance_entity.rot,
+        instance_entity.sca.xyz,
+        instance_entity.pos.xyz,
+    );
+    let instance_normal = transform_normal(vertex.normal, vertex.i_rot, vertex.i_sca.xyz);
+    let normal = transform_normal(instance_normal, instance_entity.rot, instance_entity.sca.xyz);
 
     var out: VertexOutput;
     out.clip_position = position_world_to_clip(position);
@@ -106,14 +126,20 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     out.color = unpack_rgba8_norm(vertex.i_color);
     //out.color = vec4<f32>(1.0);
     out.uv = vertex.i_tex.xy + vertex.uv * vertex.i_tex.zw;
-    out.material_slot = u32(vertex.i_sca.w);
+    out.material_slot = u32(instance_entity.pos.w);
     return out;
 }
 
 @vertex
 fn shadow_vertex(vertex: ShadowVertex) -> ShadowVertexOutput {
-    let position =
-        rotate_vertex_position(vertex.position * vertex.i_sca.xyz, vertex.i_rot) + vertex.i_pos;
+    let instance_position =
+        transform_position(vertex.position, vertex.i_rot, vertex.i_sca.xyz, vertex.i_pos);
+    let position = transform_position(
+        instance_position,
+        instance_entity.rot,
+        instance_entity.sca.xyz,
+        instance_entity.pos.xyz,
+    );
 
     var out: ShadowVertexOutput;
     out.clip_position = position_world_to_clip(position);

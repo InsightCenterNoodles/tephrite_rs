@@ -49,9 +49,10 @@ use bytemuck::{Pod, Zeroable};
 
 pub const INSTANCING_SHADER_ASSET_PATH: &str =
     "embedded://tephrite_rs/material/instance/instancing.wgsl";
+const INSTANCE_ENTITY_BIND_GROUP: usize = 4;
 
 /// Convention:
-/// - xyz: world-space position, w: packed rgba8 color
+/// - xyz: entity-local position, w: packed rgba8 color
 /// - xyz w: rotation quat, scalar last
 /// - xyz: scale, w: unused
 /// - xy: texture translation, zw: texture scale
@@ -164,7 +165,10 @@ impl Plugin for InstancedMaterialPlugin {
             .init_resource::<InstanceRenderMaterialInstances>()
             .add_systems(
                 ExtractSchedule,
-                extract_instance_mesh_materials.in_set(MaterialExtractionSystems),
+                (
+                    extract_instance_mesh_materials.in_set(MaterialExtractionSystems),
+                    extract_instance_entity_transforms,
+                ),
             )
             .add_render_command::<Opaque3d, DrawCustom>()
             .add_render_command::<Transparent3d, DrawCustom>()
@@ -206,6 +210,52 @@ fn extract_instance_mesh_materials(
                 },
             );
         }
+    }
+}
+
+#[derive(Component, Clone, Copy)]
+struct InstanceEntityTransform {
+    translation: Vec3,
+    rotation: Quat,
+    scale: Vec3,
+}
+
+#[derive(Clone, Copy, Pod, ShaderType, Zeroable)]
+#[repr(C)]
+struct InstanceEntityUniform {
+    /// xyz: entity translation, w: bindless material slot
+    pos: Vec4,
+    rot: Vec4,
+    sca: Vec4,
+}
+
+impl InstanceEntityUniform {
+    fn new(transform: InstanceEntityTransform, material_slot: u32) -> Self {
+        Self {
+            pos: transform.translation.extend(material_slot as f32),
+            rot: Vec4::from(transform.rotation),
+            sca: transform.scale.extend(0.0),
+        }
+    }
+}
+
+fn extract_instance_entity_transforms(
+    mut commands: Commands,
+    query: Extract<Query<(RenderEntity, &ViewVisibility, &GlobalTransform), With<Instances>>>,
+) {
+    for (render_entity, view_visibility, transform) in &query {
+        if !view_visibility.get() {
+            continue;
+        }
+
+        let (scale, rotation, translation) = transform.to_scale_rotation_translation();
+        commands
+            .entity(render_entity)
+            .insert(InstanceEntityTransform {
+                translation,
+                rotation,
+                scale,
+            });
     }
 }
 
@@ -535,33 +585,54 @@ struct InstanceBuffer {
     length: usize,
 }
 
+#[derive(Component)]
+struct InstanceEntityBindGroup {
+    _buffer: Buffer,
+    bind_group: BindGroup,
+}
+
 fn prepare_instance_buffers(
     mut commands: Commands,
-    query: Query<(Entity, &MainEntity, &Instances)>,
+    query: Query<(Entity, &MainEntity, &Instances, &InstanceEntityTransform)>,
     render_device: Res<RenderDevice>,
+    custom_pipeline: Res<CustomPipeline>,
     render_material_instances: Res<InstanceRenderMaterialInstances>,
     render_materials: Res<ErasedRenderAssets<PreparedMaterial>>,
 ) {
-    for (entity, main_entity, instance_data) in &query {
-        let mut instances = instance_data.instances().to_vec();
-        if let Some(material_instance) = render_material_instances.instances.get(main_entity) {
-            if let Some(material) = render_materials.get(material_instance.asset_id) {
-                let slot = u32::from(material.binding.slot) as f32;
-                for instance in &mut instances {
-                    instance.sca.w = slot;
-                }
-            }
-        }
+    for (entity, main_entity, instance_data, entity_transform) in &query {
+        let instances = instance_data.instances().to_vec();
+        let material_slot = render_material_instances
+            .instances
+            .get(main_entity)
+            .and_then(|material_instance| render_materials.get(material_instance.asset_id))
+            .map_or(0, |material| u32::from(material.binding.slot));
 
         let buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
             label: Some("instance data buffer"),
             contents: bytemuck::cast_slice(&instances),
             usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
         });
-        commands.entity(entity).insert(InstanceBuffer {
-            buffer,
-            length: instances.len(),
+        let uniform = InstanceEntityUniform::new(*entity_transform, material_slot);
+        let uniform_buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
+            label: Some("instance entity uniform buffer"),
+            contents: bytemuck::bytes_of(&uniform),
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         });
+        let bind_group = render_device.create_bind_group(
+            "instance entity bind group",
+            &custom_pipeline.instance_entity_layout,
+            &BindGroupEntries::single(uniform_buffer.as_entire_binding()),
+        );
+        commands.entity(entity).insert((
+            InstanceBuffer {
+                buffer,
+                length: instances.len(),
+            },
+            InstanceEntityBindGroup {
+                _buffer: uniform_buffer,
+                bind_group,
+            },
+        ));
     }
 }
 
@@ -570,6 +641,8 @@ struct CustomPipeline {
     shader: Handle<Shader>,
     mesh_pipeline: MeshPipeline,
     material_layout: BindGroupLayoutDescriptor,
+    instance_entity_layout_descriptor: BindGroupLayoutDescriptor,
+    instance_entity_layout: BindGroupLayout,
     bindless: bool,
 }
 
@@ -577,6 +650,7 @@ struct CustomPipeline {
 struct CustomShadowPipeline {
     shader: Handle<Shader>,
     prepass_pipeline: PrepassPipeline,
+    instance_entity_layout_descriptor: BindGroupLayoutDescriptor,
 }
 
 fn init_custom_pipelines(
@@ -586,11 +660,24 @@ fn init_custom_pipelines(
     render_device: Res<RenderDevice>,
 ) {
     let shader = asset_server.load(INSTANCING_SHADER_ASSET_PATH);
+    let instance_entity_layout_descriptor = BindGroupLayoutDescriptor::new(
+        "instance_entity_bind_group_layout",
+        &BindGroupLayoutEntries::single(
+            ShaderStages::VERTEX,
+            binding_types::uniform_buffer::<InstanceEntityUniform>(false),
+        ),
+    );
+    let instance_entity_layout = render_device.create_bind_group_layout(
+        instance_entity_layout_descriptor.label.as_ref(),
+        &instance_entity_layout_descriptor.entries,
+    );
 
     commands.insert_resource(CustomPipeline {
         shader: shader.clone(),
         mesh_pipeline: mesh_pipeline.clone(),
         material_layout: StandardMaterial::bind_group_layout_descriptor(&render_device),
+        instance_entity_layout_descriptor,
+        instance_entity_layout,
         bindless: material_uses_bindless_resources::<StandardMaterial>(&render_device),
     });
 }
@@ -599,16 +686,20 @@ fn ensure_custom_shadow_pipeline(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     prepass_pipeline: Option<Res<PrepassPipeline>>,
+    custom_pipeline: Option<Res<CustomPipeline>>,
     custom_shadow_pipeline: Option<Res<CustomShadowPipeline>>,
 ) {
     if custom_shadow_pipeline.is_some() {
         return;
     }
 
-    if let Some(prepass_pipeline) = prepass_pipeline {
+    if let (Some(prepass_pipeline), Some(custom_pipeline)) = (prepass_pipeline, custom_pipeline) {
         commands.insert_resource(CustomShadowPipeline {
             shader: asset_server.load(INSTANCING_SHADER_ASSET_PATH),
             prepass_pipeline: prepass_pipeline.clone(),
+            instance_entity_layout_descriptor: custom_pipeline
+                .instance_entity_layout_descriptor
+                .clone(),
         });
     }
 }
@@ -639,6 +730,10 @@ impl SpecializedMeshPipeline for CustomPipeline {
         descriptor
             .layout
             .insert(MATERIAL_BIND_GROUP_INDEX, self.material_layout.clone());
+        descriptor.layout.insert(
+            INSTANCE_ENTITY_BIND_GROUP,
+            self.instance_entity_layout_descriptor.clone(),
+        );
         let fragment = descriptor.fragment.as_mut().unwrap();
         fragment.shader = self.shader.clone();
         fragment.entry_point = Some("fragment".into());
@@ -718,6 +813,7 @@ impl SpecializedMeshPipeline for CustomShadowPipeline {
                 self.prepass_pipeline.empty_layout.clone(),
                 mesh_layout,
                 self.prepass_pipeline.empty_layout.clone(),
+                self.instance_entity_layout_descriptor.clone(),
             ],
             primitive: PrimitiveState {
                 topology: key.primitive_topology(),
@@ -792,6 +888,7 @@ type DrawCustom = (
     SetMeshViewBindingArrayBindGroup<1>,
     SetMeshBindGroup<2>,
     SetInstanceMaterialBindGroup<MATERIAL_BIND_GROUP_INDEX>,
+    SetInstanceEntityBindGroup<INSTANCE_ENTITY_BIND_GROUP>,
     DrawMeshInstanced,
 );
 
@@ -801,12 +898,15 @@ type DrawCustomShadow = (
     SetPrepassViewEmptyBindGroup<1>,
     SetMeshBindGroup<2>,
     SetPrepassEmptyMaterialBindGroup<3>,
+    SetInstanceEntityBindGroup<INSTANCE_ENTITY_BIND_GROUP>,
     DrawMeshInstanced,
 );
 
 struct DrawMeshInstanced;
 
 struct SetInstanceMaterialBindGroup<const I: usize>;
+
+struct SetInstanceEntityBindGroup<const I: usize>;
 
 impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetInstanceMaterialBindGroup<I> {
     type Param = (
@@ -882,6 +982,33 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetInstanceMaterialBindG
         };
 
         pass.set_bind_group(I, bind_group, &[]);
+        RenderCommandResult::Success
+    }
+}
+
+impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetInstanceEntityBindGroup<I> {
+    type Param = ();
+    type ViewQuery = ();
+    type ItemQuery = Read<InstanceEntityBindGroup>;
+
+    #[inline]
+    fn render<'w>(
+        item: &P,
+        _view: (),
+        bind_group: Option<&'w InstanceEntityBindGroup>,
+        _param: SystemParamItem<'w, '_, Self::Param>,
+        pass: &mut TrackedRenderPass<'w>,
+    ) -> RenderCommandResult {
+        let Some(bind_group) = bind_group else {
+            debug!(
+                target: "tephrite_rs::material::instance",
+                main_entity = ?item.main_entity(),
+                "skipping instanced entity bind: missing bind group"
+            );
+            return RenderCommandResult::Skip;
+        };
+
+        pass.set_bind_group(I, &bind_group.bind_group, &[]);
         RenderCommandResult::Success
     }
 }
@@ -1006,5 +1133,34 @@ mod tests {
         let instance = Instance::new(Vec3::ZERO, Quat::IDENTITY, Vec3::ONE, LinearRgba::WHITE);
 
         assert_eq!(instance.pos.w.to_bits(), 0xffffffff);
+    }
+
+    #[test]
+    fn instance_entity_uniform_packs_transform_and_material_slot() {
+        let rotation = Quat::from_rotation_z(std::f32::consts::FRAC_PI_2);
+        let uniform = InstanceEntityUniform::new(
+            InstanceEntityTransform {
+                translation: Vec3::new(10.0, 20.0, 30.0),
+                rotation,
+                scale: Vec3::new(5.0, 6.0, 7.0),
+            },
+            42,
+        );
+
+        assert!(
+            uniform
+                .pos
+                .xyz()
+                .abs_diff_eq(Vec3::new(10.0, 20.0, 30.0), 0.0001)
+        );
+        assert_eq!(uniform.pos.w, 42.0);
+        assert!(Quat::from_vec4(uniform.rot).abs_diff_eq(rotation, 0.0001));
+        assert!(
+            uniform
+                .sca
+                .xyz()
+                .abs_diff_eq(Vec3::new(5.0, 6.0, 7.0), 0.0001)
+        );
+        assert_eq!(uniform.sca.w, 0.0);
     }
 }
