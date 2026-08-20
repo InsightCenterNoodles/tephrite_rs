@@ -75,6 +75,11 @@ fn rotate_vertex_position(v: vec3<f32>, q: vec4<f32>) -> vec3<f32> {
     return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v);
 }
 
+fn transform_normal(n: vec3<f32>, q: vec4<f32>, scale: vec3<f32>) -> vec3<f32> {
+    let safe_scale = select(scale, vec3<f32>(1.0), abs(scale) < vec3<f32>(0.000001));
+    return normalize(rotate_vertex_position(n / safe_scale, q));
+}
+
 fn unpack_rgba8(x: u32) -> vec4<u32> {
     return vec4<u32>(
         (x >> 0u) & 0xffu,
@@ -92,7 +97,7 @@ fn unpack_rgba8_norm(v: u32) -> vec4<f32> {
 fn vertex(vertex: Vertex) -> VertexOutput {
     let position =
         rotate_vertex_position(vertex.position * vertex.i_sca.xyz, vertex.i_rot) + vertex.i_pos;
-    let normal = normalize(rotate_vertex_position(vertex.normal, vertex.i_rot));
+    let normal = transform_normal(vertex.normal, vertex.i_rot, vertex.i_sca.xyz);
 
     var out: VertexOutput;
     out.clip_position = position_world_to_clip(position);

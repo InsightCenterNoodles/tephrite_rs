@@ -21,8 +21,8 @@ use bevy::{
         RenderMaterialInstance, RenderMeshInstanceFlags, RenderMeshInstances, SetMeshBindGroup,
         SetMeshViewBindGroup, SetMeshViewBindingArrayBindGroup, SetPrepassEmptyMaterialBindGroup,
         SetPrepassViewBindGroup, SetPrepassViewEmptyBindGroup, Shadow, ShadowBatchSetKey,
-        ShadowBinKey, StandardMaterial, ViewKeyCache, material_uses_bindless_resources,
-        setup_morph_and_skinning_defs,
+        ShadowBinKey, StandardMaterial, ViewKeyCache, alpha_mode_pipeline_key,
+        material_uses_bindless_resources, setup_morph_and_skinning_defs,
     },
     prelude::*,
     render::{
@@ -272,11 +272,19 @@ fn queue_custom(mut params: QueueCustomParams) {
                 continue;
             };
 
+            let mut material_key_bits: MeshPipelineKey =
+                material.properties.mesh_pipeline_key_bits.downcast();
+            material_key_bits.insert(alpha_mode_pipeline_key(
+                material.properties.alpha_mode,
+                &Msaa::from_samples(view_key.msaa_samples()),
+            ));
+
             let key = view_key
                 | MeshPipelineKey::from_primitive_topology_and_strip_index(
                     mesh.primitive_topology(),
                     mesh.index_format(),
-                );
+                )
+                | material_key_bits;
             let pipeline = params
                 .pipelines
                 .specialize(
