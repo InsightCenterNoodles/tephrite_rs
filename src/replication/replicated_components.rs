@@ -22,6 +22,7 @@ pub(crate) fn register_builtin_components(registry: &mut ReplicationRegistry) {
         .register_component::<StandardMatComponent>()
         .register_component::<PointsMatComponent>()
         .register_component::<InstanceMeshMaterial3d>()
+        .register_component::<Gizmo>()
         .register_component::<Instances>()
         .register_component::<InheritedVisibility>()
         .register_component::<NotShadowCaster>()

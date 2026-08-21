@@ -1,4 +1,5 @@
 pub mod common;
+mod debug;
 mod events;
 pub mod hover;
 mod interactor;
@@ -13,6 +14,7 @@ use bevy::{
 };
 
 pub use common::*;
+pub use debug::*;
 pub use events::*;
 pub use hover::*;
 pub use interactor::*;
@@ -58,5 +60,6 @@ impl Plugin for InputPlugin {
         app.add_message::<AxisMessage>();
 
         app.add_plugins(interactor::InteractorPlugin);
+        app.add_plugins(debug::DebugInteractionBoundsPlugin);
     }
 }

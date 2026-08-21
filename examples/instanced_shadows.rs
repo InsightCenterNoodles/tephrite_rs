@@ -41,6 +41,8 @@ fn setup(
     let light_position = Vec3::new(2.0, 4.0, 2.0);
     let light_direction = (Vec3::ZERO - light_position).normalize();
     let shadow_line = Vec3::new(light_direction.x, 0.0, light_direction.z).normalize();
+    let self_shadow_start = Vec3::new(0.7, 1.2, 0.7);
+    let self_shadow_spacing = 0.4;
 
     commands.spawn((
         Mesh3d(cube_mesh.clone()),
@@ -53,16 +55,40 @@ fn setup(
         InstanceMeshMaterial3d(cube_material),
         Instances::new([
             Instance::new(
-                -shadow_line * 0.35 + Vec3::Y * 0.3,
+                self_shadow_start,
+                Quat::IDENTITY,
+                Vec3::splat(0.28),
+                LinearRgba::new(1.0, 0.88, 0.72, 1.0),
+            ),
+            Instance::new(
+                self_shadow_start + light_direction * self_shadow_spacing,
+                Quat::IDENTITY,
+                Vec3::splat(0.28),
+                LinearRgba::new(0.75, 0.9, 1.0, 1.0),
+            ),
+            Instance::new(
+                self_shadow_start + light_direction * self_shadow_spacing * 2.0,
+                Quat::IDENTITY,
+                Vec3::splat(0.28),
+                LinearRgba::new(0.72, 1.0, 0.78, 1.0),
+            ),
+            Instance::new(
+                self_shadow_start + light_direction * self_shadow_spacing * 3.0,
+                Quat::IDENTITY,
+                Vec3::splat(0.28),
+                LinearRgba::new(1.0, 0.72, 0.92, 1.0),
+            ),
+            Instance::new(
+                -shadow_line * 0.75 + Vec3::Y * 0.3,
                 Quat::IDENTITY,
                 Vec3::splat(0.28),
                 LinearRgba::WHITE,
             ),
             Instance::new(
-                shadow_line * 0.35 + Vec3::Y * 0.62,
+                shadow_line * 0.85 + Vec3::Y * 0.44,
                 Quat::IDENTITY,
                 Vec3::splat(0.28),
-                LinearRgba::new(0.75, 0.9, 1.0, 1.0),
+                LinearRgba::new(0.78, 0.82, 1.0, 1.0),
             ),
         ]),
         Transform::default(),

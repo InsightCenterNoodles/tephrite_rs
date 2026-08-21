@@ -8,6 +8,7 @@ pub(crate) fn register_builtin_assets(registry: &mut ReplicationRegistry) {
         .register_asset::<Mesh>()
         .register_asset::<Image>()
         .register_asset::<StandardMaterial>()
+        .register_asset::<GizmoAsset>()
         .register_asset::<PointsMaterial>()
         .register_asset::<Font>();
 }

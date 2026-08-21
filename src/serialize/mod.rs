@@ -26,6 +26,7 @@ pub(crate) mod asset;
 pub(crate) mod components;
 pub mod fast_io;
 pub mod fast_ser;
+pub(crate) mod gizmo;
 pub(crate) mod image;
 pub(crate) mod material;
 pub(crate) mod math;

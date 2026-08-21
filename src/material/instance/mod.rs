@@ -82,6 +82,10 @@ impl Instance {
     pub fn set_position(&mut self, v: Vec3) {
         self.pos = v.extend(self.pos.w);
     }
+
+    pub fn set_color(&mut self, color: LinearRgba) {
+        self.pos.w = pack_rgba8(color)
+    }
 }
 
 fn pack_rgba8(color: LinearRgba) -> f32 {

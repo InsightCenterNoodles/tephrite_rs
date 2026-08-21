@@ -49,6 +49,7 @@ fn setup(
                 mag_filter: ImageFilterMode::Linear,
                 min_filter: ImageFilterMode::Linear,
                 mipmap_filter: ImageFilterMode::Linear,
+                anisotropy_clamp: 8,
                 ..default()
             });
         })

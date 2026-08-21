@@ -54,6 +54,7 @@ pub(crate) fn make_common_app() -> App {
         bevy::pbr::PbrPlugin::default(),
         bevy::render::texture::TexturePlugin,
         bevy::text::TextPlugin,
+        bevy::gizmos::GizmoPlugin,
     ));
 
     app.world_mut()

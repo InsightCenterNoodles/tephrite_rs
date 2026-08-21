@@ -36,18 +36,24 @@ struct OrbitingSphere {
     target_height: f32,
 }
 
+const STAR_COLORS: [bevy::prelude::LinearRgba; 4] = [
+    LinearRgba::new(1.0, 1.0, 1.0, 1.0),
+    LinearRgba::new(0.0, 0.86, 0.0, 1.0),
+    LinearRgba::new(0.0, 0.0, 0.98, 1.0),
+    LinearRgba::new(0.9, 0.72, 1.0, 1.0),
+];
+const QUADRANT_COLORS: [bevy::prelude::LinearRgba; 4] = [
+    LinearRgba::new(1.0, 0.95, 0.72, 1.0),
+    LinearRgba::new(0.45, 0.95, 1.0, 1.0),
+    LinearRgba::new(1.0, 0.5, 0.78, 1.0),
+    LinearRgba::new(0.55, 1.0, 0.5, 1.0),
+];
+
 fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let star_colors = [
-        LinearRgba::new(1.0, 1.0, 1.0, 1.0),
-        LinearRgba::new(0.0, 0.86, 0.0, 1.0),
-        LinearRgba::new(0.0, 0.0, 0.98, 1.0),
-        LinearRgba::new(0.9, 0.72, 1.0, 1.0),
-    ];
-
     let mesh = meshes.add(SphereMeshBuilder {
         sphere: Sphere::new(1.0),
         kind: bevy::mesh::SphereKind::Ico { subdivisions: 1 },
@@ -93,14 +99,14 @@ fn setup(
         let color_index = if is_core {
             rng.random_range(0..2)
         } else {
-            rng.random_range(0..star_colors.len())
+            rng.random_range(0..STAR_COLORS.len())
         };
 
         instances.push(Instance::new(
             translation,
             Quat::IDENTITY,
             Vec3::splat(STAR_RADIUS) * rng.random_range(0.5..1.0),
-            star_colors[color_index],
+            STAR_COLORS[color_index],
         ));
         spheres.push(OrbitingSphere {
             angular_speed,
@@ -152,8 +158,16 @@ fn update(mut query: Query<(&mut Instances, &OrbitingInstances)>, time: Res<Time
             instance.pos.x = pos.x;
             instance.pos.y = pos.y;
             instance.pos.z = pos.z;
+
+            instance.set_color(color_for_orbit_quadrant(pos));
         }
     }
+}
+
+fn color_for_orbit_quadrant(pos: Vec3) -> LinearRgba {
+    let angle = pos.z.atan2(pos.x).rem_euclid(std::f32::consts::TAU);
+    let quadrant = (angle / std::f32::consts::FRAC_PI_2).floor() as usize;
+    QUADRANT_COLORS[quadrant.min(QUADRANT_COLORS.len() - 1)]
 }
 
 fn main() {
