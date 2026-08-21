@@ -1,6 +1,37 @@
-//! Support for explicit instance rendering with standard materials in bevy
+//! Explicit GPU instancing for meshes that use Bevy [`StandardMaterial`]s.
 //!
-//! I have no idea what I'm doing here.
+//! This module is for cases where a single entity should draw many copies of
+//! one mesh with per-instance transforms, colors, and UV transforms. It is
+//! intentionally different from spawning many `Mesh3d` entities: the logic app
+//! owns one [`Instances`] component, that component is replicated to the render
+//! app, and the render app uploads the instance slice to one GPU vertex buffer.
+//!
+//! # Authoring API
+//!
+//! Add these components to the same entity:
+//!
+//! - [`Mesh3d`]: the mesh shared by all instances.
+//! - [`InstanceMeshMaterial3d`]: the [`StandardMaterial`] used for PBR
+//!   properties, textures, shadows, and alpha mode.
+//! - [`Instances`]: the per-instance data.
+//! - [`Transform`] and [`Visibility`] as usual.
+//!
+//! Each [`Instance`] supplies an entity-local transform, a color multiplier, and
+//! a UV0 transform. The containing entity's [`GlobalTransform`] is also applied,
+//! so moving the entity moves the entire instance set.
+//!
+//! # Render Path
+//!
+//! The visible pass reuses Bevy's mesh, view, material, light, and PBR bind
+//! groups, then adds one custom bind group for entity-wide instancing data and
+//! one instance-rate vertex buffer. The shadow pass uses a matching custom
+//! prepass pipeline so instances cast shadows. Shadow receiving works through
+//! Bevy's normal PBR lighting path by forwarding the `SHADOW_RECEIVER` mesh flag
+//! into the shader, respecting [`bevy::light::NotShadowReceiver`].
+//!
+//! The instance buffer is cached on the render entity and only reallocated when
+//! the instance count grows past the current capacity. Updating positions,
+//! colors, or UV transforms in-place is therefore the fast path.
 
 use bevy::{
     camera::visibility::{NoFrustumCulling, RenderLayers, ViewVisibility},
@@ -54,11 +85,22 @@ pub const INSTANCING_SHADER_ASSET_PATH: &str =
     "embedded://tephrite_rs/material/instance/instancing.wgsl";
 const INSTANCE_ENTITY_BIND_GROUP: usize = 4;
 
-/// Convention:
-/// - xyz: entity-local position, w: packed rgba8 color
-/// - xyz w: rotation quat, scalar last
-/// - xyz: scale, w: unused
-/// - xy: texture translation, zw: texture scale
+/// A single mesh instance drawn by [`Instances`].
+///
+/// This is plain GPU upload data, so it is compact and intentionally stores
+/// several values in packed columns:
+///
+/// - `pos.xyz`: entity-local position.
+/// - `pos.w`: packed `rgba8` color multiplier.
+/// - `rot`: quaternion rotation, scalar last.
+/// - `sca.xyz`: entity-local scale.
+/// - `sca.w`: unused.
+/// - `tex.xy`: UV0 translation.
+/// - `tex.zw`: UV0 scale.
+///
+/// The instance transform is applied before the containing entity's transform.
+/// The color is multiplied with the material base color and, if present, its
+/// base color texture.
 #[derive(Clone, Copy, Pod, Zeroable)]
 #[repr(C)]
 pub struct Instance {
@@ -69,6 +111,7 @@ pub struct Instance {
 }
 
 impl Instance {
+    /// Create a new instance with an identity UV transform.
     pub fn new(position: Vec3, rotation: Quat, scale: Vec3, color: LinearRgba) -> Self {
         Self {
             pos: position.extend(pack_rgba8(color)),
@@ -78,47 +121,69 @@ impl Instance {
         }
     }
 
+    /// Set the instance UV0 transform by value.
+    ///
+    /// The shader computes `uv0 = translation + original_uv0 * scale`.
     pub fn with_texture_transform(mut self, translation: Vec2, scale: Vec2) -> Self {
         self.tex = Vec4::new(translation.x, translation.y, scale.x, scale.y);
         self
     }
 
+    /// Update this instance's entity-local position without changing its color.
     pub fn set_position(&mut self, v: Vec3) {
         self.pos = v.extend(self.pos.w);
     }
 
+    /// Update this instance's color multiplier without changing its position.
     pub fn set_color(&mut self, color: LinearRgba) {
         self.pos.w = pack_rgba8(color)
     }
 }
 
+/// Pack a color into one `f32` lane for the instance vertex buffer.
+///
+/// The shader reads this vertex attribute as `u32`; storing the bits in a
+/// `f32` keeps the Rust-side instance layout as four `Vec4` columns.
 fn pack_rgba8(color: LinearRgba) -> f32 {
     let [r, g, b, a] = color.to_u8_array().map(|x| x as u32);
-    //dbg!(r, g, b, a);
     f32::from_bits(r | (g << 8) | (b << 16) | (a << 24))
 }
 
-/// This component stores instance data used for splatting.
+/// Per-instance data for one instanced mesh entity.
 ///
-/// It is required to disable frustum culling, as we cannot compute an efficient bounding box for instances.
+/// `Instances` is replicated and extracted into the render world. Mutating the
+/// existing `Vec<Instance>` is the intended way to animate large instance sets.
+///
+/// Frustum culling is automatically disabled for the host entity because the
+/// instance cloud can be much larger than the source mesh AABB. Tephrite caches
+/// the render-side GPU buffer capacity, so keeping the instance count stable
+/// avoids allocation churn.
 #[derive(Component, Clone)]
 #[require(NoFrustumCulling)]
 pub struct Instances(Vec<Instance>);
 
 impl Instances {
+    /// Create an instance component from any value that can become a `Vec<Instance>`.
     pub fn new(instances: impl Into<Vec<Instance>>) -> Self {
         Self(instances.into())
     }
 
+    /// Borrow the current instance data.
     pub fn instances(&self) -> &[Instance] {
         &self.0
     }
 
+    /// Mutably borrow the instance data for in-place animation.
     pub fn instances_mut(&mut self) -> &mut Vec<Instance> {
         &mut self.0
     }
 }
 
+/// The [`StandardMaterial`] used by an instanced mesh entity.
+///
+/// Do not add a regular `MeshMaterial3d<StandardMaterial>` to the same entity
+/// unless you intentionally want Bevy to also draw one uninstanced copy of the
+/// mesh.
 #[derive(Component, Clone, Debug, Default, Deref, DerefMut, PartialEq, Eq)]
 pub struct InstanceMeshMaterial3d(pub Handle<StandardMaterial>);
 
@@ -162,6 +227,10 @@ impl ExtractComponent for Instances {
     }
 }
 
+/// Render plugin for [`Instances`] and [`InstanceMeshMaterial3d`].
+///
+/// Tephrite adds this internally. Users typically interact with the public
+/// components rather than adding this plugin directly.
 pub struct InstancedMaterialPlugin;
 
 impl Plugin for InstancedMaterialPlugin {
@@ -208,6 +277,10 @@ fn extract_instance_mesh_materials(
     mut material_instances: ResMut<InstanceRenderMaterialInstances>,
     materials_query: Extract<Query<(Entity, &ViewVisibility, &InstanceMeshMaterial3d)>>,
 ) {
+    // Bevy's material queueing code normally discovers material handles from
+    // `MeshMaterial3d<M>`. Instanced meshes use a separate component so they do
+    // not get drawn once by Bevy's normal mesh path. This resource is the small
+    // replacement lookup table our render commands use later.
     material_instances.instances.clear();
 
     for (entity, view_visibility, material) in &materials_query {
@@ -226,19 +299,26 @@ fn extract_instance_mesh_materials(
 
 #[derive(Component, Clone, Copy)]
 struct InstanceEntityTransform {
+    // Entity-wide transform applied after each per-instance transform.
     translation: Vec3,
     rotation: Quat,
     scale: Vec3,
+    // Bevy PBR mesh flags needed by fragment lighting. At the moment we only
+    // forward shadow receiving, because that is the flag `apply_pbr_lighting`
+    // checks before sampling shadow maps.
     flags: u32,
 }
 
 #[derive(Clone, Copy, Pod, ShaderType, Zeroable)]
 #[repr(C)]
 struct InstanceEntityUniform {
-    /// xyz: entity translation, w: bindless material slot
+    /// `xyz`: entity translation, `w`: bindless material slot.
     pos: Vec4,
+    /// Entity rotation quaternion, scalar last.
     rot: Vec4,
+    /// `xyz`: entity scale, `w`: unused.
     sca: Vec4,
+    /// `x`: Bevy PBR mesh flags for fragment lighting, remaining lanes unused.
     flags: UVec4,
 }
 
@@ -273,6 +353,10 @@ fn extract_instance_entity_transforms(
         }
 
         let (scale, rotation, translation) = transform.to_scale_rotation_translation();
+        // StandardMaterial's fragment path reads this bit from Bevy's mesh
+        // uniform array. Our shader cannot use that array index because the
+        // hardware instance index is the per-particle index, so we mirror the
+        // relevant entity-wide flag into our own uniform instead.
         let flags = if not_shadow_receiver {
             MeshFlags::empty()
         } else {
@@ -292,6 +376,7 @@ fn extract_instance_entity_transforms(
 
 #[derive(Resource, Default)]
 struct InstanceRenderMaterialInstances {
+    // Main entity -> prepared StandardMaterial instance.
     instances: bevy::platform::collections::HashMap<MainEntity, RenderMaterialInstance>,
 }
 
@@ -317,6 +402,9 @@ struct QueueCustomParams<'w, 's> {
 }
 
 fn queue_custom(mut params: QueueCustomParams) {
+    // Queue the visible pass. This intentionally mirrors the parts of Bevy's
+    // material queueing that choose a specialized mesh pipeline, phase, and
+    // sort/bin key, while substituting our draw command and shader.
     let draw_opaque = params.opaque_3d_draw_functions.read().id::<DrawCustom>();
     let draw_transparent = params
         .transparent_3d_draw_functions
@@ -362,6 +450,8 @@ fn queue_custom(mut params: QueueCustomParams) {
 
             let mut material_key_bits: MeshPipelineKey =
                 material.properties.mesh_pipeline_key_bits.downcast();
+            // `PreparedMaterial` carries the StandardMaterial feature bits, but
+            // alpha mode still depends on the current view MSAA settings.
             material_key_bits.insert(alpha_mode_pipeline_key(
                 material.properties.alpha_mode,
                 &Msaa::from_samples(view_key.msaa_samples()),
@@ -461,6 +551,9 @@ fn queue_custom_shadows(
     shadow_map_visible_entities_query: Query<&RenderShadowMapVisibleEntities>,
     material_meshes: Query<(Entity, &MainEntity), With<Instances>>,
 ) {
+    // Queue the shadow-map pass for each light subview. Bevy's built-in shadow
+    // queue only knows about its own draw functions, so instanced meshes need
+    // to add their own shadow phase items after the standard queue runs.
     let Some(custom_pipeline) = custom_pipeline else {
         return;
     };
@@ -495,6 +588,9 @@ fn queue_custom_shadows(
         };
 
         for (render_entity, main_entity) in &material_meshes {
+            // Use Bevy's shadow visibility results. This keeps render layers,
+            // light frusta, and shadow-caster filtering aligned with regular
+            // meshes.
             if !shadow_visible_entities_contains(visible_entities, *main_entity) {
                 continue;
             }
@@ -571,6 +667,7 @@ fn shadow_visible_entities_contains(
     visible_entities: &bevy::render::view::RenderVisibleEntitiesClass,
     main_entity: MainEntity,
 ) -> bool {
+    // Shadow visibility can be stored in either CPU-culled or GPU-culled lists.
     visible_entities
         .entities_cpu_culling
         .iter()
@@ -585,6 +682,8 @@ fn get_shadow_map_visible_entities<'w, 's: 'w>(
     light_entity: &'_ LightEntity,
     extracted_view_light: &'_ ExtractedView,
 ) -> &'w RenderVisibleEntities {
+    // Directional, point, and spot lights store their shadow-map visible
+    // entities under slightly different retained view keys.
     match light_entity {
         LightEntity::Directional { light_entity, .. } => shadow_map_visible_entities_query
             .get(*light_entity)
@@ -626,13 +725,18 @@ fn get_shadow_map_visible_entities<'w, 's: 'w>(
 
 #[derive(Component)]
 struct InstanceBuffer {
+    // GPU vertex buffer containing tightly-packed `Instance` values.
     buffer: Buffer,
+    // Number of live instances in `buffer`.
     length: usize,
+    // Allocated instance capacity. We grow geometrically and reuse the buffer
+    // while `length <= capacity`.
     capacity: usize,
 }
 
 #[derive(Component)]
 struct InstanceEntityBindGroup {
+    // Kept alive so the bind group can reference it.
     _buffer: Buffer,
     bind_group: BindGroup,
 }
@@ -663,6 +767,8 @@ fn prepare_instance_buffers(
     ) in &mut query
     {
         let instances = instance_data.instances();
+        // The material slot is only meaningful for bindless materials. For the
+        // non-bindless path it is harmless and ignored by the shader.
         let material_slot = render_material_instances
             .instances
             .get(main_entity)
@@ -672,12 +778,15 @@ fn prepare_instance_buffers(
         let instance_bytes = bytemuck::cast_slice(instances);
         match instance_buffer {
             Some(mut instance_buffer) if instance_buffer.capacity >= instances.len() => {
+                // Fast path: rewrite the existing GPU buffer in-place.
                 if !instance_bytes.is_empty() {
                     render_queue.write_buffer(&instance_buffer.buffer, 0, instance_bytes);
                 }
                 instance_buffer.length = instances.len();
             }
             _ => {
+                // Grow capacity to the next power of two so minor count changes
+                // do not allocate every frame.
                 let capacity = instances.len().max(1).next_power_of_two();
                 let buffer = render_device.create_buffer(&BufferDescriptor {
                     label: Some("instance data buffer"),
@@ -699,6 +808,7 @@ fn prepare_instance_buffers(
         let uniform = InstanceEntityUniform::new(*entity_transform, material_slot);
         let uniform_bytes = bytemuck::bytes_of(&uniform);
         if let Some(entity_bind_group) = entity_bind_group {
+            // The bind group can be reused; only the uniform content changes.
             render_queue.write_buffer(&entity_bind_group._buffer, 0, uniform_bytes);
         } else {
             let uniform_buffer = render_device.create_buffer(&BufferDescriptor {
@@ -723,11 +833,17 @@ fn prepare_instance_buffers(
 
 #[derive(Resource)]
 struct CustomPipeline {
+    // Shared WGSL used for both the visible and shadow pipelines.
     shader: Handle<Shader>,
+    // Bevy's base mesh pipeline provides view, mesh, lighting, depth, MSAA,
+    // topology, and most shader-def specialization logic.
     mesh_pipeline: MeshPipeline,
+    // StandardMaterial's bind group layout is still used unchanged.
     material_layout: BindGroupLayoutDescriptor,
+    // Extra per-entity instancing uniform layout inserted at group 4.
     instance_entity_layout_descriptor: BindGroupLayoutDescriptor,
     instance_entity_layout: BindGroupLayout,
+    // Whether the current renderer prepares StandardMaterial bindlessly.
     bindless: bool,
 }
 
@@ -745,6 +861,8 @@ fn init_custom_pipelines(
     render_device: Res<RenderDevice>,
 ) {
     let shader = asset_server.load(INSTANCING_SHADER_ASSET_PATH);
+    // This uniform is read in vertex shaders for transforms and in fragment
+    // shaders for PBR mesh flags, so both stages need visibility.
     let instance_entity_layout_descriptor = BindGroupLayoutDescriptor::new(
         "instance_entity_bind_group_layout",
         &BindGroupLayoutEntries::single(
@@ -774,6 +892,9 @@ fn ensure_custom_shadow_pipeline(
     custom_pipeline: Option<Res<CustomPipeline>>,
     custom_shadow_pipeline: Option<Res<CustomShadowPipeline>>,
 ) {
+    // `PrepassPipeline` may not exist in every render configuration. Build the
+    // shadow pipeline lazily once Bevy has inserted it, and skip shadow queuing
+    // until then.
     if custom_shadow_pipeline.is_some() {
         return;
     }
@@ -797,8 +918,12 @@ impl SpecializedMeshPipeline for CustomPipeline {
         key: Self::Key,
         layout: &MeshVertexBufferLayoutRef,
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
+        // Start from Bevy's mesh pipeline so all view/light/depth layouts and
+        // mesh shader defs remain compatible with StandardMaterial.
         let mut descriptor = self.mesh_pipeline.specialize(key, layout)?;
 
+        // Replace only the shader entry points and add our extra instance-rate
+        // vertex buffer and entity uniform bind group.
         descriptor.vertex.shader_defs.push(ShaderDefVal::UInt(
             "MATERIAL_BIND_GROUP".into(),
             MATERIAL_BIND_GROUP_INDEX as u32,
@@ -841,6 +966,9 @@ impl SpecializedMeshPipeline for CustomShadowPipeline {
         key: Self::Key,
         layout: &MeshVertexBufferLayoutRef,
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
+        // The shadow path is a compact prepass-style pipeline. It only needs
+        // mesh positions plus our instance transform data, but must preserve
+        // Bevy's shadow-view shader defs such as unclipped orthographic depth.
         let mut shader_defs = Vec::new();
         shader_defs.push("PREPASS_PIPELINE".into());
         shader_defs.push("VERTEX_OUTPUT_INSTANCE_INDEX".into());
@@ -858,6 +986,8 @@ impl SpecializedMeshPipeline for CustomShadowPipeline {
         }
 
         let mut vertex_attributes = vec![Mesh::ATTRIBUTE_POSITION.at_shader_location(0)];
+        // Keep morphing/skinning related defs in sync with Bevy's prepass
+        // pipeline, even though common Tephrite instance meshes are static.
         let mesh_layout = setup_morph_and_skinning_defs(
             &self.prepass_pipeline.mesh_layouts,
             layout,
@@ -934,6 +1064,8 @@ impl SpecializedMeshPipeline for CustomShadowPipeline {
 }
 
 fn instance_vertex_buffer_layout() -> VertexBufferLayout {
+    // Locations 0..2 are the source mesh attributes. Locations 3..7 are
+    // instance-rate attributes consumed by `instancing.wgsl`.
     VertexBufferLayout {
         array_stride: size_of::<Instance>() as u64,
         step_mode: VertexStepMode::Instance,
@@ -968,6 +1100,9 @@ fn instance_vertex_buffer_layout() -> VertexBufferLayout {
 }
 
 type DrawCustom = (
+    // Bind groups:
+    // 0: view, 1: view binding arrays, 2: mesh uniforms,
+    // 3: StandardMaterial, 4: instanced entity uniform.
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
     SetMeshViewBindingArrayBindGroup<1>,
@@ -978,6 +1113,9 @@ type DrawCustom = (
 );
 
 type DrawCustomShadow = (
+    // Shadow/prepass bind groups:
+    // 0: shadow view, 1: empty view arrays, 2: mesh uniforms,
+    // 3: empty material, 4: instanced entity uniform.
     SetItemPipeline,
     SetPrepassViewBindGroup<0>,
     SetPrepassViewEmptyBindGroup<1>,
@@ -1014,6 +1152,9 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetInstanceMaterialBindG
         >,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
+        // Prepared materials are stored by untyped asset id. The material's
+        // allocator owns the actual bind groups; this command resolves and
+        // binds the one selected when the material was prepared.
         let materials = materials.into_inner();
         let material_instances = material_instances.into_inner();
         let material_bind_group_allocators = material_bind_group_allocator.into_inner();
@@ -1084,6 +1225,8 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetInstanceEntityBindGro
         _param: SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
+        // Bind the per-entity uniform that carries the host transform, bindless
+        // material slot, and PBR mesh flags.
         let Some(bind_group) = bind_group else {
             // debug!(
             //     target: "tephrite_rs::material::instance",
@@ -1115,6 +1258,9 @@ impl<P: PhaseItem> RenderCommand<P> for DrawMeshInstanced {
         (meshes, render_mesh_instances, mesh_allocator): SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
+        // This is the only draw command that differs materially from Bevy's
+        // standard mesh draw: vertex buffer 0 is the mesh, vertex buffer 1 is
+        // our instance data, and the draw range uses the live instance count.
         // A borrow check workaround.
         let mesh_allocator = mesh_allocator.into_inner();
 
