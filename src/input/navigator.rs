@@ -1,3 +1,9 @@
+//! Scene navigation helpers driven by an [`Interactor`](crate::input::Interactor).
+//!
+//! Add [`NavigatorMarker`] to the entity that should move in response to the
+//! active interactor. [`NavigationPlugin`] supports a conventional controller
+//! mapping and a DTrack flystick mapping.
+
 use std::f32::consts::{PI, TAU};
 
 use bevy::{math::DAffine3, prelude::*};
@@ -10,16 +16,21 @@ use crate::input::{
     },
 };
 
+/// Navigation behavior for rotations around the interactor.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum NavigatorMode {
+    /// Rotate the navigated object around its own origin.
     #[default]
     ObjectCentric,
+    /// Rotate the navigated object around the interactor position.
     JoyCentric,
 }
 
-#[derive(Debug, Component)]
+/// Marks an entity as the navigation target.
+#[derive(Debug, Default, Clone, Component)]
 pub struct NavigatorMarker;
 
+/// Initial transform applied to navigation targets at startup and reset.
 #[derive(Debug, Clone, Copy, Resource)]
 pub struct InitialNavigatorTransform(pub Transform);
 
@@ -35,6 +46,7 @@ struct NavigatorSettings {
     allow_x_rotation: bool,
 }
 
+/// Per-interactor transient state used by flystick navigation gestures.
 #[derive(Debug, Default, Component)]
 pub struct InteractorNavigatorState {
     last_yaw: Option<f32>,
@@ -51,12 +63,14 @@ enum FlystickNavigationOperation {
     Pan(Vec3),
 }
 
+/// Plugin that updates [`NavigatorMarker`] transforms from interactor input.
 #[derive(Debug)]
 pub struct NavigationPlugin {
     settings: NavigatorSettings,
 }
 
 impl NavigationPlugin {
+    /// Create a navigation plugin with the requested navigation mode.
     pub fn new(mode: NavigatorMode) -> Self {
         Self {
             settings: NavigatorSettings {
@@ -66,6 +80,7 @@ impl NavigationPlugin {
         }
     }
 
+    /// Enable or disable controller-driven X-axis rotation.
     pub fn with_x_rotation(mut self, allow: bool) -> Self {
         self.settings.allow_x_rotation = allow;
         self

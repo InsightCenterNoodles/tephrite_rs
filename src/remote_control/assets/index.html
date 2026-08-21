@@ -1,0 +1,908 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Tephrite Remote Control</title>
+    <link rel="stylesheet" href="/assets/jquery.terminal.min.css">
+    <style>
+        :root {
+            --bg: #0b1117;
+            --panel: #101922;
+            --panel-2: #151f2a;
+            --terminal: #0b1117;
+            --text: #d9e7ef;
+            --muted: #89a2b4;
+            --accent: #25a7b5;
+            --accent-2: #4b8fc8;
+            --border: #263441;
+            --input: #0d151d;
+            --danger: #9f3434;
+            --danger-hover: #7f2727;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            color: var(--text);
+            font-family: "Trebuchet MS", "Gill Sans", "Candara", sans-serif;
+            background: var(--bg);
+        }
+
+        body {
+            display: grid;
+            grid-template-columns: minmax(320px, 0.42fr) minmax(420px, 0.58fr);
+            gap: 1px;
+            overflow: hidden;
+        }
+
+        .controls-pane,
+        .terminal-pane {
+            min-width: 0;
+            min-height: 0;
+            height: 100vh;
+        }
+
+        .controls-pane {
+            display: flex;
+            flex-direction: column;
+            background: var(--panel);
+            border-right: 1px solid var(--border);
+        }
+
+        .head {
+            flex: 0 0 auto;
+            padding: 18px 20px 12px;
+            border-bottom: 1px solid var(--border);
+            background: #111a22;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .head-title {
+            min-width: 0;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.45rem;
+            letter-spacing: 0.02em;
+        }
+
+        .subtitle {
+            margin-top: 5px;
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+
+        .controls {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: auto;
+            padding: 12px 14px 18px;
+        }
+
+        .control {
+            margin: 10px 0;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--panel-2);
+        }
+
+        label {
+            font-weight: 600;
+            color: #e7f1f6;
+        }
+
+        .value {
+            font-family: "Consolas", "Menlo", monospace;
+            color: #7fcde0;
+        }
+
+        input,
+        select,
+        button {
+            font: inherit;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--accent);
+        }
+
+        .dual-range-wrapper {
+            position: relative;
+            width: 100%;
+            height: 24px;
+            margin-top: 10px;
+            display: flex;
+            align-items: center;
+        }
+
+        .slider-track {
+            width: 100%;
+            height: 6px;
+            position: absolute;
+            background: var(--border);
+            border-radius: 3px;
+        }
+
+        .dual-range-wrapper input[type="range"] {
+            position: absolute;
+            width: 100%;
+            background: none;
+            pointer-events: none;
+            appearance: none;
+            margin: 0;
+        }
+
+        .dual-range-wrapper input[type="range"]::-webkit-slider-thumb {
+            height: 18px;
+            width: 18px;
+            border-radius: 50%;
+            background-color: var(--accent);
+            cursor: pointer;
+            pointer-events: auto;
+            -webkit-appearance: none;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .dual-range-wrapper input[type="range"]::-moz-range-thumb {
+            height: 18px;
+            width: 18px;
+            border: none;
+            border-radius: 50%;
+            background-color: var(--accent);
+            cursor: pointer;
+            pointer-events: auto;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        input[type="text"],
+        input[type="number"],
+        select {
+            width: 100%;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 10px;
+            color: var(--text);
+            background: var(--input);
+        }
+
+        select {
+            color-scheme: dark;
+        }
+
+        .vec3 {
+            display: grid;
+            gap: 8px;
+            grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+            align-items: center;
+        }
+
+        .analog {
+            position: relative;
+            width: min(220px, 100%);
+            aspect-ratio: 1 / 1;
+            margin-top: 10px;
+            border-radius: 999px;
+            border: 2px solid #496476;
+            background: radial-gradient(circle at 30% 28%, #23313e, #0d151d);
+            touch-action: none;
+            outline: none;
+        }
+
+        .analog:focus-visible {
+            box-shadow: 0 0 0 3px rgba(10, 122, 136, 0.35);
+        }
+
+        .analog-cross {
+            position: absolute;
+            inset: 0;
+            border-radius: 999px;
+            background:
+                linear-gradient(to right, transparent 49.2%, rgba(163, 191, 209, 0.22) 49.2%, rgba(163, 191, 209, 0.22) 50.8%, transparent 50.8%),
+                linear-gradient(to bottom, transparent 49.2%, rgba(163, 191, 209, 0.22) 49.2%, rgba(163, 191, 209, 0.22) 50.8%, transparent 50.8%);
+            pointer-events: none;
+        }
+
+        .analog-stick {
+            position: absolute;
+            width: 34px;
+            height: 34px;
+            border-radius: 999px;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            background: linear-gradient(160deg, var(--accent), var(--accent-2));
+            border: 2px solid #d9e7ef;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+            pointer-events: none;
+        }
+
+        button {
+            border: 1px solid #247f8b;
+            border-radius: 8px;
+            padding: 8px 12px;
+            background: linear-gradient(160deg, var(--accent), var(--accent-2));
+            color: #061014;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .quit {
+            margin-top: 2px;
+            background: var(--danger);
+            border-color: var(--danger);
+            color: #fff;
+        }
+
+        .quit:hover {
+            background: var(--danger-hover);
+        }
+
+        .terminal-pane {
+            display: flex;
+            flex-direction: column;
+            background: var(--terminal);
+        }
+
+        .terminal-head {
+            flex: 0 0 auto;
+            padding: 12px 16px;
+            border-bottom: 1px solid #263441;
+            color: #d9e7ef;
+            background: #111a22;
+            font-family: "Consolas", "Menlo", monospace;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .terminal-title {
+            min-width: 0;
+        }
+
+        .terminal-head strong {
+            font-size: 0.95rem;
+        }
+
+        .terminal-head span {
+            display: block;
+            margin-top: 3px;
+            color: #89a2b4;
+            font-size: 0.8rem;
+        }
+
+        .debug-enable {
+            flex: 0 0 auto;
+            background: var(--danger);
+            border-color: var(--danger);
+            color: #fff;
+        }
+
+        .debug-enable:hover {
+            background: var(--danger-hover);
+        }
+
+        #terminal {
+            flex: 1 1 auto;
+            min-height: 0;
+            padding: 8px;
+        }
+
+        @media (max-width: 860px) {
+            body {
+                grid-template-columns: 1fr;
+                grid-template-rows: minmax(300px, 45vh) minmax(360px, 55vh);
+                overflow: hidden;
+            }
+
+            .controls-pane,
+            .terminal-pane {
+                height: auto;
+            }
+
+            .controls-pane {
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+            }
+
+            .vec3 {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .vec3 button {
+                grid-column: 1 / -1;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <main class="controls-pane">
+        <header class="head">
+            <div class="head-title">
+                <h1>Remote Control</h1>
+                <div class="subtitle">Live parameters and triggers</div>
+            </div>
+            <button type="button" class="quit" onclick="quitApp()">Quit</button>
+        </header>
+        <section class="controls">
+            {{CONTROLS_HTML}}
+        </section>
+    </main>
+    <section class="terminal-pane">
+        <div class="terminal-head">
+            <div class="terminal-title">
+                <strong>Scene Terminal</strong>
+                <span>Use JavaScript with teph and teph_quick. Example: teph_quick.set_position("bob", 4, 5, 2)</span>
+            </div>
+            <button class="debug-enable" type="button" onclick="enableDebugging()">Enable Debugging</button>
+        </div>
+        <div id="terminal"></div>
+    </section>
+    <script src="/assets/jquery-1.7.1.min.js"></script>
+    <script src="/assets/jquery.terminal.min.js"></script>
+    <script>
+        async function sendUpdate(id, value) {
+            await fetch("__EVENT_PATH__", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: "id=" + encodeURIComponent(id) + "&value=" + encodeURIComponent(value),
+            });
+        }
+
+        const TEPH_BRP_URL = __BRP_URL__;
+        let tephRequestId = 1;
+
+        async function tephHttp(path, options = {}) {
+            const response = await fetch(path, options);
+            const text = await response.text();
+            if (!response.ok) throw new Error(text || response.statusText);
+            const contentType = response.headers.get("content-type") || "";
+            return contentType.includes("application/json") ? JSON.parse(text) : text;
+        }
+
+        async function tephBrp(method, params = undefined) {
+            if (!TEPH_BRP_URL) throw new Error("Bevy Remote Protocol is not enabled for this page");
+            const response = await fetch(TEPH_BRP_URL, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain;charset=UTF-8" },
+                body: JSON.stringify({ jsonrpc: "2.0", id: tephRequestId++, method, params }),
+            });
+            const body = await response.json();
+            if (body.error) throw new Error(body.error.message || JSON.stringify(body.error));
+            return body.result;
+        }
+
+        function tephForm(values) {
+            const body = new URLSearchParams();
+            for (const [key, value] of Object.entries(values)) {
+                if (value !== undefined && value !== null) body.set(key, value);
+            }
+            return {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body,
+            };
+        }
+
+        function tephVec3ObjectArgs(x, y, z) {
+            if (Array.isArray(x)) return { x: x[0], y: x[1], z: x[2] };
+            if (typeof x === "object" && x !== null) return { x: x.x, y: x.y, z: x.z };
+            return { x, y, z };
+        }
+
+        function tephVec3ArrayArgs(x, y, z) {
+            const value = tephVec3ObjectArgs(x, y, z);
+            return [value.x, value.y, value.z];
+        }
+
+        function tephTarget(target) {
+            if (target && typeof target === "object" && "id" in target) return target.id;
+            return target;
+        }
+
+        const TEPH_COMPONENTS = {
+            name: "bevy_ecs::name::Name",
+            transform: "bevy_transform::components::transform::Transform",
+        };
+
+        function tephEntityId(target) {
+            return Number(tephTarget(target));
+        }
+
+        function tephVec3Object(value) {
+            if (Array.isArray(value)) return { x: value[0], y: value[1], z: value[2] };
+            if (value && typeof value === "object" && "x" in value) return value;
+            throw new Error("Expected Vec3 array or object");
+        }
+
+        window.teph = {
+            brp: tephBrp,
+            components: TEPH_COMPONENTS,
+            discover: () => tephBrp("rpc.discover"),
+            query: (params) => tephBrp("world.query", params),
+            get_components: (entity, components, strict = false) => tephBrp("world.get_components", { entity: tephEntityId(entity), components, strict }),
+            spawn_entity: (components = {}) => tephBrp("world.spawn_entity", { components }),
+            insert_components: (entity, components) => tephBrp("world.insert_components", { entity: tephEntityId(entity), components }),
+            mutate_components: (entity, component, path, value) => tephBrp("world.mutate_components", { entity: tephEntityId(entity), component, path, value }),
+            remove_components: (entity, components) => tephBrp("world.remove_components", { entity: tephEntityId(entity), components }),
+            despawn_entity: (entity) => tephBrp("world.despawn_entity", { entity: tephEntityId(entity) }),
+            reparent_entities: (entities, parent = null) => tephBrp("world.reparent_entities", { entities: entities.map(tephEntityId), parent: parent === null ? null : tephEntityId(parent) }),
+            list_components: (entity = undefined) => tephBrp("world.list_components", entity === undefined ? undefined : { entity: tephEntityId(entity) }),
+            get_resources: (resource) => tephBrp("world.get_resources", { resource }),
+            insert_resources: (resource, value) => tephBrp("world.insert_resources", { resource, value }),
+            mutate_resources: (resource, path, value) => tephBrp("world.mutate_resources", { resource, path, value }),
+            remove_resources: (resource) => tephBrp("world.remove_resources", { resource }),
+            list_resources: () => tephBrp("world.list_resources"),
+            trigger_event: (event, value = null) => tephBrp("world.trigger_event", { event, value }),
+            write_message: (message, value = null) => tephBrp("world.write_message", { message, value }),
+            registry_schema: (params = undefined) => tephBrp("registry.schema", params),
+            schedule_list: () => tephBrp("schedule.list"),
+            schedule_graph: (schedule_label) => tephBrp("schedule.graph", { schedule_label }),
+        };
+
+        window.teph_quick = {
+            entities_named: async (name) => (await tephHttp("__API_ENTITIES_PATH__?name=" + encodeURIComponent(String(name)))).entities,
+            entity: async (nameOrId) => {
+                if (nameOrId && typeof nameOrId === "object" && "id" in nameOrId) return nameOrId;
+                if (typeof nameOrId === "number") return { id: nameOrId };
+                const entities = await window.teph_quick.entities_named(nameOrId);
+                if (entities.length === 0) throw new Error("No entity named " + nameOrId);
+                if (entities.length > 1) throw new Error("Multiple entities named " + nameOrId);
+                return entities[0];
+            },
+            transform: async (target) => {
+                const entity = await window.teph_quick.entity(target);
+                const result = await window.teph.get_components(entity.id, [TEPH_COMPONENTS.transform], true);
+                return { entity: String(entity.id), ...result[TEPH_COMPONENTS.transform] };
+            },
+            position: async (target) => {
+                const translation = (await window.teph_quick.transform(target)).translation;
+                return Array.isArray(translation) ? translation : [translation.x, translation.y, translation.z];
+            },
+            set_position: async (target, x, y, z) => {
+                const entity = await window.teph_quick.entity(target);
+                await window.teph.mutate_components(entity.id, TEPH_COMPONENTS.transform, "translation", tephVec3ArrayArgs(x, y, z));
+                return window.teph_quick.transform(entity);
+            },
+            translate: async (target, x, y, z) => {
+                const entity = await window.teph_quick.entity(target);
+                const transform = await window.teph_quick.transform(entity);
+                const delta = tephVec3ObjectArgs(x, y, z);
+                const translation = tephVec3Object(transform.translation);
+                return window.teph_quick.set_position(entity, translation.x + delta.x, translation.y + delta.y, translation.z + delta.z);
+            },
+            look_at: async (target, x, y, z, up = [0, 1, 0]) => {
+                const entity = await window.teph_quick.entity(target);
+                const point = tephVec3ObjectArgs(x, y, z);
+                const upVec = tephVec3ObjectArgs(up);
+                return tephHttp("__API_TRANSFORM_LOOK_AT_PATH__", tephForm({
+                    target: entity.id,
+                    ...point,
+                    up_x: upVec.x,
+                    up_y: upVec.y,
+                    up_z: upVec.z,
+                }));
+            },
+        };
+
+        function setLabel(id, value) {
+            const el = document.getElementById("value-" + id);
+            if (el) el.innerText = value;
+        }
+
+        function updateDualRange(id, min, max) {
+            const low = document.getElementById("dual-" + id + "-low");
+            const high = document.getElementById("dual-" + id + "-high");
+            const track = document.getElementById("track-" + id);
+            if (!low || !high || !track) return;
+
+            let lowVal = parseFloat(low.value);
+            let highVal = parseFloat(high.value);
+
+            if (lowVal > highVal) {
+                if (document.activeElement === low) {
+                    low.value = highVal;
+                    lowVal = highVal;
+                } else {
+                    high.value = lowVal;
+                    highVal = lowVal;
+                }
+            }
+
+            setLabel(id, lowVal + " - " + highVal);
+
+            const percent1 = ((lowVal - min) / (max - min)) * 100;
+            const percent2 = ((highVal - min) / (max - min)) * 100;
+            track.style.background = "linear-gradient(to right, var(--border) " + percent1 + "%, var(--accent) " + percent1 + "%, var(--accent) " + percent2 + "%, var(--border) " + percent2 + "%)";
+        }
+
+        function sendDualRange(id) {
+            const low = document.getElementById("dual-" + id + "-low");
+            const high = document.getElementById("dual-" + id + "-high");
+            if (low && high) sendUpdate(id, low.value + "," + high.value);
+        }
+
+        function sendVec3(id) {
+            const x = document.getElementById("vec3-" + id + "-x")?.value ?? "0";
+            const y = document.getElementById("vec3-" + id + "-y")?.value ?? "0";
+            const z = document.getElementById("vec3-" + id + "-z")?.value ?? "0";
+            sendUpdate(id, x + "," + y + "," + z);
+        }
+
+        function clampAnalog(v) {
+            return Math.max(-1, Math.min(1, v));
+        }
+
+        function analogValueToString(x, y) {
+            return x.toFixed(3) + "," + y.toFixed(3);
+        }
+
+        function setAnalogVisual(id, x, y) {
+            const stick = document.getElementById("analog-stick-" + id);
+            const root = document.getElementById("analog-" + id);
+            const label = document.getElementById("analog-value-" + id);
+            if (!stick || !root) return;
+            stick.style.left = (50 + x * 40) + "%";
+            stick.style.top = (50 - y * 40) + "%";
+            if (label) label.innerText = x.toFixed(2) + ", " + y.toFixed(2);
+            root.setAttribute("aria-valuetext", x.toFixed(2) + ", " + y.toFixed(2));
+        }
+
+        function setupAnalog(root) {
+            const id = root.dataset.propId;
+            if (!id) return;
+            let x = clampAnalog(parseFloat(root.dataset.x ?? "0") || 0);
+            let y = clampAnalog(parseFloat(root.dataset.y ?? "0") || 0);
+            let pointerId = null;
+            let activeTimer = null;
+            let keyboardTimer = null;
+            const keyboardState = { left: false, right: false, up: false, down: false };
+
+            function sendNow() {
+                sendUpdate(id, analogValueToString(x, y));
+            }
+            function ensureActiveSendLoop() {
+                if (activeTimer !== null) return;
+                activeTimer = setInterval(() => {
+                    if (Math.abs(x) < 0.0001 && Math.abs(y) < 0.0001) {
+                        clearInterval(activeTimer);
+                        activeTimer = null;
+                        return;
+                    }
+                    sendNow();
+                }, 80);
+            }
+            function stopActiveSendLoop() {
+                if (activeTimer !== null) {
+                    clearInterval(activeTimer);
+                    activeTimer = null;
+                }
+            }
+            function updateFromClientPoint(clientX, clientY) {
+                const rect = root.getBoundingClientRect();
+                const cx = rect.left + rect.width * 0.5;
+                const cy = rect.top + rect.height * 0.5;
+                const dx = (clientX - cx) / (rect.width * 0.5);
+                const dy = (cy - clientY) / (rect.height * 0.5);
+                const len = Math.hypot(dx, dy);
+                if (len > 1) {
+                    x = dx / len;
+                    y = dy / len;
+                } else {
+                    x = dx;
+                    y = dy;
+                }
+                x = clampAnalog(x);
+                y = clampAnalog(y);
+                setAnalogVisual(id, x, y);
+                sendNow();
+                if (x !== 0 || y !== 0) ensureActiveSendLoop();
+            }
+            function resetToCenter(send) {
+                x = 0;
+                y = 0;
+                setAnalogVisual(id, x, y);
+                stopActiveSendLoop();
+                if (send) sendNow();
+            }
+            function updateFromKeyboardState() {
+                const tx = (keyboardState.right ? 1 : 0) - (keyboardState.left ? 1 : 0);
+                const ty = (keyboardState.up ? 1 : 0) - (keyboardState.down ? 1 : 0);
+                x = clampAnalog(tx);
+                y = clampAnalog(ty);
+                setAnalogVisual(id, x, y);
+                sendNow();
+                if (x !== 0 || y !== 0) ensureActiveSendLoop();
+            }
+
+            root.addEventListener("pointerdown", (e) => {
+                pointerId = e.pointerId;
+                root.setPointerCapture(pointerId);
+                updateFromClientPoint(e.clientX, e.clientY);
+                root.focus();
+            });
+            root.addEventListener("pointermove", (e) => {
+                if (pointerId !== e.pointerId) return;
+                updateFromClientPoint(e.clientX, e.clientY);
+            });
+            function finishPointer(e) {
+                if (pointerId !== e.pointerId) return;
+                pointerId = null;
+                resetToCenter(true);
+            }
+            root.addEventListener("pointerup", finishPointer);
+            root.addEventListener("pointercancel", finishPointer);
+
+            root.addEventListener("keydown", (e) => {
+                let consumed = true;
+                if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") keyboardState.left = true;
+                else if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") keyboardState.right = true;
+                else if (e.key === "ArrowUp" || e.key === "w" || e.key === "W") keyboardState.up = true;
+                else if (e.key === "ArrowDown" || e.key === "s" || e.key === "S") keyboardState.down = true;
+                else consumed = false;
+                if (!consumed) return;
+                e.preventDefault();
+                updateFromKeyboardState();
+                if (keyboardTimer === null) {
+                    keyboardTimer = setInterval(updateFromKeyboardState, 90);
+                }
+            });
+            root.addEventListener("keyup", (e) => {
+                let consumed = true;
+                if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") keyboardState.left = false;
+                else if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") keyboardState.right = false;
+                else if (e.key === "ArrowUp" || e.key === "w" || e.key === "W") keyboardState.up = false;
+                else if (e.key === "ArrowDown" || e.key === "s" || e.key === "S") keyboardState.down = false;
+                else consumed = false;
+                if (!consumed) return;
+                e.preventDefault();
+                const anyDown = keyboardState.left || keyboardState.right || keyboardState.up || keyboardState.down;
+                if (anyDown) {
+                    updateFromKeyboardState();
+                } else {
+                    if (keyboardTimer !== null) {
+                        clearInterval(keyboardTimer);
+                        keyboardTimer = null;
+                    }
+                    resetToCenter(true);
+                }
+            });
+            root.addEventListener("blur", () => {
+                keyboardState.left = false;
+                keyboardState.right = false;
+                keyboardState.up = false;
+                keyboardState.down = false;
+                if (keyboardTimer !== null) {
+                    clearInterval(keyboardTimer);
+                    keyboardTimer = null;
+                }
+                resetToCenter(true);
+            });
+
+            setAnalogVisual(id, x, y);
+            if (x !== 0 || y !== 0) ensureActiveSendLoop();
+        }
+
+        function quitApp() {
+            sendUpdate("__QUIT_ID__", "1");
+        }
+
+        async function enableDebugging() {
+            const button = document.querySelector(".debug-enable");
+            if (button) {
+                button.disabled = true;
+                button.innerText = "Enabling...";
+            }
+            try {
+                const result = await tephHttp("__API_DEBUG_ENABLE_PATH__", { method: "POST" });
+                if (button) button.innerText = "Debugging Enabled";
+                window.TEPH_DEBUGGING_ENABLED = true;
+                const term = $("#terminal").data("terminal");
+                if (term) {
+                    const detail = result.brp_port === null
+                        ? "BRP port is not configured for this app."
+                        : "BRP is configured on port " + result.brp_port + ".";
+                    term.echo("Debugging enabled. " + detail);
+                }
+            } catch (error) {
+                if (button) {
+                    button.disabled = false;
+                    button.innerText = "Enable Debugging";
+                }
+                const term = $("#terminal").data("terminal");
+                const message = formatTerminalError(error);
+                if (term) term.error(message);
+                else console.error(message);
+            }
+        }
+
+        const AsyncFunction = Object.getPrototypeOf(async function () { }).constructor;
+        const HELP_LINES = [
+            "Commands:",
+            "  ls                         list named entities",
+            "  ls --all                   list all entities",
+            "  ls <name or id>            list components on an entity",
+            "  help                       show this help",
+            "  help teph                  show direct BRP wrapper functions",
+            "  help teph_quick            show scene shortcut functions",
+            "  clear                      clear the terminal",
+            "",
+            "Examples:",
+            "  teph.discover()",
+            "  teph_quick.entity(\"bob\")",
+            "  teph_quick.position(\"bob\")",
+            "  teph_quick.set_position(\"bob\", 4, 5, 2)",
+            "  teph_quick.look_at(\"bob\", 0, 1, 0)",
+            "",
+            "JavaScript expressions that return promises are awaited automatically.",
+        ];
+        const TEPH_HELP_LINES = [
+            "teph direct BRP wrappers:",
+            "  brp(method, params)",
+            "  discover()",
+            "  query(params)",
+            "  get_components(entity, components, strict)",
+            "  spawn_entity(components)",
+            "  insert_components(entity, components)",
+            "  mutate_components(entity, component, path, value)",
+            "  remove_components(entity, components)",
+            "  despawn_entity(entity)",
+            "  reparent_entities(entities, parent)",
+            "  list_components(entity)",
+            "  get_resources(resource)",
+            "  insert_resources(resource, value)",
+            "  mutate_resources(resource, path, value)",
+            "  remove_resources(resource)",
+            "  list_resources()",
+            "  trigger_event(event, value)",
+            "  write_message(message, value)",
+            "  registry_schema(params)",
+            "  schedule_list()",
+            "  schedule_graph(schedule_label)",
+        ];
+        const TEPH_QUICK_HELP_LINES = [
+            "teph_quick scene shortcuts:",
+            "  entities_named(name)",
+            "  entity(nameOrId)",
+            "  transform(target)",
+            "  position(target)",
+            "  set_position(target, x, y, z)",
+            "  translate(target, x, y, z)",
+            "  look_at(target, x, y, z, up)",
+        ];
+
+        async function evaluateTerminalCommand(command) {
+            try {
+                return await new AsyncFunction("teph", "teph_quick", "return (" + command + ");")(window.teph, window.teph_quick);
+            } catch (error) {
+                if (!(error instanceof SyntaxError)) throw error;
+                return await new AsyncFunction("teph", "teph_quick", command)(window.teph, window.teph_quick);
+            }
+        }
+
+        function formatTerminalResult(value) {
+            if (value === undefined) return undefined;
+            if (typeof value === "string") return value;
+            try {
+                return JSON.stringify(value, null, 2);
+            } catch (_) {
+                return String(value);
+            }
+        }
+
+        function formatTerminalError(error) {
+            if (error instanceof ReferenceError) {
+                const match = String(error.message).match(/^(.+) is not defined$/);
+                if (match) return "Unknown command or variable: " + match[1] + ". Try: help";
+            }
+            if (error && error.message) return error.message;
+            return String(error);
+        }
+
+        function formatEntityList(entities) {
+            if (!entities.length) return "No entities found.";
+            return entities
+                .map((entity) => (entity.name || ("<unnamed " + entity.id + ">")) + (entity.has_transform ? " [Transform]" : ""))
+                .join("\n");
+        }
+
+        function formatComponentList(result) {
+            if (result === undefined || result === null) return "No components found.";
+            const components = Array.isArray(result) ? result : result.components;
+            if (Array.isArray(components)) {
+                if (!components.length) return "No components found.";
+                return components.join("\n");
+            }
+            return formatTerminalResult(result);
+        }
+
+        async function listEntities(namedOnly) {
+            const result = await tephHttp("__API_ENTITIES_PATH__");
+            const entities = result.entities || [];
+            return formatEntityList(namedOnly ? entities.filter((entity) => entity.name) : entities);
+        }
+
+        async function listEntityComponents(target) {
+            const entity = /^\d+$/.test(target) ? { id: Number(target) } : await window.teph_quick.entity(target);
+            return formatComponentList(await window.teph.list_components(entity.id));
+        }
+
+        async function executeLsCommand(source) {
+            if (source === "ls") return listEntities(true);
+            if (source === "ls --all") return listEntities(false);
+            if (source.startsWith("ls ")) {
+                const target = source.slice(3).trim();
+                if (!target) return listEntities(true);
+                if (target === "--all") return listEntities(false);
+                return listEntityComponents(target);
+            }
+            return undefined;
+        }
+
+        async function executeTerminalCommand(source, term) {
+            if (source === "clear") {
+                term.clear();
+                return undefined;
+            }
+            if (source === "help" || source === "?") return HELP_LINES.join("\n");
+            if (source === "help teph") return TEPH_HELP_LINES.join("\n");
+            if (source === "help teph_quick") return TEPH_QUICK_HELP_LINES.join("\n");
+            if (source === "ls" || source.startsWith("ls ")) return executeLsCommand(source);
+            return evaluateTerminalCommand(source);
+        }
+
+        function setupTerminal() {
+            const completions = [
+                "ls", "ls --all", "help", "help teph", "help teph_quick", "clear",
+                "teph", "teph_quick", "teph.discover()", "teph.query(",
+                "teph_quick.entity(", "teph_quick.transform(",
+                "teph_quick.position(", "teph_quick.set_position(",
+                "teph_quick.translate(", "teph_quick.look_at(",
+            ];
+            $("#terminal").terminal(async function (command, term) {
+                const source = command.trim();
+                if (!source) return;
+                term.pause();
+                try {
+                    const result = await executeTerminalCommand(source, term);
+                    const formatted = formatTerminalResult(result);
+                    if (formatted !== undefined) term.echo(formatted);
+                } catch (error) {
+                    term.error(formatTerminalError(error));
+                } finally {
+                    term.resume();
+                }
+            }, {
+                greetings: "Tephrite scene terminal. Try: help",
+                prompt: "teph> ",
+                name: "tephrite-remote-terminal",
+                height: "100%",
+                completion: function (_, callback) {
+                    callback(completions);
+                },
+            });
+        }
+
+        window.addEventListener("DOMContentLoaded", () => {
+            document.querySelectorAll(".analog[data-prop-id]").forEach(setupAnalog);
+            setupTerminal();
+        });
+    </script>
+</body>
+
+</html>

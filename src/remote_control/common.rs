@@ -12,6 +12,8 @@ pub(crate) const API_TRANSFORM_PATH: &str = "/api/transform";
 pub(crate) const API_TRANSFORM_POSITION_PATH: &str = "/api/transform/position";
 /// URL path for rotating an entity to look at a world-space point.
 pub(crate) const API_TRANSFORM_LOOK_AT_PATH: &str = "/api/transform/look_at";
+/// URL path for enabling runtime scene debugging.
+pub(crate) const API_DEBUG_ENABLE_PATH: &str = "/api/debug/enable";
 /// Special control ID used to request app shutdown.
 pub(crate) const QUIT_ID: &str = "__tephrite_quit";
 

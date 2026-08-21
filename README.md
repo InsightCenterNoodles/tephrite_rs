@@ -105,7 +105,6 @@ You can start from `assets/config_example.toml`.
 | `TEPH_DEBUG` | Raises logic-process logging to debug level. |
 | `TEPH_FORCE_SIMULATOR` | Forces simulator mode in the logic process, even when the config has render screens. |
 | `TEPH_MONO` | Forces render configuration to use the left-eye/mono view by overriding `is_right` to `false`. |
-| `TEPH_SCENE_DEBUG` | Enables Bevy Remote Protocol scene debugging in the logic app. When set, Teprite adds Bevy's `RemotePlugin` and BRP `RemoteHttpPlugin`; when unset, the normal remote-control page remains available but BRP is not hosted. |
 
 ### Internal process environment
 

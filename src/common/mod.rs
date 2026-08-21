@@ -21,13 +21,13 @@ pub struct EnvironmentLighting {
 /// Add this resource to enable the use of order independant transparency. This is useful for rendering
 /// transparent objects and can eliminate flickering. Comes at a high memory cost.
 #[derive(Debug, Resource)]
-pub struct OrderIndependantTransparency {
+pub struct OrderIndependentTransparency {
     pub sorted_fragment_max_count: u32,
     pub fragments_per_pixel_average: f32,
     pub alpha_threshold: f32,
 }
 
-impl Default for OrderIndependantTransparency {
+impl Default for OrderIndependentTransparency {
     fn default() -> Self {
         Self {
             sorted_fragment_max_count: 8,

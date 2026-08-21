@@ -15,7 +15,7 @@ use bevy::{
 use crate::{
     common::{
         DeferredRendering, EnvironmentLighting, OffAxisProjectionSettings,
-        OrderIndependantTransparency, ScreenSpaceAmbientOcclusionSettings,
+        OrderIndependentTransparency, ScreenSpaceAmbientOcclusionSettings,
         ScreenSpaceReflectionsSettings,
     },
     config::get_render_configuration,
@@ -279,7 +279,7 @@ fn env_change_watch(
 }
 
 fn oit_resource_watch(
-    oit: Option<Res<OrderIndependantTransparency>>,
+    oit: Option<Res<OrderIndependentTransparency>>,
     mut cam_q: Query<Entity, With<Camera3d>>,
     mut commands: Commands,
 ) {
@@ -291,7 +291,7 @@ fn oit_resource_watch(
         return;
     }
 
-    let oit: &OrderIndependantTransparency = &oit;
+    let oit: &OrderIndependentTransparency = &oit;
 
     for cam in cam_q.iter_mut() {
         let mut ec = commands.entity(cam);

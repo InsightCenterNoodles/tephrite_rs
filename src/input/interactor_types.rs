@@ -1,7 +1,14 @@
+//! Device-specific mappings into Tephrite's normalized input model.
+//!
+//! Backends can write normalized [`InputButton`] values directly, but these
+//! types provide named button/stick mappings for the devices Tephrite currently
+//! knows about.
+
 use bevy::prelude::*;
 
 use crate::input::{InputButton, InteractorAction};
 
+/// Mapping contract for an interactor device type.
 pub trait InteractorTrait {
     type Stick: Copy;
     type Button: Copy;
@@ -30,6 +37,7 @@ pub trait InteractorTrait {
     }
 }
 
+/// Named sticks for a conventional game controller.
 #[derive(Debug, Clone, Copy)]
 pub enum ControllerStick {
     Left,
@@ -37,6 +45,7 @@ pub enum ControllerStick {
     DPad,
 }
 
+/// Conventional game-controller mapping.
 pub struct Controller;
 
 const LEFT_X_AXIS: usize = 0;
@@ -129,6 +138,7 @@ impl InteractorTrait for Controller {
     }
 }
 
+/// Named buttons for a conventional game controller.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ControllerButton {
     X,
@@ -145,11 +155,13 @@ pub enum ControllerButton {
     Unknown,
 }
 
+/// Named sticks for a DTrack flystick.
 #[derive(Debug, Clone, Copy)]
 pub enum FlystickStick {
     Stick,
 }
 
+/// Named buttons for a DTrack flystick.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FlystickButton {
     Trigger,
@@ -164,6 +176,7 @@ pub enum FlystickButton {
     Unknown,
 }
 
+/// DTrack flystick mapping.
 pub struct DTrackFlystick;
 
 const FLYSTICK_X_AXIS: usize = 0;

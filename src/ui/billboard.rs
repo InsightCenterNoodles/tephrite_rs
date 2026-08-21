@@ -18,52 +18,29 @@ impl Plugin for BillboardPlugin {
 /// 2. First entity with [`Camera3d`]
 ///
 /// Be sure to add [`BillboardPlugin`] to your app to use this component.
-#[derive(Debug, Default, Component, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Component, Clone, Copy, PartialEq, Eq)]
 pub enum Billboard {
-    /// Full pitch/yaw rotation with local +Z facing the target.
-    #[default]
-    FullGimbal,
-    /// Yaw-only with local +Z facing the target: keep local Y upright, rotate only in the XZ plane.
-    XzAxisRestricted,
-    /// Custom billboarding behavior.
-    Custom {
-        /// How much freedom the billboard rotation has.
-        mode: BillboardMode,
-        /// Local axis that should point toward the target.
-        facing_axis: BillboardAxis,
-    },
+    /// Full pitch/yaw rotation with the selected local axis facing the target.
+    FullGimbal(BillboardAxis),
+    /// Y-axis-only rotation with the selected local axis facing the target.
+    YRotation(BillboardAxis),
+}
+
+impl Default for Billboard {
+    fn default() -> Self {
+        Self::FullGimbal(BillboardAxis::Z)
+    }
 }
 
 impl Billboard {
-    /// Full pitch/yaw rotation with a selected local axis facing the target.
-    pub const fn full_gimbal_with_axis(facing_axis: BillboardAxis) -> Self {
-        Self::Custom {
-            mode: BillboardMode::FullGimbal,
-            facing_axis,
-        }
-    }
-
-    /// Yaw-only rotation with a selected local axis facing the target.
-    pub const fn xz_axis_restricted_with_axis(facing_axis: BillboardAxis) -> Self {
-        Self::Custom {
-            mode: BillboardMode::XzAxisRestricted,
-            facing_axis,
-        }
-    }
-
-    const fn mode(self) -> BillboardMode {
-        match self {
-            Self::FullGimbal => BillboardMode::FullGimbal,
-            Self::XzAxisRestricted => BillboardMode::XzAxisRestricted,
-            Self::Custom { mode, .. } => mode,
-        }
-    }
-
     const fn facing_axis(self) -> BillboardAxis {
         match self {
-            Self::FullGimbal | Self::XzAxisRestricted => BillboardAxis::Z,
-            Self::Custom { facing_axis, .. } => facing_axis,
+            Self::FullGimbal(axis) | Self::YRotation(axis) => axis,
         }
+    }
+
+    const fn only_rotate_y(self) -> bool {
+        matches!(self, Self::YRotation(_))
     }
 }
 
@@ -92,16 +69,6 @@ impl BillboardAxis {
     }
 }
 
-/// Rotation freedom for a billboard.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub enum BillboardMode {
-    /// Full pitch/yaw rotation to face the target.
-    #[default]
-    FullGimbal,
-    /// Yaw-only: keep world Y upright, rotate only in the XZ plane.
-    XzAxisRestricted,
-}
-
 fn update_billboards(
     target_heads: Query<&GlobalTransform, With<Head>>,
     target_cameras: Query<&GlobalTransform, With<Camera3d>>,
@@ -120,7 +87,7 @@ fn update_billboards(
     for (billboard, current_global, mut current_local) in &mut billboards {
         let mut direction = target_translation - current_global.translation();
 
-        if matches!(billboard.mode(), BillboardMode::XzAxisRestricted) {
+        if billboard.only_rotate_y() {
             direction.y = 0.0;
         }
 
@@ -192,7 +159,14 @@ mod tests {
 
     #[test]
     fn default_variants_use_positive_z_axis() {
-        assert_eq!(Billboard::FullGimbal.facing_axis(), BillboardAxis::Z);
-        assert_eq!(Billboard::XzAxisRestricted.facing_axis(), BillboardAxis::Z);
+        assert_eq!(Billboard::default().facing_axis(), BillboardAxis::Z);
+        assert_eq!(
+            Billboard::FullGimbal(BillboardAxis::Z).facing_axis(),
+            BillboardAxis::Z
+        );
+        assert_eq!(
+            Billboard::YRotation(BillboardAxis::Z).facing_axis(),
+            BillboardAxis::Z
+        );
     }
 }

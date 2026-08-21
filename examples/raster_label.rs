@@ -39,7 +39,7 @@ fn setup(
             &mut materials,
         )?,
         Transform::from_xyz(0.0, 1.0, 0.0),
-        Billboard::FullGimbal,
+        Billboard::FullGimbal(BillboardAxis::Z),
     ));
 
     // light

@@ -124,7 +124,7 @@ fn buffer_ptr(data_base: *mut u8, buf_size: usize, idx: u32) -> *mut u8 {
 ///     **before** proceeding (strict fence between frames).
 ///
 ///   - Consumer waits for publish_gen to change, reads publish_idx, runs the frame,
-///     then stores consumer_gen[id] = new_gen (ack).
+///     then stores consumer_gen\[id\] = new_gen (ack).
 ///
 pub struct Producer {
     #[allow(unused)]

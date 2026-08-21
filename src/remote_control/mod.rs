@@ -63,7 +63,9 @@ use bevy::remote::{
 };
 
 use crate::common::TephExit;
-use crate::remote_control::events::{RemoteControlEvent, RemoteControlEventInternal};
+use crate::remote_control::events::{
+    RemoteControlEvent, RemoteControlEventInternal, RemoteDebuggingRequested,
+};
 use crate::remote_control::property::PropertyDefinition;
 use crate::remote_control::server::{check_updates, register_http_handlers};
 
@@ -88,6 +90,14 @@ impl RemoteControlDefinitions {
     }
 }
 
+/// Marker resource inserted after the remote-control page requests debugging.
+///
+/// This records the user's runtime intent. BRP is hosted by default by
+/// [`RemoteControlPlugin`]; custom apps can still construct the plugin with
+/// `brp_port: None` when they do not want BRP available.
+#[derive(Debug, Default, Resource)]
+pub struct RemoteDebuggingEnabled;
+
 #[derive(Debug, Default, Resource)]
 pub struct RemoteControlOpts {
     bind_addr: String,
@@ -96,8 +106,7 @@ pub struct RemoteControlOpts {
 
 /// Bevy plugin that hosts the local remote-control HTTP endpoint.
 ///
-/// The plugin snapshots [`RemoteControlDefinitions`] during `PostStartup`.
-/// Definitions added after startup are not reflected until next app launch.
+/// The plugin snapshots [`RemoteControlDefinitions`] and relaunches the server upon changes.
 pub struct RemoteControlPlugin {
     /// HTTP bind address for the control page (for example `127.0.0.1:8081`).
     pub bind_addr: String,
@@ -178,6 +187,10 @@ fn bounce(trigger: On<RemoteControlEventInternal>, mut commands: Commands) {
             aspect_id: *aspect_id,
             value: value.clone(),
         }),
+        RemoteControlEventInternal::DebuggingRequested => {
+            commands.insert_resource(RemoteDebuggingEnabled);
+            commands.trigger(RemoteDebuggingRequested);
+        }
         RemoteControlEventInternal::QuitRequested => {
             commands.trigger(TephExit);
         }
@@ -190,7 +203,9 @@ mod tests;
 pub mod prelude {
     pub use super::RemoteControlDefinitions;
     pub use super::RemoteControlPlugin;
-    pub use super::events::RemoteControlEvent;
+    pub use super::RemoteDebuggingEnabled;
+    pub use super::common::PropertyValue;
+    pub use super::events::{RemoteControlEvent, RemoteDebuggingRequested};
     pub use super::property::PropertyControl;
     pub use super::property::PropertyDefinition;
 

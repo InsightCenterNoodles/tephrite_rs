@@ -1,12 +1,23 @@
+//! Interactor state tracking and activation routing.
+//!
+//! Device backends send raw [`ButtonMessage`] and [`AxisMessage`] values. This
+//! module stores the current button/axis state on interactor entities and routes
+//! button presses to activation targets.
+
 use bevy::prelude::*;
 
-use crate::input::{common::map_point, interactor_types::InteractorTrait};
+use super::{
+    Activate, AxisMessage, ButtonEventKind, ButtonMessage, CanActivate, Controller, DTrackFlystick,
+    GlobalActivate, GlobalInteractorAction, InteractionBounds, InteractorAction,
+    InteractorActionEvent, InteractorActionEventKind, InteractorTrait, map_point,
+};
 
-use super::*;
-
-// TODO: make mappable
-// Lets split this up. the raw ints are from VRPN. we will take those events, and translate to user facing API
-
+/// Physical button identifier after device-specific input has been normalized.
+///
+/// Tephrite keeps this deliberately small and generic. Device-specific types
+/// such as [`ControllerButton`](super::ControllerButton) and
+/// [`FlystickButton`](super::FlystickButton) map into this enum before
+/// higher-level semantic actions are derived.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum InputButton {
     Button0,
@@ -23,7 +34,7 @@ pub enum InputButton {
     Unknown,
 }
 
-/// Marker for the entity that represents a user's controller
+/// Marker for an entity that represents a user's input device.
 #[derive(Component, Default, Debug, Clone, Copy)]
 pub enum Interactor {
     #[default]
@@ -31,6 +42,10 @@ pub enum Interactor {
     Flystick,
 }
 
+/// Current normalized button and analog state for an [`Interactor`].
+///
+/// Most application code should query this for continuous state, or observe
+/// [`InteractorActionEvent`] for targeted press/release events.
 #[derive(Debug, Component)]
 #[require(Interactor)]
 pub struct InteractorState {
@@ -41,6 +56,7 @@ pub struct InteractorState {
 }
 
 impl InteractorState {
+    /// Create state storage configured for a specific interactor device kind.
     pub fn new(ty: Interactor) -> Self {
         let f = match ty {
             Interactor::Controller => Controller::button_for_action,
@@ -69,21 +85,25 @@ impl InteractorState {
         }
     }
 
+    /// Returns true if any semantic action was pressed this frame.
     pub fn any_just_pressed(&self, inputs: impl IntoIterator<Item = InteractorAction>) -> bool {
         self.buttons
             .any_just_pressed(inputs.into_iter().filter_map(self.translate))
     }
 
+    /// Returns true if any semantic action was released this frame.
     pub fn any_just_released(&self, inputs: impl IntoIterator<Item = InteractorAction>) -> bool {
         self.buttons
             .any_just_released(inputs.into_iter().filter_map(self.translate))
     }
 
+    /// Returns true if any semantic action is currently pressed.
     pub fn any_pressed(&self, inputs: impl IntoIterator<Item = InteractorAction>) -> bool {
         self.buttons
             .any_pressed(inputs.into_iter().filter_map(self.translate))
     }
 
+    /// Returns true if this semantic action was pressed this frame.
     pub fn just_pressed(&self, input: InteractorAction) -> bool {
         let Some(input_button) = (self.translate)(input) else {
             return false;
@@ -91,6 +111,7 @@ impl InteractorState {
         self.buttons.just_pressed(input_button)
     }
 
+    /// Returns true if this semantic action was released this frame.
     pub fn just_released(&self, input: InteractorAction) -> bool {
         let Some(input_button) = (self.translate)(input) else {
             return false;
@@ -98,6 +119,7 @@ impl InteractorState {
         self.buttons.just_released(input_button)
     }
 
+    /// Returns true if this semantic action is currently pressed.
     pub fn pressed(&self, input: InteractorAction) -> bool {
         let Some(input_button) = (self.translate)(input) else {
             return false;
@@ -217,11 +239,7 @@ fn read_events(
 
             let local = map_point(activation_point, joy_tf, tf);
 
-            let local = Aabb3d::from_point_cloud(Isometry3d::default(), std::iter::once(local));
-
-            // local in bounds?
-
-            if !bounds.aabb.contains(&local) {
+            if !bounds.contains_point(local) {
                 continue;
             }
 
@@ -310,6 +328,8 @@ fn action_for_button(interactor: &Interactor, button: InputButton) -> Option<Int
 
 #[cfg(test)]
 mod tests {
+    use bevy::math::bounding::Aabb3d;
+
     use super::*;
 
     #[derive(Debug, Default, Resource)]
@@ -348,7 +368,7 @@ mod tests {
         let target = app
             .world_mut()
             .spawn((
-                InteractionBounds { aabb: bounds },
+                InteractionBounds::aabb(bounds),
                 CanActivate::default(),
                 GlobalTransform::IDENTITY,
             ))

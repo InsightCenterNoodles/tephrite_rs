@@ -29,7 +29,7 @@ impl Default for RoundedRectOptions {
 /// - physical size = `width` x `height`
 /// - up = +Y
 /// - front face = +Z
-/// - UVs span the full rectangle [0,1]x[0,1]
+/// - UVs span the full rectangle \[0,1\]x\[0,1\]
 ///
 /// `corner_segments` controls arc tessellation per corner.
 /// If `radius <= 0.0`, this returns a plain quad.

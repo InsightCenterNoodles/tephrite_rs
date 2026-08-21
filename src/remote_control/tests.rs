@@ -1,7 +1,7 @@
 use super::*;
 use crate::remote_control::common::{
-    API_ENTITIES_PATH, API_TRANSFORM_LOOK_AT_PATH, API_TRANSFORM_POSITION_PATH, EVENT_PATH,
-    PropertyValue,
+    API_DEBUG_ENABLE_PATH, API_ENTITIES_PATH, API_TRANSFORM_LOOK_AT_PATH,
+    API_TRANSFORM_POSITION_PATH, EVENT_PATH, PropertyValue,
 };
 use crate::remote_control::property::PropertyControl;
 use crate::remote_control::server::{RemoteControlState, parse_form_urlencoded};
@@ -232,7 +232,7 @@ fn parse_property_value_vec2_is_strict() {
 }
 
 #[test]
-fn render_controls_contains_controls_and_quit() {
+fn render_controls_contains_controls() {
     let defs = vec![
         PropertyDefinition {
             id: make_entity(1),
@@ -300,7 +300,7 @@ fn render_controls_contains_controls_and_quit() {
     assert!(html.contains("type=\"text\""));
     assert!(html.contains("sendVec3"));
     assert!(html.contains("class=\"analog\""));
-    assert!(html.contains("Quit</button>"));
+    assert!(!html.contains("Quit</button>"));
     assert!(html.contains(&format!("value-{}", defs[0].lookup_id())));
 }
 
@@ -313,18 +313,35 @@ fn render_index_page_contains_expected_js_wiring() {
     assert!(html.contains("sendUpdate"));
     assert!(html.contains("window.teph"));
     assert!(html.contains("window.teph_quick"));
+    assert!(html.contains("jquery.terminal.min.js"));
+    assert!(html.contains("jquery.terminal.min.css"));
+    assert!(html.contains("Scene Terminal"));
+    assert!(html.contains("evaluateTerminalCommand"));
+    assert!(html.contains("executeTerminalCommand"));
+    assert!(html.contains("Unknown command or variable"));
+    assert!(html.contains("help teph_quick"));
+    assert!(html.contains("formatEntityList"));
+    assert!(html.contains("formatComponentList"));
+    assert!(html.contains("ls --all"));
+    assert!(html.contains("ls <name or id>"));
+    assert!(html.contains("listEntityComponents"));
+    assert!(html.contains("Enable Debugging"));
+    assert!(html.contains("enableDebugging"));
+    assert!(html.contains(API_DEBUG_ENABLE_PATH));
     assert!(html.contains("text/plain;charset=UTF-8"));
     assert!(html.contains("rpc.discover"));
     assert!(html.contains("world.query"));
     assert!(html.contains("world.get_components"));
     assert!(html.contains("world.spawn_entity"));
     assert!(html.contains("world.mutate_components"));
+    assert!(html.contains("tephVec3ArrayArgs"));
     assert!(html.contains("world.get_resources"));
     assert!(html.contains("schedule.graph"));
     assert!(html.contains(":15702"));
     assert!(html.contains("sendVec3"));
     assert!(html.contains("setupAnalog"));
     assert!(html.contains("quitApp"));
+    assert!(html.contains("Quit</button>"));
 }
 
 #[test]
@@ -352,6 +369,31 @@ fn server_returns_expected_status_codes() {
 
     let root = send_request(&mut app, &make_request("GET", "/", ""));
     assert!(root.starts_with("HTTP/1.1 200 OK"));
+    assert!(root.contains("Scene Terminal"));
+
+    let jquery = send_request(&mut app, &make_request("GET", content::JQUERY_JS_PATH, ""));
+    assert!(jquery.starts_with("HTTP/1.1 200 OK"));
+    assert!(jquery.contains("application/javascript"));
+
+    let terminal_js = send_request(
+        &mut app,
+        &make_request("GET", content::JQUERY_TERMINAL_JS_PATH, ""),
+    );
+    assert!(terminal_js.starts_with("HTTP/1.1 200 OK"));
+    assert!(terminal_js.contains("application/javascript"));
+
+    let terminal_css = send_request(
+        &mut app,
+        &make_request("GET", content::JQUERY_TERMINAL_CSS_PATH, ""),
+    );
+    assert!(terminal_css.starts_with("HTTP/1.1 200 OK"));
+    assert!(terminal_css.contains("text/css"));
+
+    let enable_debug = send_request(&mut app, &make_request("POST", API_DEBUG_ENABLE_PATH, ""));
+    assert!(enable_debug.starts_with("HTTP/1.1 200 OK"));
+    assert!(enable_debug.contains("\"brp_port\":null"));
+    app.update();
+    assert!(app.world().contains_resource::<RemoteDebuggingEnabled>());
 
     let missing = send_request(&mut app, &make_request("POST", EVENT_PATH, "value=1.0"));
     assert!(missing.starts_with("HTTP/1.1 400 Bad Request"));

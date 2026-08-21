@@ -1,24 +1,31 @@
-use bevy::{
-    ecs::entity::EntityHashSet,
-    math::bounding::{Aabb3d, IntersectsVolume},
-    prelude::*,
-    utils::Parallel,
-};
+//! Optional hover detection for bounded input targets.
+//!
+//! Hover is intentionally separate from activation. Add [`HoverPlugin`] and
+//! mark entities with [`Hoverable`] when you want Tephrite to maintain
+//! [`IsHovered`] based on the current interactor position and
+//! [`InteractionBounds`].
+
+use bevy::{ecs::entity::EntityHashSet, math::bounding::Aabb3d, prelude::*, utils::Parallel};
 
 use crate::input::{InteractionBounds, Interactor, map_point};
 
-/// Can be Hovered. Note that this is an expensive operation
+/// Marks an entity as eligible for hover detection.
+///
+/// Hover checks run against all hoverable entities, so this should be enabled
+/// selectively in large scenes.
 #[derive(Debug, Default, Clone, PartialEq, Component)]
 #[require(InteractionBounds)]
 pub struct Hoverable;
 
+/// Temporarily disables hover detection for an otherwise [`Hoverable`] entity.
 #[derive(Debug, Default, Clone, PartialEq, Component)]
 pub struct HoverDisabled;
 
-/// Marker indicating the item is being hovered by an interactor
+/// Marker indicating the entity is currently hovered by an interactor.
 #[derive(Debug, Clone, PartialEq, Component)]
 pub struct IsHovered;
 
+/// Maintains [`IsHovered`] on [`Hoverable`] entities.
 pub struct HoverPlugin;
 
 impl Plugin for HoverPlugin {
@@ -70,7 +77,7 @@ fn hover_check(
                 global_transform,
             );
 
-            if bounds.aabb.intersects(&activation_bounds) {
+            if bounds.intersects_aabb(&activation_bounds) {
                 hits.push(entity);
             }
         },
@@ -132,7 +139,7 @@ mod tests {
         let activation_bounds =
             activation_bounds_in_target(Vec3::ZERO, Vec3::splat(0.06), &interactor, &target);
 
-        assert!(target_bounds.intersects(&activation_bounds));
+        assert!(InteractionBounds::aabb(target_bounds).intersects_aabb(&activation_bounds));
     }
 
     #[test]
@@ -144,6 +151,6 @@ mod tests {
         let activation_bounds =
             activation_bounds_in_target(Vec3::ZERO, Vec3::splat(0.06), &interactor, &target);
 
-        assert!(!target_bounds.intersects(&activation_bounds));
+        assert!(!InteractionBounds::aabb(target_bounds).intersects_aabb(&activation_bounds));
     }
 }

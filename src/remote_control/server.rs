@@ -17,10 +17,32 @@ use crate::remote_control::{RemoteControlDefinitions, RemoteControlOpts};
 pub(super) fn register_http_handlers(resources: &mut HTTPResources) {
     resources.insert(INDEX_PATH.into(), IndexHandler);
     resources.insert(EVENT_PATH.into(), EventHandler);
+    resources.insert(
+        content::JQUERY_JS_PATH.into(),
+        StaticAssetHandler {
+            content_type: "application/javascript; charset=utf-8",
+            body: content::JQUERY_JS,
+        },
+    );
+    resources.insert(
+        content::JQUERY_TERMINAL_JS_PATH.into(),
+        StaticAssetHandler {
+            content_type: "application/javascript; charset=utf-8",
+            body: content::JQUERY_TERMINAL_JS,
+        },
+    );
+    resources.insert(
+        content::JQUERY_TERMINAL_CSS_PATH.into(),
+        StaticAssetHandler {
+            content_type: "text/css; charset=utf-8",
+            body: content::JQUERY_TERMINAL_CSS,
+        },
+    );
     resources.insert(API_ENTITIES_PATH.into(), EntitiesHandler);
     resources.insert(API_TRANSFORM_PATH.into(), TransformHandler);
     resources.insert(API_TRANSFORM_POSITION_PATH.into(), TransformPositionHandler);
     resources.insert(API_TRANSFORM_LOOK_AT_PATH.into(), TransformLookAtHandler);
+    resources.insert(API_DEBUG_ENABLE_PATH.into(), DebugEnableHandler);
 }
 
 /// Rebuild server-rendered control state when definitions change.
@@ -74,6 +96,12 @@ struct EntitiesHandler;
 struct TransformHandler;
 struct TransformPositionHandler;
 struct TransformLookAtHandler;
+struct DebugEnableHandler;
+
+struct StaticAssetHandler {
+    content_type: &'static str,
+    body: &'static [u8],
+}
 
 impl HTTPNodeHandler for IndexHandler {
     fn on_get(&self, world: &mut World, _request: &Request<Bytes>) -> Option<Response<Bytes>> {
@@ -89,6 +117,16 @@ impl HTTPNodeHandler for IndexHandler {
             StatusCode::OK,
             "text/html; charset=utf-8",
             state.index_page.clone(),
+        ))
+    }
+}
+
+impl HTTPNodeHandler for StaticAssetHandler {
+    fn on_get(&self, _world: &mut World, _request: &Request<Bytes>) -> Option<Response<Bytes>> {
+        Some(response(
+            StatusCode::OK,
+            self.content_type,
+            Bytes::from_static(self.body),
         ))
     }
 }
@@ -173,6 +211,29 @@ impl HTTPNodeHandler for EventHandler {
             }
             Err(message) => Some(text_response(StatusCode::BAD_REQUEST, message)),
         }
+    }
+}
+
+impl HTTPNodeHandler for DebugEnableHandler {
+    fn on_post(&self, world: &mut World, _request: &Request<Bytes>) -> Option<Response<Bytes>> {
+        let brp_port = world
+            .get_resource::<RemoteControlState>()
+            .and_then(|state| state.brp_port);
+
+        world
+            .commands()
+            .trigger(events::RemoteControlEventInternal::DebuggingRequested);
+
+        let body = match brp_port {
+            Some(port) => format!("{{\"ok\":true,\"brp_port\":{port}}}"),
+            None => "{\"ok\":true,\"brp_port\":null}".to_string(),
+        };
+
+        Some(response(
+            StatusCode::OK,
+            "application/json; charset=utf-8",
+            body,
+        ))
     }
 }
 

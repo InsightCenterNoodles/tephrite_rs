@@ -50,12 +50,16 @@ impl Plugin for DebugInteractionBoundsPlugin {
 
 fn spawn_debug_interaction_bounds_gizmos(
     mut commands: Commands,
-    mut gizmo_assets: ResMut<Assets<GizmoAsset>>,
+    mut gizmo_assets: Option<ResMut<Assets<GizmoAsset>>>,
     query: Query<
         (Entity, &InteractionBounds, &DebugInteractionBounds),
         Without<DebugInteractionBoundsGizmo>,
     >,
 ) {
+    let Some(gizmo_assets) = gizmo_assets.as_mut() else {
+        return;
+    };
+
     for (source, bounds, debug) in &query {
         let mut asset = GizmoAsset::new();
         draw_bounds(&mut asset, bounds, debug.color);
@@ -88,7 +92,7 @@ fn spawn_debug_interaction_bounds_gizmos(
 }
 
 fn update_debug_interaction_bounds_gizmos(
-    mut gizmo_assets: ResMut<Assets<GizmoAsset>>,
+    mut gizmo_assets: Option<ResMut<Assets<GizmoAsset>>>,
     sources: Query<
         (
             &InteractionBounds,
@@ -100,9 +104,11 @@ fn update_debug_interaction_bounds_gizmos(
     mut gizmos: Query<&mut Gizmo>,
 ) {
     for (bounds, debug, state) in &sources {
-        if let Some(mut asset) = gizmo_assets.get_mut(&state.handle) {
-            asset.clear();
-            draw_bounds(&mut asset, bounds, debug.color);
+        if let Some(gizmo_assets) = gizmo_assets.as_mut() {
+            if let Some(mut asset) = gizmo_assets.get_mut(&state.handle) {
+                asset.clear();
+                draw_bounds(&mut asset, bounds, debug.color);
+            }
         }
 
         if let Ok(mut gizmo) = gizmos.get_mut(state.child) {
@@ -114,7 +120,7 @@ fn update_debug_interaction_bounds_gizmos(
 
 fn cleanup_debug_interaction_bounds_gizmos(
     mut commands: Commands,
-    mut gizmo_assets: ResMut<Assets<GizmoAsset>>,
+    mut gizmo_assets: Option<ResMut<Assets<GizmoAsset>>>,
     missing_debug_sources: Query<
         (Entity, &DebugInteractionBoundsGizmo),
         Without<DebugInteractionBounds>,
@@ -123,7 +129,9 @@ fn cleanup_debug_interaction_bounds_gizmos(
     children: Query<(Entity, &DebugInteractionBoundsGizmoChild), With<Gizmo>>,
 ) {
     for (source, state) in &missing_debug_sources {
-        gizmo_assets.remove(&state.handle);
+        if let Some(gizmo_assets) = gizmo_assets.as_mut() {
+            gizmo_assets.remove(&state.handle);
+        }
         commands.entity(state.child).despawn();
         commands
             .entity(source)
@@ -132,7 +140,9 @@ fn cleanup_debug_interaction_bounds_gizmos(
 
     for (child, state) in &children {
         if sources.get(state.source).is_err() {
-            gizmo_assets.remove(&state.handle);
+            if let Some(gizmo_assets) = gizmo_assets.as_mut() {
+                gizmo_assets.remove(&state.handle);
+            }
             commands.entity(child).despawn();
         }
     }
@@ -168,9 +178,7 @@ mod tests {
             .world_mut()
             .spawn((
                 Transform::IDENTITY,
-                InteractionBounds {
-                    aabb: Aabb3d::new(Vec3A::ZERO, Vec3A::ONE),
-                },
+                InteractionBounds::aabb(Aabb3d::new(Vec3A::ZERO, Vec3A::ONE)),
                 DebugInteractionBounds::default(),
             ))
             .id();

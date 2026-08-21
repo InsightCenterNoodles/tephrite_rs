@@ -1,56 +1,34 @@
+//! Input, interactor, activation, hover, and navigation support.
+//!
+//! The input stack has three layers:
+//!
+//! - Raw input messages: [`ButtonMessage`] and [`AxisMessage`] are written by
+//!   device backends.
+//! - Interactors: [`Interactor`] and [`InteractorState`] translate raw buttons
+//!   into semantic [`InteractorAction`] values.
+//! - Targets and helpers: [`CanActivate`], [`InteractionBounds`],
+//!   [`Hoverable`], and [`NavigationPlugin`] provide common scene behavior.
+
 pub mod common;
 mod debug;
 mod events;
 pub mod hover;
+pub mod interaction;
 mod interactor;
 pub mod interactor_types;
 mod navigator;
+pub mod spatial;
 
-use bevy::{
-    ecs::entity::EntityHashMap,
-    math::bounding::{Aabb3d, BoundingVolume},
-    platform::collections::HashSet,
-    prelude::*,
-};
+use bevy::prelude::*;
 
-pub use common::*;
 pub use debug::*;
 pub use events::*;
 pub use hover::*;
+pub use interaction::*;
 pub use interactor::*;
 pub use interactor_types::*;
 pub use navigator::*;
-
-/// Can be Activated (clicked)
-#[derive(Debug, Clone, PartialEq, Component)]
-#[require(InteractionBounds)]
-pub struct CanActivate {
-    button_down_map: EntityHashMap<HashSet<InputButton>>,
-    pub enable: bool,
-}
-
-impl Default for CanActivate {
-    fn default() -> Self {
-        Self {
-            button_down_map: Default::default(),
-            enable: true,
-        }
-    }
-}
-
-/// The bounding box of an interactable entity, events inside this box will be channeled to the host entity
-#[derive(Debug, Component)]
-pub struct InteractionBounds {
-    pub aabb: Aabb3d,
-}
-
-impl Default for InteractionBounds {
-    fn default() -> Self {
-        Self {
-            aabb: Aabb3d::new(Vec3A::ZERO, Vec3A::splat(0.001)),
-        }
-    }
-}
+pub use spatial::*;
 
 pub(crate) struct InputPlugin;
 

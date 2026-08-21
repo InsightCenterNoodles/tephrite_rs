@@ -1,7 +1,7 @@
 use crate::{
     common::{
         DeferredRendering, EnvironmentLighting, OffAxisProjectionSettings,
-        OrderIndependantTransparency, ScreenSpaceAmbientOcclusionSettings,
+        OrderIndependentTransparency, ScreenSpaceAmbientOcclusionSettings,
         ScreenSpaceReflectionsSettings,
     },
     serialize::*,
@@ -43,7 +43,7 @@ impl crate::serialize::fast_ser::FastRead for EnvironmentLighting {
     }
 }
 
-impl_fast_raw_item!(OrderIndependantTransparency);
+impl_fast_raw_item!(OrderIndependentTransparency);
 impl_fast_raw_item!(DeferredRendering);
 impl_fast_raw_item!(OffAxisProjectionSettings);
 

@@ -1,4 +1,4 @@
-pub(crate) mod common;
+pub mod common;
 pub(crate) mod config;
 pub mod environment;
 pub(crate) mod http;
@@ -8,7 +8,6 @@ pub mod multiprocess;
 pub mod remote_control;
 mod render;
 pub mod replication;
-#[doc(hidden)]
 pub mod serialize;
 pub(crate) mod simulator;
 pub mod ui;
@@ -33,18 +32,9 @@ pub mod prelude {
     pub use super::TephriteApp;
     pub use super::TephriteAppConfig;
     pub use super::run;
-    pub use crate::common::DeferredRendering;
-    pub use crate::common::EnvironmentLighting;
-    pub use crate::common::Head;
-    pub use crate::common::OffAxisProjectionSettings;
-    pub use crate::common::OrderIndependantTransparency;
-    pub use crate::common::ScreenSpaceAmbientOcclusionSettings;
-    pub use crate::common::ScreenSpaceReflectionsSettings;
+    pub use crate::common::*;
 
-    pub use crate::serialize::ByteSink;
-    pub use crate::serialize::ByteSource;
-    pub use crate::serialize::FastRead;
-    pub use crate::serialize::FastWrite;
+    pub use crate::serialize::*;
 
     pub use crate::input::*;
     pub use crate::material::*;
