@@ -26,6 +26,7 @@ struct InstanceEntity {
     pos: vec4<f32>,
     rot: vec4<f32>,
     sca: vec4<f32>,
+    flags: vec4<u32>,
 };
 
 @group(4) @binding(0) var<uniform> instance_entity: InstanceEntity;
@@ -164,6 +165,7 @@ fn shadow_fragment(in: ShadowVertexOutput) -> ShadowFragmentOutput {
 fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> FragmentOutput {
     var pbr_input: pbr_types::PbrInput = pbr_types::pbr_input_new();
 
+    pbr_input.flags = instance_entity.flags.x;
     pbr_input.is_orthographic = view.clip_from_view[3].w == 1.0;
     pbr_input.frag_coord = in.clip_position;
     pbr_input.world_position = in.world_position;

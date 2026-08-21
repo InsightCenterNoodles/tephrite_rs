@@ -1,3 +1,7 @@
+//! Support for explicit instance rendering with standard materials in bevy
+//!
+//! I have no idea what I'm doing here.
+
 use bevy::{
     camera::visibility::{NoFrustumCulling, RenderLayers, ViewVisibility},
     core_pipeline::core_3d::{
@@ -15,7 +19,7 @@ use bevy::{
     mesh::{MeshVertexBufferLayoutRef, VertexBufferLayout},
     pbr::{
         LightEntity, LightKeyCache, MATERIAL_BIND_GROUP_INDEX, MaterialBindGroupAllocators,
-        MaterialExtractionSystems, MeshInputUniform, MeshPipeline, MeshPipelineKey,
+        MaterialExtractionSystems, MeshFlags, MeshInputUniform, MeshPipeline, MeshPipelineKey,
         MeshPipelineSystems, MeshUniform, PreparedMaterial, PrepassPipeline,
         RenderMaterialInstance, RenderMeshInstanceFlags, RenderMeshInstances, SetMeshBindGroup,
         SetMeshViewBindGroup, SetMeshViewBindingArrayBindGroup, SetPrepassEmptyMaterialBindGroup,
@@ -225,6 +229,7 @@ struct InstanceEntityTransform {
     translation: Vec3,
     rotation: Quat,
     scale: Vec3,
+    flags: u32,
 }
 
 #[derive(Clone, Copy, Pod, ShaderType, Zeroable)]
@@ -234,6 +239,7 @@ struct InstanceEntityUniform {
     pos: Vec4,
     rot: Vec4,
     sca: Vec4,
+    flags: UVec4,
 }
 
 impl InstanceEntityUniform {
@@ -242,26 +248,44 @@ impl InstanceEntityUniform {
             pos: transform.translation.extend(material_slot as f32),
             rot: Vec4::from(transform.rotation),
             sca: transform.scale.extend(0.0),
+            flags: UVec4::new(transform.flags, 0, 0, 0),
         }
     }
 }
 
 fn extract_instance_entity_transforms(
     mut commands: Commands,
-    query: Extract<Query<(RenderEntity, &ViewVisibility, &GlobalTransform), With<Instances>>>,
+    query: Extract<
+        Query<
+            (
+                RenderEntity,
+                &ViewVisibility,
+                &GlobalTransform,
+                Has<bevy::light::NotShadowReceiver>,
+            ),
+            With<Instances>,
+        >,
+    >,
 ) {
-    for (render_entity, view_visibility, transform) in &query {
+    for (render_entity, view_visibility, transform, not_shadow_receiver) in &query {
         if !view_visibility.get() {
             continue;
         }
 
         let (scale, rotation, translation) = transform.to_scale_rotation_translation();
+        let flags = if not_shadow_receiver {
+            MeshFlags::empty()
+        } else {
+            MeshFlags::SHADOW_RECEIVER
+        }
+        .bits();
         commands
             .entity(render_entity)
             .insert(InstanceEntityTransform {
                 translation,
                 rotation,
                 scale,
+                flags,
             });
     }
 }
@@ -724,7 +748,7 @@ fn init_custom_pipelines(
     let instance_entity_layout_descriptor = BindGroupLayoutDescriptor::new(
         "instance_entity_bind_group_layout",
         &BindGroupLayoutEntries::single(
-            ShaderStages::VERTEX,
+            ShaderStages::VERTEX_FRAGMENT,
             binding_types::uniform_buffer::<InstanceEntityUniform>(false),
         ),
     );
@@ -1178,6 +1202,21 @@ mod tests {
     }
 
     #[test]
+    fn instance_entity_uniform_layout_matches_shader() {
+        assert_eq!(size_of::<InstanceEntityUniform>(), size_of::<Vec4>() * 4);
+        assert_eq!(offset_of!(InstanceEntityUniform, pos), 0);
+        assert_eq!(offset_of!(InstanceEntityUniform, rot), size_of::<Vec4>());
+        assert_eq!(
+            offset_of!(InstanceEntityUniform, sca),
+            size_of::<Vec4>() * 2
+        );
+        assert_eq!(
+            offset_of!(InstanceEntityUniform, flags),
+            size_of::<Vec4>() * 3
+        );
+    }
+
+    #[test]
     fn instance_packs_color_into_position_w() {
         let instance = Instance::new(
             Vec3::ZERO,
@@ -1204,6 +1243,7 @@ mod tests {
                 translation: Vec3::new(10.0, 20.0, 30.0),
                 rotation,
                 scale: Vec3::new(5.0, 6.0, 7.0),
+                flags: MeshFlags::SHADOW_RECEIVER.bits(),
             },
             42,
         );
@@ -1223,5 +1263,7 @@ mod tests {
                 .abs_diff_eq(Vec3::new(5.0, 6.0, 7.0), 0.0001)
         );
         assert_eq!(uniform.sca.w, 0.0);
+        assert_eq!(uniform.flags.x, MeshFlags::SHADOW_RECEIVER.bits());
+        assert_eq!(uniform.flags.yzw(), UVec3::ZERO);
     }
 }
