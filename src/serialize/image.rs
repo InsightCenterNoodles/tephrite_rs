@@ -21,11 +21,14 @@ use bevy::{
 };
 
 // `Image` is serialized as raw pixel data plus the essential descriptors.
-impl_fast_serialize!(Image, keep: {
-    data, texture_descriptor, sampler, texture_view_descriptor, asset_usage, copy_on_resize, data_order
-}, skip: {
-
-});
+impl_fast_serialize!(Image,
+    (),
+    keep: {
+        data, texture_descriptor, sampler, texture_view_descriptor, asset_usage, copy_on_resize, data_order
+    },
+    skip: {
+    }
+);
 
 static MAP: LazyLock<RwLock<HashMap<AssetId<Image>, Handle<Image>>>> =
     LazyLock::new(|| Default::default());
@@ -45,6 +48,7 @@ impl RemappableAsset for Image {
 
 // `TextureDescriptor` skips `label` and `view_formats`.
 impl_fast_serialize!(TextureDescriptor<'a>,
+(),
 lifetime: 'a,
 keep: {
     size, mip_level_count, sample_count, dimension, format, usage
@@ -89,12 +93,13 @@ impl FastWrite for ImageSampler {
 
 impl FastRead for ImageSampler {
     type Ret = Self;
-    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self {
-        let index = unsafe { i8::read_fast(r) };
+    type Context = ();
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(c: &mut Self::Context, r: &mut S) -> Self {
+        let index = unsafe { i8::read_fast(c, r) };
 
         match index {
             0 => Self::Default,
-            1 => Self::Descriptor(unsafe { ImageSamplerDescriptor::read_fast(r) }),
+            1 => Self::Descriptor(unsafe { ImageSamplerDescriptor::read_fast(c, r) }),
             _ => unreachable!(),
         }
     }
@@ -106,6 +111,7 @@ impl FastRead for ImageSampler {
 // sampler state.
 impl_fast_serialize!(
     ImageSamplerDescriptor,
+    (),
     keep: {
         label,
         address_mode_u,
@@ -128,6 +134,7 @@ impl_fast_serialize!(
 
 impl_fast_serialize!(
     TextureViewDescriptor<'static>,
+    (),
     keep: {
         format,
         dimension,
@@ -159,12 +166,12 @@ mod tests {
     use crate::serialize::fast_io::{ByteReader, ByteWriter};
     use crate::serialize::fast_ser::{FastRead, FastWrite};
 
-    fn roundtrip<T: FastWrite + FastRead<Ret = T>>(x: &T) -> T {
+    fn roundtrip<T: FastWrite + FastRead<Ret = T, Context = ()>>(x: &T) -> T {
         let mut buf = [0u8; 512];
         let mut w = ByteWriter::new(&mut buf);
         unsafe { x.write_fast(&mut w) };
         let mut r = ByteReader::new(&buf);
-        unsafe { T::read_fast(&mut r) }
+        unsafe { T::read_fast(&mut (), &mut r) }
     }
 
     #[test]

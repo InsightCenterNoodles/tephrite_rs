@@ -17,7 +17,7 @@ use bevy::prelude::*;
 
 use crate::replication::components::IsReplicated;
 use crate::serialize::transcript_writer::TranscriptWriteStateResource;
-use crate::serialize::{ByteReader, FastRead, FastWrite, RemappableAsset};
+use crate::serialize::{ByteReader, ContextFromWorld, FastRead, FastWrite, RemappableAsset};
 
 /// Compact identifier used on the wire for component, asset, and resource kinds.
 ///
@@ -33,7 +33,7 @@ pub(crate) type WriteComponentChangesFn =
 pub(crate) type WriteComponentRemovalsFn =
     fn(&mut World, &mut TranscriptWriteStateResource, &EntityHashSet, TableId);
 pub(crate) type ApplyComponentFn = for<'a> fn(Entity, &mut World, &mut ByteReader<'a>);
-pub(crate) type SkipComponentFn = for<'a> fn(&mut ByteReader<'a>);
+pub(crate) type SkipComponentFn = for<'a> fn(&mut World, &mut ByteReader<'a>);
 pub(crate) type RemoveComponentFn = fn(Entity, &mut World);
 
 pub(crate) type WriteAssetChangesFn = fn(&mut World, &mut TranscriptWriteStateResource, TableId);
@@ -63,6 +63,7 @@ pub(crate) struct AssetTableEntry {
     pub(crate) name: &'static str,
     pub(crate) write_changes: WriteAssetChangesFn,
     pub(crate) apply: ApplyAssetFn,
+    pub(crate) reserve: ApplyAssetFn,
     pub(crate) drop: DropAssetFn,
 }
 
@@ -100,6 +101,7 @@ impl ReplicationRegistry {
     pub fn register_component<C>(&mut self) -> &mut Self
     where
         C: Component + FastWrite + FastRead<Ret = C> + 'static,
+        C::Context: ContextFromWorld,
     {
         let type_id = TypeId::of::<C>();
         if self.component_types.contains_key(&type_id) {
@@ -130,6 +132,7 @@ impl ReplicationRegistry {
     pub fn register_asset<A>(&mut self) -> &mut Self
     where
         A: Asset + FastWrite + FastRead<Ret = A> + RemappableAsset + Debug + 'static,
+        A::Context: ContextFromWorld,
     {
         let type_id = TypeId::of::<A>();
         if self.asset_types.contains_key(&type_id) {
@@ -143,6 +146,7 @@ impl ReplicationRegistry {
             name: std::any::type_name::<A>(),
             write_changes: write_asset_changes::<A>,
             apply: apply_asset::<A>,
+            reserve: reserve_asset::<A>,
             drop: drop_asset::<A>,
         });
         self
@@ -156,6 +160,7 @@ impl ReplicationRegistry {
     pub fn register_resource<R>(&mut self) -> &mut Self
     where
         R: Resource + FastWrite + FastRead<Ret = R> + 'static,
+        R::Context: ContextFromWorld,
     {
         let type_id = TypeId::of::<R>();
         if self.resource_types.contains_key(&type_id) {
@@ -225,23 +230,27 @@ pub trait ReplicationRegistryAppExt {
     /// Register a component type on this app's [`ReplicationRegistry`].
     fn replicate_component<C>(&mut self) -> &mut Self
     where
-        C: Component + FastWrite + FastRead<Ret = C> + 'static;
+        C: Component + FastWrite + FastRead<Ret = C> + 'static,
+        C::Context: ContextFromWorld;
 
     /// Register an asset type on this app's [`ReplicationRegistry`].
     fn replicate_asset<A>(&mut self) -> &mut Self
     where
-        A: Asset + FastWrite + FastRead<Ret = A> + RemappableAsset + Debug + 'static;
+        A: Asset + FastWrite + FastRead<Ret = A> + RemappableAsset + Debug + 'static,
+        A::Context: ContextFromWorld;
 
     /// Register a resource type on this app's [`ReplicationRegistry`].
     fn replicate_resource<R>(&mut self) -> &mut Self
     where
-        R: Resource + FastWrite + FastRead<Ret = R> + 'static;
+        R: Resource + FastWrite + FastRead<Ret = R> + 'static,
+        R::Context: ContextFromWorld;
 }
 
 impl ReplicationRegistryAppExt for App {
     fn replicate_component<C>(&mut self) -> &mut Self
     where
         C: Component + FastWrite + FastRead<Ret = C> + 'static,
+        C::Context: ContextFromWorld,
     {
         self.init_resource::<ReplicationRegistry>();
         self.world_mut()
@@ -253,6 +262,7 @@ impl ReplicationRegistryAppExt for App {
     fn replicate_asset<A>(&mut self) -> &mut Self
     where
         A: Asset + FastWrite + FastRead<Ret = A> + RemappableAsset + Debug + 'static,
+        A::Context: ContextFromWorld,
     {
         self.init_resource::<ReplicationRegistry>();
         self.world_mut()
@@ -264,6 +274,7 @@ impl ReplicationRegistryAppExt for App {
     fn replicate_resource<R>(&mut self) -> &mut Self
     where
         R: Resource + FastWrite + FastRead<Ret = R> + 'static,
+        R::Context: ContextFromWorld,
     {
         self.init_resource::<ReplicationRegistry>();
         self.world_mut()
@@ -390,21 +401,28 @@ fn write_component_removals<C>(
 fn apply_component<C>(entity: Entity, world: &mut World, reader: &mut ByteReader<'_>)
 where
     C: Component + FastRead<Ret = C>,
+    C::Context: ContextFromWorld,
 {
-    let component = unsafe { C::read_fast(reader) };
+    let component = <C::Context as ContextFromWorld>::with_world(world, |context| unsafe {
+        C::read_fast(context, reader)
+    });
+
     if let Ok(mut entity) = world.get_entity_mut(entity) {
         entity.insert(component);
     }
 }
 
-fn skip_component<C>(reader: &mut ByteReader<'_>)
+fn skip_component<C>(world: &mut World, reader: &mut ByteReader<'_>)
 where
     C: Component + FastRead<Ret = C>,
+    C::Context: ContextFromWorld,
 {
     // Component payloads are not length-prefixed. If a component update targets
     // an unmapped entity, we still need to deserialize and discard the payload
     // so the instruction stream remains aligned.
-    let _ = unsafe { C::read_fast(reader) };
+    let _ = <C::Context as ContextFromWorld>::with_world(world, |context| unsafe {
+        C::read_fast(context, reader)
+    });
 }
 
 fn remove_component<C: Component>(entity: Entity, world: &mut World) {
@@ -436,19 +454,45 @@ fn write_asset_changes<A>(
 
         for event in events.read() {
             match event {
-                AssetEvent::Added { id } | AssetEvent::Modified { id } => {
+                AssetEvent::Added { id }
+                | AssetEvent::Modified { id }
+                | AssetEvent::LoadedWithDependencies { id } => {
                     if let Some(asset) = assets.get(*id) {
+                        // debug!(
+                        //     target: "tephrite_rs::replication::assets",
+                        //     asset_type = std::any::type_name::<A>(),
+                        //     asset_id = ?id,
+                        //     "writing asset update"
+                        // );
                         unsafe {
                             crate::replication::instruction::write_asset_update(
                                 dest, asset_type, *id, asset,
                             );
                         }
+                    } else {
+                        // debug!(
+                        //     target: "tephrite_rs::replication::assets",
+                        //     asset_type = std::any::type_name::<A>(),
+                        //     asset_id = ?id,
+                        //     "missing asset for update"
+                        // );
+                        unsafe {
+                            crate::replication::instruction::write_asset_reserve(
+                                dest, asset_type, *id,
+                            );
+                        }
                     }
                 }
                 AssetEvent::Removed { id } => unsafe {
+                    // debug!(
+                    //     target: "tephrite_rs::replication::assets",
+                    //     asset_type = std::any::type_name::<A>(),
+                    //     asset_id = ?id,
+                    //     "writing asset drop"
+                    // );
                     crate::replication::instruction::write_asset_drop(dest, asset_type, *id);
                 },
-                AssetEvent::Unused { id: _ } | AssetEvent::LoadedWithDependencies { id: _ } => {}
+                AssetEvent::Unused { id: _ } => {}
             }
         }
 
@@ -459,18 +503,50 @@ fn write_asset_changes<A>(
 fn apply_asset<A>(world: &mut World, reader: &mut ByteReader<'_>)
 where
     A: Asset + FastRead<Ret = A> + RemappableAsset + Debug,
+    A::Context: ContextFromWorld,
 {
-    let id = unsafe { AssetId::<A>::read_fast(reader) };
-    let asset = unsafe { A::read_fast(reader) };
+    let id = unsafe { AssetId::<A>::read_fast(&mut (), reader) };
+
+    let asset = <A::Context as ContextFromWorld>::with_world(world, |context| unsafe {
+        A::read_fast(context, reader)
+    });
+
+    // debug!(
+    //     target: "tephrite_rs::replication::assets",
+    //     asset_type = std::any::type_name::<A>(),
+    //     asset_id = ?id,
+    //     "applying asset update"
+    // );
     let mut assets = world.resource_mut::<Assets<A>>();
     A::set_mapping(id, asset, &mut assets);
+}
+
+fn reserve_asset<A>(world: &mut World, reader: &mut ByteReader<'_>)
+where
+    A: Asset + FastRead<Ret = A> + RemappableAsset + Debug,
+{
+    let id = unsafe { AssetId::<A>::read_fast(&mut (), reader) };
+    // debug!(
+    //     target: "tephrite_rs::replication::assets",
+    //     asset_type = std::any::type_name::<A>(),
+    //     asset_id = ?id,
+    //     "reserving asset"
+    // );
+    let mut assets = world.resource_mut::<Assets<A>>();
+    A::remap_to_local_or_reserve(id, &mut assets);
 }
 
 fn drop_asset<A>(world: &mut World, reader: &mut ByteReader<'_>)
 where
     A: Asset + RemappableAsset,
 {
-    let id = unsafe { AssetId::<A>::read_fast(reader) };
+    let id = unsafe { AssetId::<A>::read_fast(&mut (), reader) };
+    // debug!(
+    //     target: "tephrite_rs::replication::assets",
+    //     asset_type = std::any::type_name::<A>(),
+    //     asset_id = ?id,
+    //     "applying asset drop"
+    // );
     let mut assets = world.resource_mut::<Assets<A>>();
     A::clear_mapping(id, &mut assets);
 }
@@ -524,8 +600,12 @@ fn write_resource_change<R>(
 fn apply_resource<R>(world: &mut World, reader: &mut ByteReader<'_>)
 where
     R: Resource + FastRead<Ret = R>,
+    R::Context: ContextFromWorld,
 {
-    let resource = unsafe { R::read_fast(reader) };
+    let resource = <R::Context as ContextFromWorld>::with_world(world, |ctx| unsafe {
+        R::read_fast(ctx, reader)
+    });
+
     world.insert_resource(resource);
 }
 

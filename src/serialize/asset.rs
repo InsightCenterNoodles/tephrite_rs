@@ -3,7 +3,7 @@
 //! `AssetId<A>` is serialized by raw bytes as POD. `Handle<A>` is serialized as
 //! its `AssetId`, and is reconstructed as a `Weak` handle on read to avoid
 //! implicit asset loads in the receiving process.
-use std::{fmt::Debug, marker::PhantomData};
+use std::fmt::Debug;
 
 use bevy::{platform::collections::HashMap, prelude::*};
 
@@ -19,8 +19,9 @@ impl<A: Asset> FastWrite for AssetId<A> {
 }
 impl<A: Asset> FastRead for AssetId<A> {
     type Ret = Self;
+    type Context = ();
     /// Deserialize an `AssetId` from raw bytes.
-    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret {
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(_: &mut Self::Context, r: &mut S) -> Self::Ret {
         unsafe { byte_deserialize(r) }
     }
 }
@@ -32,7 +33,7 @@ impl<A: Asset> FastWrite for Handle<A> {
     unsafe fn write_fast(&self, w: &mut impl ByteSink) {
         // being explicit here to make sure we dont have unintended conversion
         let id: AssetId<A> = self.id();
-        debug!("Write asset handle {id}");
+        // debug!("Write asset handle {id}");
         unsafe { id.write_fast(w) };
     }
 }
@@ -50,14 +51,14 @@ pub trait RemappableAsset {
             if let Some(local) = map.get(&id).cloned() {
                 // Mapping exists: this asset is represented by a client-local ID.
                 // Always write to the local ID so deferred handles stay valid.
-                debug!("Update asset {id} (local {})", local.id());
+                // debug!("Update asset {id} (local {})", local.id());
                 assets
                     .insert(local.id(), asset)
                     .expect("insert should not fail");
             } else {
                 // New mapping: create a fresh local asset and remember the remote->local mapping.
                 let handle = assets.add(asset);
-                debug!("New asset {id} mapping to local {}", handle.id());
+                // debug!("New asset {id} mapping to local {}", handle.id());
                 map.insert(id, handle.clone());
             }
         });
@@ -74,15 +75,15 @@ pub trait RemappableAsset {
             ret = map.get(&id).cloned();
         });
 
-        debug!(
-            "REMAPPING INCOMING {id} TO {:?}",
-            ret.as_ref().map(|x| x.id())
-        );
+        // debug!(
+        //     "REMAPPING INCOMING {id} TO {:?}",
+        //     ret.as_ref().map(|x| x.id())
+        // );
 
         ret
     }
 
-    fn remap_to_local_or_reserve(id: AssetId<Self>) -> Handle<Self>
+    fn remap_to_local_or_reserve(id: AssetId<Self>, assets: &mut Assets<Self>) -> Handle<Self>
     where
         Self: bevy::prelude::Asset,
         Self: Sized,
@@ -91,13 +92,13 @@ pub trait RemappableAsset {
             return handle;
         }
 
-        let local = Handle::Uuid(bevy::asset::uuid::Uuid::new_v4(), PhantomData);
+        let local = assets.reserve_handle();
 
-        warn!(
-            "Missing asset mapping for {} id {id}; reserving client-local placeholder {}",
-            std::any::type_name::<Self>(),
-            local.id()
-        );
+        // warn!(
+        //     "Missing asset mapping for {} id {id}; reserving client-local placeholder {}",
+        //     std::any::type_name::<Self>(),
+        //     local.id()
+        // );
 
         Self::with_remapper_mut(|map| {
             map.insert(id, local.clone());
@@ -121,27 +122,43 @@ pub trait RemappableAsset {
 
 impl<A: Asset + RemappableAsset> FastRead for Handle<A> {
     type Ret = Self;
+    type Context = Assets<A>;
     /// Decode a `Handle` from an `AssetId`
-    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret {
-        let id = unsafe { AssetId::<A>::read_fast(r) };
-        debug!("Reading handle {}", id);
-        A::remap_to_local_or_reserve(id)
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(assets: &mut Assets<A>, r: &mut S) -> Self::Ret {
+        let id = unsafe { AssetId::<A>::read_fast(&mut (), r) };
+        // debug!("Reading handle {}", id);
+        A::remap_to_local_or_reserve(id, assets)
     }
 }
 
 // =============================================================================
 
-// Newtype passthrough for `Mesh3d` (wraps `Handle<Mesh>`).
-impl_fast_newtype!(Mesh3d);
+impl crate::serialize::fast_ser::FastWrite for Mesh3d {
+    #[inline(always)]
+    unsafe fn write_fast(&self, w: &mut impl crate::serialize::fast_io::ByteSink) {
+        unsafe { self.0.write_fast(w) }
+    }
+}
+impl crate::serialize::fast_ser::FastRead for Mesh3d {
+    type Ret = Mesh3d;
+    type Context = Assets<Mesh>;
+    #[inline(always)]
+    unsafe fn read_fast<'b, S: crate::serialize::fast_io::ByteSource<'b>>(
+        c: &mut Self::Context,
+        r: &mut S,
+    ) -> Self {
+        Self(read_fast(c, r))
+    }
+}
 
 // =============================================================================
 
 // Newtype passthrough for `MeshMaterial3d<StandardMaterial>` (wraps `Handle<StandardMaterial>`).
-impl_fast_newtype!(MeshMaterial3d<StandardMaterial>);
+impl_fast_newtype!(MeshMaterial3d<StandardMaterial>, Assets<StandardMaterial>);
 
-impl_fast_newtype!(MeshMaterial3d<PointsMaterial>);
+impl_fast_newtype!(MeshMaterial3d<PointsMaterial>, Assets<PointsMaterial>);
 
-impl_fast_newtype!(InstanceMeshMaterial3d);
+impl_fast_newtype!(InstanceMeshMaterial3d, Assets<StandardMaterial>);
 
 // =============================================================================
 
@@ -164,11 +181,14 @@ mod tests {
             marker: Default::default(),
         };
 
-        test_serialization(a, |x, y| x == y);
+        test_serialization((), a, |x, y| x == y);
 
-        let h = a.clone();
+        let source_assets = Assets::<Mesh>::default();
+        let h = source_assets.reserve_handle();
 
-        test_serialization(h, |x, y| x == y);
+        test_serialization(Assets::<Mesh>::default(), h, |x, y| {
+            Mesh::remap_to_local(x.id()).map(|handle| handle.id()) == Some(y.id())
+        });
     }
 
     #[test]
@@ -182,8 +202,10 @@ mod tests {
             marker: Default::default(),
         };
 
-        let local1 = Mesh::remap_to_local_or_reserve(remote_id);
-        let local2 = Mesh::remap_to_local_or_reserve(remote_id);
+        let mut assets = Assets::<Mesh>::default();
+
+        let local1 = Mesh::remap_to_local_or_reserve(remote_id, &mut assets);
+        let local2 = Mesh::remap_to_local_or_reserve(remote_id, &mut assets);
 
         assert_eq!(local1.id(), local2.id());
         assert_ne!(local1.id(), remote_id);
@@ -200,10 +222,10 @@ mod tests {
             marker: Default::default(),
         };
 
-        let local = Mesh::remap_to_local_or_reserve(remote_id);
-        assert!(matches!(local.id(), AssetId::Uuid { .. }));
-
         let mut assets = Assets::<Mesh>::default();
+        let local = Mesh::remap_to_local_or_reserve(remote_id, &mut assets);
+        assert!(assets.get(local.id()).is_none());
+
         let mesh = Mesh::new(
             PrimitiveTopology::TriangleList,
             RenderAssetUsages::default(),

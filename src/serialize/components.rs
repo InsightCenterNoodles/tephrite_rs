@@ -16,6 +16,7 @@ use crate::{common::Head, serialize::*};
 // Serialize only the `Transform` fields that matter for rendering and logic.
 impl_fast_serialize!(
     Transform,
+    (),
     keep: {
         translation, rotation, scale
     },
@@ -34,8 +35,9 @@ impl FastWrite for Head {
 
 impl FastRead for Head {
     type Ret = Self;
+    type Context = ();
 
-    unsafe fn read_fast<'a, S: ByteSource<'a>>(_r: &mut S) -> Self::Ret {
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(_: &mut Self::Context, _r: &mut S) -> Self::Ret {
         Self
     }
 }
@@ -61,6 +63,7 @@ impl_fast_raw_item!(NotShadowReceiver);
 
 impl_fast_serialize!(
     CascadeShadowConfig,
+    (),
     keep: {
         bounds,
         overlap_proportion,
@@ -83,9 +86,13 @@ impl FastWrite for RenderLayers {
 }
 impl FastRead for RenderLayers {
     type Ret = RenderLayers;
+    type Context = ();
     #[inline(always)]
-    unsafe fn read_fast<'b, S: crate::serialize::fast_io::ByteSource<'b>>(r: &mut S) -> Self {
-        let x = unsafe { Option::<usize>::read_fast(r) };
+    unsafe fn read_fast<'b, S: crate::serialize::fast_io::ByteSource<'b>>(
+        _: &mut Self::Context,
+        r: &mut S,
+    ) -> Self {
+        let x = unsafe { Option::<usize>::read_fast(&mut (), r) };
         Self::from_layers(x.as_slice())
     }
 }
@@ -98,12 +105,12 @@ mod tests {
     use crate::serialize::fast_io::{ByteReader, ByteWriter};
     use crate::serialize::fast_ser::{FastRead, FastWrite};
 
-    fn roundtrip<T: FastWrite + FastRead<Ret = T>>(x: &T) -> T {
+    fn roundtrip<T: FastWrite + FastRead<Ret = T, Context = ()>>(x: &T) -> T {
         let mut buf = [0u8; 256];
         let mut w = ByteWriter::new(&mut buf);
         unsafe { x.write_fast(&mut w) };
         let mut r = ByteReader::new(&buf);
-        unsafe { T::read_fast(&mut r) }
+        unsafe { T::read_fast(&mut (), &mut r) }
     }
 
     #[test]

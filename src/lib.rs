@@ -26,7 +26,7 @@ use bevy::{
     prelude::{Asset, Component, Resource},
 };
 use replication::ReplicationRegistryAppExt;
-use serialize::{FastRead, FastWrite, RemappableAsset};
+use serialize::{ContextFromWorld, FastRead, FastWrite, RemappableAsset};
 
 pub mod prelude {
     pub use super::ApplyMode;
@@ -179,6 +179,7 @@ impl TephriteAppConfig {
     pub fn mirror_component<C>(&mut self) -> &mut Self
     where
         C: Component + FastWrite + FastRead<Ret = C> + 'static,
+        C::Context: ContextFromWorld,
     {
         self.configure_app(
             |app| {
@@ -195,6 +196,7 @@ impl TephriteAppConfig {
     pub fn mirror_asset<A>(&mut self) -> &mut Self
     where
         A: Asset + FastWrite + FastRead<Ret = A> + RemappableAsset + Debug + 'static,
+        A::Context: ContextFromWorld,
     {
         self.configure_app(
             |app| {
@@ -211,6 +213,7 @@ impl TephriteAppConfig {
     pub fn mirror_resource<R>(&mut self) -> &mut Self
     where
         R: Resource + FastWrite + FastRead<Ret = R> + 'static,
+        R::Context: ContextFromWorld,
     {
         self.configure_app(
             |app| {

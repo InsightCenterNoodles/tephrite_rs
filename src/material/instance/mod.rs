@@ -11,7 +11,6 @@ use bevy::{
             lifetimeless::{Read, SRes},
         },
     },
-    log::debug,
     material::{OpaqueRendererMethod, RenderPhaseType},
     mesh::{MeshVertexBufferLayoutRef, VertexBufferLayout},
     pbr::{
@@ -34,7 +33,7 @@ use bevy::{
         render_asset::RenderAssets,
         render_phase::*,
         render_resource::*,
-        renderer::RenderDevice,
+        renderer::{RenderDevice, RenderQueue},
         sync_component::SyncComponent,
         sync_world::*,
         view::{
@@ -130,9 +129,13 @@ impl crate::serialize::FastWrite for Instances {
 
 impl crate::serialize::FastRead for Instances {
     type Ret = Self;
+    type Context = ();
 
     #[inline(always)]
-    unsafe fn read_fast<'a, S: crate::serialize::ByteSource<'a>>(r: &mut S) -> Self::Ret {
+    unsafe fn read_fast<'a, S: crate::serialize::ByteSource<'a>>(
+        _: &mut Self::Context,
+        r: &mut S,
+    ) -> Self::Ret {
         Self(r.get_pod_vec::<Instance>())
     }
 }
@@ -313,6 +316,13 @@ fn queue_custom(mut params: QueueCustomParams) {
                 continue;
             };
             let Some(material) = params.render_materials.get(material_instance.asset_id) else {
+                // debug!(
+                //     target: "tephrite_rs::material::instance",
+                //     main_entity = ?main_entity,
+                //     render_entity = ?entity,
+                //     asset_id = ?material_instance.asset_id,
+                //     "skipping instanced visible queue: missing prepared material"
+                // );
                 continue;
             };
             let Some(mesh_slabs) = params
@@ -481,6 +491,13 @@ fn queue_custom_shadows(
                 continue;
             };
             let Some(material) = render_materials.get(material_instance.asset_id) else {
+                // debug!(
+                //     target: "tephrite_rs::material::instance",
+                //     main_entity = ?main_entity,
+                //     render_entity = ?render_entity,
+                //     asset_id = ?material_instance.asset_id,
+                //     "skipping instanced shadow queue: missing prepared material"
+                // );
                 continue;
             };
             if !material.properties.shadows_enabled {
@@ -583,6 +600,7 @@ fn get_shadow_map_visible_entities<'w, 's: 'w>(
 struct InstanceBuffer {
     buffer: Buffer,
     length: usize,
+    capacity: usize,
 }
 
 #[derive(Component)]
@@ -593,46 +611,85 @@ struct InstanceEntityBindGroup {
 
 fn prepare_instance_buffers(
     mut commands: Commands,
-    query: Query<(Entity, &MainEntity, &Instances, &InstanceEntityTransform)>,
+    mut query: Query<(
+        Entity,
+        &MainEntity,
+        &Instances,
+        &InstanceEntityTransform,
+        Option<&mut InstanceBuffer>,
+        Option<&InstanceEntityBindGroup>,
+    )>,
     render_device: Res<RenderDevice>,
+    render_queue: Res<RenderQueue>,
     custom_pipeline: Res<CustomPipeline>,
     render_material_instances: Res<InstanceRenderMaterialInstances>,
     render_materials: Res<ErasedRenderAssets<PreparedMaterial>>,
 ) {
-    for (entity, main_entity, instance_data, entity_transform) in &query {
-        let instances = instance_data.instances().to_vec();
+    for (
+        entity,
+        main_entity,
+        instance_data,
+        entity_transform,
+        instance_buffer,
+        entity_bind_group,
+    ) in &mut query
+    {
+        let instances = instance_data.instances();
         let material_slot = render_material_instances
             .instances
             .get(main_entity)
             .and_then(|material_instance| render_materials.get(material_instance.asset_id))
             .map_or(0, |material| u32::from(material.binding.slot));
 
-        let buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
-            label: Some("instance data buffer"),
-            contents: bytemuck::cast_slice(&instances),
-            usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-        });
+        let instance_bytes = bytemuck::cast_slice(instances);
+        match instance_buffer {
+            Some(mut instance_buffer) if instance_buffer.capacity >= instances.len() => {
+                if !instance_bytes.is_empty() {
+                    render_queue.write_buffer(&instance_buffer.buffer, 0, instance_bytes);
+                }
+                instance_buffer.length = instances.len();
+            }
+            _ => {
+                let capacity = instances.len().max(1).next_power_of_two();
+                let buffer = render_device.create_buffer(&BufferDescriptor {
+                    label: Some("instance data buffer"),
+                    size: (capacity * size_of::<Instance>()) as u64,
+                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                });
+                if !instance_bytes.is_empty() {
+                    render_queue.write_buffer(&buffer, 0, instance_bytes);
+                }
+                commands.entity(entity).insert(InstanceBuffer {
+                    buffer,
+                    length: instances.len(),
+                    capacity,
+                });
+            }
+        }
+
         let uniform = InstanceEntityUniform::new(*entity_transform, material_slot);
-        let uniform_buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
-            label: Some("instance entity uniform buffer"),
-            contents: bytemuck::bytes_of(&uniform),
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-        });
-        let bind_group = render_device.create_bind_group(
-            "instance entity bind group",
-            &custom_pipeline.instance_entity_layout,
-            &BindGroupEntries::single(uniform_buffer.as_entire_binding()),
-        );
-        commands.entity(entity).insert((
-            InstanceBuffer {
-                buffer,
-                length: instances.len(),
-            },
-            InstanceEntityBindGroup {
+        let uniform_bytes = bytemuck::bytes_of(&uniform);
+        if let Some(entity_bind_group) = entity_bind_group {
+            render_queue.write_buffer(&entity_bind_group._buffer, 0, uniform_bytes);
+        } else {
+            let uniform_buffer = render_device.create_buffer(&BufferDescriptor {
+                label: Some("instance entity uniform buffer"),
+                size: size_of::<InstanceEntityUniform>() as u64,
+                usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            render_queue.write_buffer(&uniform_buffer, 0, uniform_bytes);
+            let bind_group = render_device.create_bind_group(
+                "instance entity bind group",
+                &custom_pipeline.instance_entity_layout,
+                &BindGroupEntries::single(uniform_buffer.as_entire_binding()),
+            );
+            commands.entity(entity).insert(InstanceEntityBindGroup {
                 _buffer: uniform_buffer,
                 bind_group,
-            },
-        ));
+            });
+        }
     }
 }
 
@@ -934,50 +991,50 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetInstanceMaterialBindG
         let material_bind_group_allocators = material_bind_group_allocator.into_inner();
 
         let Some(material_instance) = material_instances.instances.get(&item.main_entity()) else {
-            debug!(
-                target: "tephrite_rs::material::instance",
-                main_entity = ?item.main_entity(),
-                "skipping instanced material bind: missing material instance"
-            );
+            // debug!(
+            //     target: "tephrite_rs::material::instance",
+            //     main_entity = ?item.main_entity(),
+            //     "skipping instanced material bind: missing material instance"
+            // );
             return RenderCommandResult::Skip;
         };
         let Some(material_bind_group_allocator) =
             material_bind_group_allocators.get(&material_instance.asset_id.type_id())
         else {
-            debug!(
-                target: "tephrite_rs::material::instance",
-                main_entity = ?item.main_entity(),
-                asset_id = ?material_instance.asset_id,
-                "skipping instanced material bind: missing material bind group allocator"
-            );
+            // debug!(
+            //     target: "tephrite_rs::material::instance",
+            //     main_entity = ?item.main_entity(),
+            //     asset_id = ?material_instance.asset_id,
+            //     "skipping instanced material bind: missing material bind group allocator"
+            // );
             return RenderCommandResult::Skip;
         };
         let Some(material) = materials.get(material_instance.asset_id) else {
-            debug!(
-                target: "tephrite_rs::material::instance",
-                main_entity = ?item.main_entity(),
-                asset_id = ?material_instance.asset_id,
-                "skipping instanced material bind: missing prepared material"
-            );
+            // debug!(
+            //     target: "tephrite_rs::material::instance",
+            //     main_entity = ?item.main_entity(),
+            //     asset_id = ?material_instance.asset_id,
+            //     "skipping instanced material bind: missing prepared material"
+            // );
             return RenderCommandResult::Skip;
         };
         let Some(material_bind_group) = material_bind_group_allocator.get(material.binding.group)
         else {
-            debug!(
-                target: "tephrite_rs::material::instance",
-                main_entity = ?item.main_entity(),
-                group = ?material.binding.group,
-                "skipping instanced material bind: missing material bind group"
-            );
+            // debug!(
+            //     target: "tephrite_rs::material::instance",
+            //     main_entity = ?item.main_entity(),
+            //     group = ?material.binding.group,
+            //     "skipping instanced material bind: missing material bind group"
+            // );
             return RenderCommandResult::Skip;
         };
         let Some(bind_group) = material_bind_group.bind_group() else {
-            debug!(
-                target: "tephrite_rs::material::instance",
-                main_entity = ?item.main_entity(),
-                group = ?material.binding.group,
-                "skipping instanced material bind: bind group not ready"
-            );
+            // debug!(
+            //     target: "tephrite_rs::material::instance",
+            //     main_entity = ?item.main_entity(),
+            //     group = ?material.binding.group,
+            //     "skipping instanced material bind: bind group not ready"
+            // );
             return RenderCommandResult::Skip;
         };
 
@@ -993,18 +1050,18 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetInstanceEntityBindGro
 
     #[inline]
     fn render<'w>(
-        item: &P,
+        _item: &P,
         _view: (),
         bind_group: Option<&'w InstanceEntityBindGroup>,
         _param: SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
         let Some(bind_group) = bind_group else {
-            debug!(
-                target: "tephrite_rs::material::instance",
-                main_entity = ?item.main_entity(),
-                "skipping instanced entity bind: missing bind group"
-            );
+            // debug!(
+            //     target: "tephrite_rs::material::instance",
+            //     main_entity = ?item.main_entity(),
+            //     "skipping instanced entity bind: missing bind group"
+            // );
             return RenderCommandResult::Skip;
         };
 
@@ -1034,37 +1091,37 @@ impl<P: PhaseItem> RenderCommand<P> for DrawMeshInstanced {
         let mesh_allocator = mesh_allocator.into_inner();
 
         let Some(mesh_asset_id) = render_mesh_instances.mesh_asset_id(item.main_entity()) else {
-            debug!(
-                target: "tephrite_rs::material::instance",
-                main_entity = ?item.main_entity(),
-                "skipping instanced draw: missing mesh asset id"
-            );
+            // debug!(
+            //     target: "tephrite_rs::material::instance",
+            //     main_entity = ?item.main_entity(),
+            //     "skipping instanced draw: missing mesh asset id"
+            // );
             return RenderCommandResult::Skip;
         };
         let Some(gpu_mesh) = meshes.into_inner().get(mesh_asset_id) else {
-            debug!(
-                target: "tephrite_rs::material::instance",
-                main_entity = ?item.main_entity(),
-                mesh_asset_id = ?mesh_asset_id,
-                "skipping instanced draw: missing gpu mesh"
-            );
+            // debug!(
+            //     target: "tephrite_rs::material::instance",
+            //     main_entity = ?item.main_entity(),
+            //     mesh_asset_id = ?mesh_asset_id,
+            //     "skipping instanced draw: missing gpu mesh"
+            // );
             return RenderCommandResult::Skip;
         };
         let Some(instance_buffer) = instance_buffer else {
-            debug!(
-                target: "tephrite_rs::material::instance",
-                main_entity = ?item.main_entity(),
-                "skipping instanced draw: missing instance buffer"
-            );
+            // debug!(
+            //     target: "tephrite_rs::material::instance",
+            //     main_entity = ?item.main_entity(),
+            //     "skipping instanced draw: missing instance buffer"
+            // );
             return RenderCommandResult::Skip;
         };
         let Some(vertex_buffer_slice) = mesh_allocator.mesh_vertex_slice(&mesh_asset_id) else {
-            debug!(
-                target: "tephrite_rs::material::instance",
-                main_entity = ?item.main_entity(),
-                mesh_asset_id = ?mesh_asset_id,
-                "skipping instanced draw: missing mesh vertex slice"
-            );
+            // debug!(
+            //     target: "tephrite_rs::material::instance",
+            //     main_entity = ?item.main_entity(),
+            //     mesh_asset_id = ?mesh_asset_id,
+            //     "skipping instanced draw: missing mesh vertex slice"
+            // );
             return RenderCommandResult::Skip;
         };
 
@@ -1078,12 +1135,12 @@ impl<P: PhaseItem> RenderCommand<P> for DrawMeshInstanced {
             } => {
                 let Some(index_buffer_slice) = mesh_allocator.mesh_index_slice(&mesh_asset_id)
                 else {
-                    debug!(
-                        target: "tephrite_rs::material::instance",
-                        main_entity = ?item.main_entity(),
-                        mesh_asset_id = ?mesh_asset_id,
-                        "skipping instanced draw: missing mesh index slice"
-                    );
+                    // debug!(
+                    //     target: "tephrite_rs::material::instance",
+                    //     main_entity = ?item.main_entity(),
+                    //     mesh_asset_id = ?mesh_asset_id,
+                    //     "skipping instanced draw: missing mesh index slice"
+                    // );
                     return RenderCommandResult::Skip;
                 };
 

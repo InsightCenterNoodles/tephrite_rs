@@ -37,8 +37,9 @@ impl FastWrite for DoubleSidedComponent {
 
 impl FastRead for DoubleSidedComponent {
     type Ret = Self;
+    type Context = ();
 
-    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret {
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(_: &mut Self::Context, r: &mut S) -> Self::Ret {
         Self {
             counter: r.get_u32(),
         }

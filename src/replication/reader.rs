@@ -3,7 +3,7 @@ use bevy::prelude::*;
 
 use crate::replication::registry::{ReplicationRegistry, TableId};
 use crate::serialize::transcript_reader::TranscriptReaderResource;
-use crate::serialize::{ByteReader, FastRead};
+use crate::serialize::*;
 
 use super::instruction::*;
 
@@ -93,14 +93,14 @@ fn consume_buffer(bytes: &[u8], world: &mut World) {
     loop {
         // Every instruction begins with a compact opcode. Dynamic payloads then
         // carry a per-table `TableId` that dispatches into `ReplicationRegistry`.
-        let instruction = unsafe { u8::read_fast(&mut bytes) };
+        let instruction = unsafe { u8::easy_read_fast(&mut bytes) };
 
         //println!("CHILD: {instruction:?}");
 
         match instruction {
             INSTRUCTION_COMPONENT_ADD => {
-                let entity = unsafe { Entity::read_fast(&mut bytes) };
-                let component_type = unsafe { TableId::read_fast(&mut bytes) };
+                let entity = unsafe { Entity::easy_read_fast(&mut bytes) };
+                let component_type = unsafe { TableId::easy_read_fast(&mut bytes) };
                 let Some(entry) = world
                     .resource::<ReplicationRegistry>()
                     .component(component_type)
@@ -116,15 +116,15 @@ fn consume_buffer(bytes: &[u8], world: &mut World) {
                     // Component payloads are typed but not length-prefixed, so
                     // use the table entry's typed skip function to keep parsing
                     // aligned after this update.
-                    (entry.skip)(&mut bytes);
+                    (entry.skip)(world, &mut bytes);
                     continue;
                 };
 
                 (entry.apply)(local, world, &mut bytes);
             }
             INSTRUCTION_COMPONENT_REMOVE => {
-                let entity = unsafe { Entity::read_fast(&mut bytes) };
-                let component_type = unsafe { TableId::read_fast(&mut bytes) };
+                let entity = unsafe { Entity::easy_read_fast(&mut bytes) };
+                let component_type = unsafe { TableId::easy_read_fast(&mut bytes) };
                 if let Some(local) = world.resource::<EntityMap>().map_opt(entity) {
                     if let Some(entry) = world
                         .resource::<ReplicationRegistry>()
@@ -136,7 +136,7 @@ fn consume_buffer(bytes: &[u8], world: &mut World) {
                 }
             }
             INSTRUCTION_RESOURCE_UPDATE => {
-                let resource_type = unsafe { TableId::read_fast(&mut bytes) };
+                let resource_type = unsafe { TableId::easy_read_fast(&mut bytes) };
                 let Some(entry) = world
                     .resource::<ReplicationRegistry>()
                     .resource(resource_type)
@@ -147,7 +147,7 @@ fn consume_buffer(bytes: &[u8], world: &mut World) {
                 (entry.apply)(world, &mut bytes);
             }
             INSTRUCTION_RESOURCE_DROP => {
-                let resource_type = unsafe { TableId::read_fast(&mut bytes) };
+                let resource_type = unsafe { TableId::easy_read_fast(&mut bytes) };
                 if let Some(entry) = world
                     .resource::<ReplicationRegistry>()
                     .resource(resource_type)
@@ -157,7 +157,7 @@ fn consume_buffer(bytes: &[u8], world: &mut World) {
                 }
             }
             INSTRUCTION_ASSET_UPDATE => {
-                let asset_type = unsafe { TableId::read_fast(&mut bytes) };
+                let asset_type = unsafe { TableId::easy_read_fast(&mut bytes) };
                 let Some(entry) = world
                     .resource::<ReplicationRegistry>()
                     .asset(asset_type)
@@ -167,8 +167,19 @@ fn consume_buffer(bytes: &[u8], world: &mut World) {
                 };
                 (entry.apply)(world, &mut bytes);
             }
+            INSTRUCTION_ASSET_RESERVE => {
+                let asset_type = unsafe { TableId::easy_read_fast(&mut bytes) };
+                let Some(entry) = world
+                    .resource::<ReplicationRegistry>()
+                    .asset(asset_type)
+                    .cloned()
+                else {
+                    panic!("Failing on unknown asset table id {asset_type}");
+                };
+                (entry.reserve)(world, &mut bytes);
+            }
             INSTRUCTION_ASSET_DROP => {
-                let asset_type = unsafe { TableId::read_fast(&mut bytes) };
+                let asset_type = unsafe { TableId::easy_read_fast(&mut bytes) };
                 if let Some(entry) = world
                     .resource::<ReplicationRegistry>()
                     .asset(asset_type)
@@ -178,7 +189,7 @@ fn consume_buffer(bytes: &[u8], world: &mut World) {
                 }
             }
             INSTRUCTION_ENTITY_ADD => {
-                let entity = unsafe { Entity::read_fast(&mut bytes) };
+                let entity = unsafe { Entity::easy_read_fast(&mut bytes) };
                 world.resource_scope(|world, mut map: Mut<EntityMap>| {
                     // EAdd is the only instruction allowed to create a foreign
                     // entity mapping. Component updates for unknown entities are
@@ -187,7 +198,7 @@ fn consume_buffer(bytes: &[u8], world: &mut World) {
                 });
             }
             INSTRUCTION_HIERARCHY_CHANGE => {
-                let item = unsafe { HierarchyChange::read_fast(&mut bytes) };
+                let item = unsafe { HierarchyChange::easy_read_fast(&mut bytes) };
                 // Remap foreign IDs to local before applying hierarchy changes
                 let Some(child_local) = world.resource::<EntityMap>().map_opt(item.child) else {
                     continue;
@@ -213,7 +224,7 @@ fn consume_buffer(bytes: &[u8], world: &mut World) {
                 return;
             }
             INSTRUCTION_ENTITY_REMOVE => {
-                let entity = unsafe { Entity::read_fast(&mut bytes) };
+                let entity = unsafe { Entity::easy_read_fast(&mut bytes) };
                 let local = world.resource_mut::<EntityMap>().map_remove(entity);
                 if let Some(e) = local {
                     world.entity_mut(e).despawn();
@@ -227,7 +238,7 @@ fn consume_buffer(bytes: &[u8], world: &mut World) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::serialize::*;
+    use crate::serialize::ByteWriter;
 
     fn encode_frame(write: impl FnOnce(&mut ByteWriter<'_>)) -> Vec<u8> {
         let mut bytes = vec![0; 4096];

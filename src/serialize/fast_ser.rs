@@ -36,17 +36,48 @@ impl<T: FastWrite> FastWrite for &T {
 
 pub trait FastRead: Sized {
     type Ret;
+    type Context;
     /// Decode a value from `r`.
     ///
     /// Safety
     /// - Must read a valid encoding produced by the matching `write_fast`.
     /// - Must not read beyond the needed number of bytes.
-    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret;
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(context: &mut Self::Context, r: &mut S)
+    -> Self::Ret;
+}
+
+pub trait EasyFastRead: FastRead<Ret = Self, Context = ()> {
+    unsafe fn easy_read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret {
+        unsafe { <Self as FastRead>::read_fast(&mut (), r) }
+    }
+}
+
+impl<T: FastRead<Ret = Self, Context = ()>> EasyFastRead for T {}
+
+pub trait ContextFromWorld {
+    fn with_world<T>(world: &mut bevy::ecs::world::World, func: impl FnOnce(&mut Self) -> T) -> T;
+}
+
+impl ContextFromWorld for () {
+    fn with_world<T>(_world: &mut bevy::ecs::world::World, func: impl FnOnce(&mut Self) -> T) -> T {
+        let nc = &mut ();
+        (func)(nc)
+    }
+}
+
+impl<A: bevy::asset::Asset> ContextFromWorld for bevy::asset::Assets<A> {
+    fn with_world<T>(world: &mut bevy::ecs::world::World, func: impl FnOnce(&mut Self) -> T) -> T {
+        let mut assets = world.resource_mut::<bevy::asset::Assets<A>>();
+        (func)(&mut assets)
+    }
 }
 
 /// Convenience wrapper to read a type implementing `FastRead<Ret = T>`.
-pub fn read_fast<'a, T: FastRead<Ret = T>, S: ByteSource<'a>>(r: &mut S) -> T {
-    unsafe { T::read_fast(r) }
+pub fn read_fast<'a, T: FastRead<Ret = T, Context = Context>, Context, S: ByteSource<'a>>(
+    context: &mut Context,
+    r: &mut S,
+) -> T {
+    unsafe { T::read_fast(context, r) }
 }
 
 // MARK: Primitives & PODs
@@ -60,8 +91,9 @@ macro_rules! impl_fast_prim {
         }
         impl FastRead for $t {
             type Ret = $t;
+            type Context = ();
             #[inline(always)]
-            unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self {
+            unsafe fn read_fast<'a, S: ByteSource<'a>>(_: &mut Self::Context, r: &mut S) -> Self {
                 r.$get()
             }
         }
@@ -89,8 +121,9 @@ impl FastWrite for bool {
 }
 impl FastRead for bool {
     type Ret = bool;
+    type Context = ();
     #[inline(always)]
-    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self {
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(_: &mut Self::Context, r: &mut S) -> Self {
         r.get_bool()
     }
 }
@@ -110,8 +143,9 @@ impl FastWrite for &str {
 }
 impl FastRead for String {
     type Ret = String;
+    type Context = ();
     #[inline(always)]
-    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self {
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(_: &mut Self::Context, r: &mut S) -> Self {
         r.get_string()
     }
 }
@@ -167,8 +201,12 @@ macro_rules! fast_vec {
 
         impl FastRead for Vec<$T> {
             type Ret = Vec<$T>;
+            type Context = ();
             #[inline(always)]
-            unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret {
+            unsafe fn read_fast<'a, S: ByteSource<'a>>(
+                _: &mut Self::Context,
+                r: &mut S,
+            ) -> Self::Ret {
                 r.get_pod_vec::<$T>()
             }
         }
@@ -229,14 +267,15 @@ impl<T: FastWrite, const N: usize> FastWrite for [T; N] {
         }
     }
 }
-impl<T, const N: usize> FastRead for [T; N]
+impl<T, C, const N: usize> FastRead for [T; N]
 where
-    T: FastRead<Ret = T> + Default,
+    T: FastRead<Ret = T, Context = C> + Default,
 {
     type Ret = [T; N];
+    type Context = C;
     #[inline(always)]
-    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret {
-        core::array::from_fn(|_| unsafe { T::read_fast(r) })
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(c: &mut Self::Context, r: &mut S) -> Self::Ret {
+        core::array::from_fn(|_| unsafe { T::read_fast(c, r) })
     }
 }
 
@@ -248,11 +287,12 @@ impl<T: FastWrite> FastWrite for Box<T> {
         unsafe { t.write_fast(w) };
     }
 }
-impl<T: FastRead<Ret = T>> FastRead for Box<T> {
+impl<T: FastRead<Ret = T, Context = C>, C> FastRead for Box<T> {
     type Ret = Self;
+    type Context = C;
     #[inline(always)]
-    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret {
-        Self::new(unsafe { T::read_fast(r) })
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(c: &mut Self::Context, r: &mut S) -> Self::Ret {
+        Self::new(unsafe { T::read_fast(c, r) })
     }
 }
 
@@ -271,12 +311,13 @@ impl<T: FastWrite> FastWrite for Option<T> {
         }
     }
 }
-impl<T: FastRead<Ret = T>> FastRead for Option<T> {
+impl<T: FastRead<Ret = T, Context = C>, C> FastRead for Option<T> {
     type Ret = Option<T>;
+    type Context = C;
     #[inline(always)]
-    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret {
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(c: &mut Self::Context, r: &mut S) -> Self::Ret {
         if r.get_u8() != 0 {
-            Some(unsafe { T::read_fast(r) })
+            Some(unsafe { T::read_fast(c, r) })
         } else {
             None
         }
@@ -300,18 +341,19 @@ impl<U: FastWrite, V: FastWrite> FastWrite for Result<U, V> {
         }
     }
 }
-impl<U, V> FastRead for Result<U, V>
+impl<U, V, C> FastRead for Result<U, V>
 where
-    U: FastRead<Ret = U>,
-    V: FastRead<Ret = V>,
+    U: FastRead<Ret = U, Context = C>,
+    V: FastRead<Ret = V, Context = C>,
 {
     type Ret = Result<U, V>;
+    type Context = C;
     #[inline(always)]
-    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self {
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(c: &mut Self::Context, r: &mut S) -> Self {
         if r.get_u8() != 0 {
-            Ok(unsafe { U::read_fast(r) })
+            Ok(unsafe { U::read_fast(c, r) })
         } else {
-            Err(unsafe { V::read_fast(r) })
+            Err(unsafe { V::read_fast(c, r) })
         }
     }
 }
@@ -327,11 +369,12 @@ macro_rules! impl_tuple {
                 $( unsafe {$name.write_fast(w) }; )+
             }
         }
-        impl<$($name: FastRead<Ret = $name>),+> FastRead for ($($name,)+) {
+        impl<Ctx, $($name: FastRead<Ret = $name, Context = Ctx>),+> FastRead for ($($name,)+) {
             type Ret = ($($name),+);
+            type Context = Ctx;
             #[inline(always)]
-            unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S)  -> Self {
-                ( $( unsafe {$name::read_fast(r)}, )+ )
+            unsafe fn read_fast<'a, S: ByteSource<'a>>(c: &mut Self::Context, r: &mut S)  -> Self {
+                ( $( unsafe {$name::read_fast(c, r)}, )+ )
             }
         }
     };
@@ -391,6 +434,7 @@ mod macros {
     macro_rules! impl_fast_serialize {
         (
             $T:ty,
+            $Ctx:ty,
             $(lifetime: $lifetime:tt,)?
             keep: {$($fld:ident),* },
             skip: {$($sfld:ident),*}
@@ -405,14 +449,15 @@ mod macros {
 
             impl $(<$lifetime>)? crate::serialize::fast_ser::FastRead for $T {
                 type Ret = $T ;
+                type Context = $Ctx;
                 #[inline(always)]
                 #[allow(unused)]
-                unsafe fn read_fast<'z, S: crate::serialize::fast_io::ByteSource<'z>>(r: &mut S)  -> Self {
+                unsafe fn read_fast<'z, S: crate::serialize::fast_io::ByteSource<'z>>(c: &mut Self::Context, r: &mut S)  -> Self {
                     #[allow(unused)]
                     use crate::serialize::fast_ser::read_fast;
                     Self {
                         //$( $fld : unsafe {<$fld_type>::read_fast(r) }, )*
-                        $( $fld : read_fast(r), )*
+                        $( $fld : read_fast(c,r), )*
                         $( $sfld : Default::default(), )*
                     }
                 }
@@ -435,8 +480,10 @@ mod macros {
 
             impl crate::serialize::fast_ser::FastRead for $T {
                 type Ret = $T;
+                type Context = ();
                 #[inline(always)]
                 unsafe fn read_fast<'b, S: crate::serialize::fast_io::ByteSource<'b>>(
+                    _: &mut Self::Context,
                     r: &mut S,
                 ) -> Self {
                     unsafe { crate::serialize::fast_ser::byte_deserialize(r) }
@@ -448,7 +495,7 @@ mod macros {
     pub(crate) use impl_fast_raw_item;
 
     macro_rules! impl_fast_newtype {
-        ($T:ty) => {
+        ($T:ty ,$CT:ty) => {
             impl crate::serialize::fast_ser::FastWrite for $T {
                 #[inline(always)]
                 unsafe fn write_fast(&self, w: &mut impl crate::serialize::fast_io::ByteSink) {
@@ -458,13 +505,18 @@ mod macros {
 
             impl crate::serialize::fast_ser::FastRead for $T {
                 type Ret = $T;
+                type Context = $CT;
                 #[inline(always)]
                 unsafe fn read_fast<'b, S: crate::serialize::fast_io::ByteSource<'b>>(
+                    c: &mut Self::Context,
                     r: &mut S,
                 ) -> Self {
-                    Self(read_fast(r))
+                    Self(read_fast(c, r))
                 }
             }
+        };
+        ($T:ty) => {
+            impl_fast_newtype!($T, ());
         };
     }
 
@@ -476,9 +528,9 @@ pub(crate) use macros::impl_fast_raw_item;
 pub(crate) use macros::impl_fast_serialize;
 
 #[cfg(test)]
-pub(crate) fn test_serialization<A, F>(a: A, f: F)
+pub(crate) fn test_serialization<A, C, F>(mut ctx: C, a: A, f: F)
 where
-    A: FastRead<Ret = A> + FastWrite,
+    A: FastRead<Ret = A, Context = C> + FastWrite,
     F: FnOnce(A, A) -> bool,
 {
     let mut buffer = vec![0u8; 1024];
@@ -490,7 +542,7 @@ where
 
     let mut reader = ByteReader::new(&buffer);
 
-    let b = unsafe { A::read_fast(&mut reader) };
+    let b = unsafe { A::read_fast(&mut ctx, &mut reader) };
 
     assert!(f(a, b));
 }
@@ -520,10 +572,13 @@ mod tests {
 
         // Read primitives using FastRead
         unsafe {
-            assert_eq!(u32::read_fast(&mut reader), 42_u32);
-            assert_eq!(i32::read_fast(&mut reader), -42_i32);
-            assert_eq!(bool::read_fast(&mut reader), true);
-            assert_eq!(String::read_fast(&mut reader), "Hello, world!".to_string());
+            assert_eq!(u32::easy_read_fast(&mut reader), 42_u32);
+            assert_eq!(i32::easy_read_fast(&mut reader), -42_i32);
+            assert_eq!(bool::easy_read_fast(&mut reader), true);
+            assert_eq!(
+                String::easy_read_fast(&mut reader),
+                "Hello, world!".to_string()
+            );
         }
     }
 
@@ -541,7 +596,7 @@ mod tests {
 
         // Read the vector back
         unsafe {
-            assert_eq!(Vec::<i32>::read_fast(&mut reader), vec![42, -42]);
+            assert_eq!(Vec::<i32>::easy_read_fast(&mut reader), vec![42, -42]);
         }
     }
 
@@ -560,8 +615,8 @@ mod tests {
 
         // Read the Option back
         unsafe {
-            assert_eq!(Option::<i32>::read_fast(&mut reader), Some(42));
-            assert_eq!(Option::<i32>::read_fast(&mut reader), None);
+            assert_eq!(Option::<i32>::easy_read_fast(&mut reader), Some(42));
+            assert_eq!(Option::<i32>::easy_read_fast(&mut reader), None);
         }
     }
 
@@ -580,8 +635,8 @@ mod tests {
 
         // Read the Result back
         unsafe {
-            assert_eq!(Result::<i32, i32>::read_fast(&mut reader), Ok(42));
-            assert_eq!(Result::<i32, i32>::read_fast(&mut reader), Err(-42));
+            assert_eq!(Result::<i32, i32>::easy_read_fast(&mut reader), Ok(42));
+            assert_eq!(Result::<i32, i32>::easy_read_fast(&mut reader), Err(-42));
         }
     }
 
@@ -601,7 +656,7 @@ mod tests {
 
         // Read the tuple back
         unsafe {
-            assert_eq!(ThisTuple::read_fast(&mut reader), (42, -42));
+            assert_eq!(ThisTuple::easy_read_fast(&mut reader), (42, -42));
         }
     }
 
@@ -617,7 +672,7 @@ mod tests {
             thing_c: String,
         }
 
-        impl_fast_serialize!(TestStruct, keep: {
+        impl_fast_serialize!(TestStruct, (), keep: {
             thing_a, thing_c
         }, skip: {
             thing_b
@@ -637,7 +692,7 @@ mod tests {
 
         // Read the tuple back
         unsafe {
-            let res = TestStruct::read_fast(&mut reader);
+            let res = TestStruct::easy_read_fast(&mut reader);
             assert_eq!(res.thing_a, 421);
             assert_eq!(res.thing_b, String::default());
             assert_eq!(res.thing_c, "Hello, user!");
@@ -669,7 +724,7 @@ mod tests {
         let mut reader = ByteReader::new(&buffer);
 
         let local_v = unsafe { byte_deserialize(&mut reader) };
-        let check = unsafe { u32::read_fast(&mut reader) };
+        let check = unsafe { u32::easy_read_fast(&mut reader) };
         assert_eq!(SCRIBBLE_GUARD, check, "size guard check");
         assert_eq!(v, local_v);
     }

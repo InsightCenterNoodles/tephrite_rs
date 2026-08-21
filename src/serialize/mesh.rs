@@ -33,12 +33,13 @@ impl FastWrite for Indices {
 }
 impl FastRead for Indices {
     type Ret = Self;
-    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret {
-        let index = unsafe { i8::read_fast(r) };
+    type Context = ();
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(c: &mut Self::Context, r: &mut S) -> Self::Ret {
+        let index = unsafe { i8::read_fast(c, r) };
 
         match index {
-            0 => Indices::U16(unsafe { Vec::<u16>::read_fast(r) }),
-            1 => Indices::U32(unsafe { Vec::<u32>::read_fast(r) }),
+            0 => Indices::U16(unsafe { Vec::<u16>::read_fast(c, r) }),
+            1 => Indices::U32(unsafe { Vec::<u32>::read_fast(c, r) }),
             _ => panic!("Unknown index type"),
         }
     }
@@ -239,56 +240,57 @@ impl FastWrite for VertexAttributeValues {
 
 impl FastRead for VertexAttributeValues {
     type Ret = Self;
+    type Context = ();
 
-    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret {
-        let index = unsafe { i8::read_fast(r) };
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(c: &mut Self::Context, r: &mut S) -> Self::Ret {
+        let index = unsafe { i8::read_fast(c, r) };
 
         match index {
-            0 => VertexAttributeValues::Float32(read_fast(r)),
-            1 => VertexAttributeValues::Sint32(read_fast(r)),
-            2 => VertexAttributeValues::Uint32(read_fast(r)),
-            3 => VertexAttributeValues::Float32x2(read_fast(r)),
-            4 => VertexAttributeValues::Sint32x2(read_fast(r)),
-            5 => VertexAttributeValues::Uint32x2(read_fast(r)),
-            6 => VertexAttributeValues::Float32x3(read_fast(r)),
-            7 => VertexAttributeValues::Sint32x3(read_fast(r)),
-            8 => VertexAttributeValues::Uint32x3(read_fast(r)),
-            9 => VertexAttributeValues::Float32x4(read_fast(r)),
-            10 => VertexAttributeValues::Sint32x4(read_fast(r)),
-            11 => VertexAttributeValues::Uint32x4(read_fast(r)),
-            12 => VertexAttributeValues::Sint16x2(read_fast(r)),
-            13 => VertexAttributeValues::Snorm16x2(read_fast(r)),
-            14 => VertexAttributeValues::Uint16x2(read_fast(r)),
-            15 => VertexAttributeValues::Unorm16x2(read_fast(r)),
-            16 => VertexAttributeValues::Sint16x4(read_fast(r)),
-            17 => VertexAttributeValues::Snorm16x4(read_fast(r)),
-            18 => VertexAttributeValues::Uint16x4(read_fast(r)),
-            19 => VertexAttributeValues::Unorm16x4(read_fast(r)),
-            20 => VertexAttributeValues::Sint8x2(read_fast(r)),
-            21 => VertexAttributeValues::Snorm8x2(read_fast(r)),
-            22 => VertexAttributeValues::Uint8x2(read_fast(r)),
-            23 => VertexAttributeValues::Unorm8x2(read_fast(r)),
-            24 => VertexAttributeValues::Sint8x4(read_fast(r)),
-            25 => VertexAttributeValues::Snorm8x4(read_fast(r)),
-            26 => VertexAttributeValues::Uint8x4(read_fast(r)),
-            27 => VertexAttributeValues::Unorm8x4(read_fast(r)),
-            28 => VertexAttributeValues::Uint8(read_fast(r)),
-            29 => VertexAttributeValues::Sint8(read_fast(r)),
-            30 => VertexAttributeValues::Unorm8(read_fast(r)),
-            31 => VertexAttributeValues::Snorm8(read_fast(r)),
-            32 => VertexAttributeValues::Uint16(read_fast(r)),
-            33 => VertexAttributeValues::Sint16(read_fast(r)),
-            34 => VertexAttributeValues::Unorm16(read_fast(r)),
-            35 => VertexAttributeValues::Snorm16(read_fast(r)),
-            36 => VertexAttributeValues::Float16(read_fast(r)),
-            37 => VertexAttributeValues::Float16x2(read_fast(r)),
-            38 => VertexAttributeValues::Float16x4(read_fast(r)),
-            39 => VertexAttributeValues::Float64(read_fast(r)),
-            40 => VertexAttributeValues::Float64x2(read_fast(r)),
-            41 => VertexAttributeValues::Float64x3(read_fast(r)),
-            42 => VertexAttributeValues::Float64x4(read_fast(r)),
-            43 => VertexAttributeValues::Unorm10_10_10_2(read_fast(r)),
-            44 => VertexAttributeValues::Unorm8x4Bgra(read_fast(r)),
+            0 => VertexAttributeValues::Float32(read_fast(c, r)),
+            1 => VertexAttributeValues::Sint32(read_fast(c, r)),
+            2 => VertexAttributeValues::Uint32(read_fast(c, r)),
+            3 => VertexAttributeValues::Float32x2(read_fast(c, r)),
+            4 => VertexAttributeValues::Sint32x2(read_fast(c, r)),
+            5 => VertexAttributeValues::Uint32x2(read_fast(c, r)),
+            6 => VertexAttributeValues::Float32x3(read_fast(c, r)),
+            7 => VertexAttributeValues::Sint32x3(read_fast(c, r)),
+            8 => VertexAttributeValues::Uint32x3(read_fast(c, r)),
+            9 => VertexAttributeValues::Float32x4(read_fast(c, r)),
+            10 => VertexAttributeValues::Sint32x4(read_fast(c, r)),
+            11 => VertexAttributeValues::Uint32x4(read_fast(c, r)),
+            12 => VertexAttributeValues::Sint16x2(read_fast(c, r)),
+            13 => VertexAttributeValues::Snorm16x2(read_fast(c, r)),
+            14 => VertexAttributeValues::Uint16x2(read_fast(c, r)),
+            15 => VertexAttributeValues::Unorm16x2(read_fast(c, r)),
+            16 => VertexAttributeValues::Sint16x4(read_fast(c, r)),
+            17 => VertexAttributeValues::Snorm16x4(read_fast(c, r)),
+            18 => VertexAttributeValues::Uint16x4(read_fast(c, r)),
+            19 => VertexAttributeValues::Unorm16x4(read_fast(c, r)),
+            20 => VertexAttributeValues::Sint8x2(read_fast(c, r)),
+            21 => VertexAttributeValues::Snorm8x2(read_fast(c, r)),
+            22 => VertexAttributeValues::Uint8x2(read_fast(c, r)),
+            23 => VertexAttributeValues::Unorm8x2(read_fast(c, r)),
+            24 => VertexAttributeValues::Sint8x4(read_fast(c, r)),
+            25 => VertexAttributeValues::Snorm8x4(read_fast(c, r)),
+            26 => VertexAttributeValues::Uint8x4(read_fast(c, r)),
+            27 => VertexAttributeValues::Unorm8x4(read_fast(c, r)),
+            28 => VertexAttributeValues::Uint8(read_fast(c, r)),
+            29 => VertexAttributeValues::Sint8(read_fast(c, r)),
+            30 => VertexAttributeValues::Unorm8(read_fast(c, r)),
+            31 => VertexAttributeValues::Snorm8(read_fast(c, r)),
+            32 => VertexAttributeValues::Uint16(read_fast(c, r)),
+            33 => VertexAttributeValues::Sint16(read_fast(c, r)),
+            34 => VertexAttributeValues::Unorm16(read_fast(c, r)),
+            35 => VertexAttributeValues::Snorm16(read_fast(c, r)),
+            36 => VertexAttributeValues::Float16(read_fast(c, r)),
+            37 => VertexAttributeValues::Float16x2(read_fast(c, r)),
+            38 => VertexAttributeValues::Float16x4(read_fast(c, r)),
+            39 => VertexAttributeValues::Float64(read_fast(c, r)),
+            40 => VertexAttributeValues::Float64x2(read_fast(c, r)),
+            41 => VertexAttributeValues::Float64x3(read_fast(c, r)),
+            42 => VertexAttributeValues::Float64x4(read_fast(c, r)),
+            43 => VertexAttributeValues::Unorm10_10_10_2(read_fast(c, r)),
+            44 => VertexAttributeValues::Unorm8x4Bgra(read_fast(c, r)),
             _ => panic!("Unknown vertex attribute type. This should not happen."),
         }
     }
@@ -314,9 +316,10 @@ impl FastWrite for MeshVertexAttribute {
 
 impl FastRead for MeshVertexAttribute {
     type Ret = Self;
+    type Context = ();
 
-    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret {
-        let id: MeshVertexAttributeId = read_fast(r);
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(c: &mut Self::Context, r: &mut S) -> Self::Ret {
+        let id: MeshVertexAttributeId = read_fast(c, r);
 
         const POS_ID: MeshVertexAttributeId = Mesh::ATTRIBUTE_POSITION.id;
         const NOR_ID: MeshVertexAttributeId = Mesh::ATTRIBUTE_NORMAL.id;
@@ -388,13 +391,14 @@ const ATTRIB_LOOKUP: [MeshVertexAttribute; 8] = [
 
 impl FastRead for Mesh {
     type Ret = Self;
-    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret {
-        let pt = unsafe { PrimitiveTopology::read_fast(r) };
-        let au = unsafe { RenderAssetUsages::read_fast(r) };
+    type Context = ();
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(c: &mut Self::Context, r: &mut S) -> Self::Ret {
+        let pt = unsafe { PrimitiveTopology::read_fast(c, r) };
+        let au = unsafe { RenderAssetUsages::read_fast(c, r) };
 
         let mut ret = Mesh::new(pt, au);
 
-        let attrib_count = unsafe { u8::read_fast(r) };
+        let attrib_count = unsafe { u8::read_fast(c, r) };
 
         // Check tests for more intensive validation of our assertions here
         const {
@@ -402,8 +406,8 @@ impl FastRead for Mesh {
         }
 
         for _ in 0..attrib_count {
-            let aid = unsafe { MeshVertexAttributeId::read_fast(r) };
-            let data = unsafe { VertexAttributeValues::read_fast(r) };
+            let aid = unsafe { MeshVertexAttributeId::read_fast(c, r) };
+            let data = unsafe { VertexAttributeValues::read_fast(c, r) };
 
             // This should be safe as we are just getting access to the internal wrapped usize
             let unsafe_id: usize = unsafe { std::mem::transmute(aid) };
@@ -413,7 +417,7 @@ impl FastRead for Mesh {
             ret.insert_attribute(*attrib, data);
         }
 
-        if let Some(index) = unsafe { Option::<Indices>::read_fast(r) } {
+        if let Some(index) = unsafe { Option::<Indices>::read_fast(c, r) } {
             ret.insert_indices(index);
         }
 
@@ -441,14 +445,17 @@ impl RemappableAsset for Mesh {
 mod tests {
     use super::*;
     use crate::serialize::fast_io::{ByteReader, ByteWriter};
-    use crate::serialize::fast_ser::{FastRead, FastWrite};
+    use crate::serialize::fast_ser::{EasyFastRead, FastRead, FastWrite};
 
-    fn roundtrip<T: FastWrite + FastRead<Ret = T>>(x: &T) -> T {
+    fn roundtrip<T>(x: &T) -> T
+    where
+        T: FastWrite + FastRead<Ret = T, Context = ()>,
+    {
         let mut buf = [0u8; 2048];
         let mut w = ByteWriter::new(&mut buf);
         unsafe { x.write_fast(&mut w) };
         let mut r = ByteReader::new(&buf);
-        unsafe { T::read_fast(&mut r) }
+        unsafe { T::easy_read_fast(&mut r) }
     }
 
     #[test]
@@ -492,7 +499,7 @@ mod tests {
         let mut w = ByteWriter::new(&mut buf);
         unsafe { a.write_fast(&mut w) };
         let mut r = ByteReader::new(&buf);
-        let out: MeshVertexAttribute = unsafe { MeshVertexAttribute::read_fast(&mut r) };
+        let out: MeshVertexAttribute = unsafe { MeshVertexAttribute::easy_read_fast(&mut r) };
         assert_eq!(out.id, a.id);
     }
 

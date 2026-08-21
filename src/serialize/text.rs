@@ -17,13 +17,13 @@ impl RemappableAsset for Font {
         func(&mut P_MAP.write().unwrap());
     }
 
-    fn remap_to_local_or_reserve(id: AssetId<Self>) -> Handle<Self>
+    fn remap_to_local_or_reserve(id: AssetId<Self>, assets: &mut Assets<Self>) -> Handle<Self>
     where
         Self: bevy::prelude::Asset,
         Self: Sized,
     {
         if id == AssetId::default() {
-            dbg!("DEFAULT ASSET FONT");
+            // dbg!("DEFAULT ASSET FONT");
             return Handle::<Font>::default();
         }
 
@@ -31,13 +31,13 @@ impl RemappableAsset for Font {
             return handle;
         }
 
-        let local = Handle::Uuid(bevy::asset::uuid::Uuid::new_v4(), std::marker::PhantomData);
+        let local = assets.reserve_handle();
 
-        warn!(
-            "Missing asset mapping for {} id {id}; reserving client-local placeholder {}",
-            std::any::type_name::<Self>(),
-            local.id()
-        );
+        // warn!(
+        //     "Missing asset mapping for {} id {id}; reserving client-local placeholder {}",
+        //     std::any::type_name::<Self>(),
+        //     local.id()
+        // );
 
         Self::with_remapper_mut(|map| {
             map.insert(id, local.clone());
@@ -103,11 +103,12 @@ impl FastWrite for FontSource {
 
 impl FastRead for FontSource {
     type Ret = Self;
+    type Context = Assets<Font>;
 
-    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret {
-        match unsafe { u8::read_fast(r) } {
-            0 => unsafe { FontSource::Handle(Handle::read_fast(r)) },
-            1 => unsafe { FontSource::Family(String::read_fast(r).into()) },
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(c: &mut Self::Context, r: &mut S) -> Self::Ret {
+        match unsafe { u8::read_fast(&mut (), r) } {
+            0 => unsafe { FontSource::Handle(Handle::read_fast(c, r)) },
+            1 => unsafe { FontSource::Family(String::read_fast(&mut (), r).into()) },
             2 => FontSource::Serif,
             3 => FontSource::SansSerif,
             4 => FontSource::Cursive,
@@ -132,26 +133,48 @@ impl_fast_raw_item!(FontSmoothing);
 impl_fast_raw_item!(FontStyle);
 impl_fast_raw_item!(FontSize);
 
-impl_fast_serialize!(
-    TextFont,
-    keep: {
-        font,
-        font_size,
-        weight,
-        font_smoothing,
-        width,
-        style
-    }, skip: {
-        font_features, // does not allow us to inspect it yet
-        font_variations
+impl crate::serialize::fast_ser::FastWrite for TextFont {
+    #[inline(always)]
+    #[allow(unused)]
+    unsafe fn write_fast(&self, w: &mut impl crate::serialize::fast_io::ByteSink) {
+        unsafe { self.font.write_fast(w) };
+        unsafe { self.font_size.write_fast(w) };
+        unsafe { self.weight.write_fast(w) };
+        unsafe { self.font_smoothing.write_fast(w) };
+        unsafe { self.width.write_fast(w) };
+        unsafe { self.style.write_fast(w) };
     }
-);
+}
+impl crate::serialize::fast_ser::FastRead for TextFont {
+    type Ret = TextFont;
+    type Context = Assets<Font>;
+
+    unsafe fn read_fast<'z, S: crate::serialize::fast_io::ByteSource<'z>>(
+        c: &mut Self::Context,
+        r: &mut S,
+    ) -> Self {
+        #[allow(unused)]
+        use crate::serialize::fast_ser::read_fast;
+        let nc = &mut ();
+        Self {
+            font: read_fast(c, r),
+            font_size: read_fast(nc, r),
+            weight: read_fast(nc, r),
+            font_smoothing: read_fast(nc, r),
+            width: read_fast(nc, r),
+            style: read_fast(nc, r),
+            font_features: Default::default(),
+            font_variations: Default::default(),
+        }
+    }
+}
 
 impl_fast_raw_item!(Justify);
 impl_fast_raw_item!(LineBreak);
 
 impl_fast_serialize!(
     TextLayout,
+    (),
     keep: {
         justify,
         linebreak
@@ -172,11 +195,12 @@ impl FastWrite for Font {
 
 impl FastRead for Font {
     type Ret = Self;
+    type Context = ();
 
-    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self::Ret {
-        let mut ret = Font::from_bytes(unsafe { Vec::<u8>::read_fast(r) });
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(c: &mut Self::Context, r: &mut S) -> Self::Ret {
+        let mut ret = Font::from_bytes(unsafe { Vec::<u8>::read_fast(c, r) });
 
-        ret.alias = unsafe { String::read_fast(r) };
+        ret.alias = unsafe { String::read_fast(c, r) };
 
         ret
     }
@@ -188,7 +212,8 @@ mod tests {
 
     #[test]
     fn default_font_id_remaps_to_default_font_handle() {
-        let handle = Font::remap_to_local_or_reserve(AssetId::default());
+        let mut assets = Assets::<Font>::default();
+        let handle = Font::remap_to_local_or_reserve(AssetId::default(), &mut assets);
 
         assert_eq!(handle.id(), Handle::<Font>::default().id());
     }

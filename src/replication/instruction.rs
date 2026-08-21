@@ -6,13 +6,14 @@ use crate::serialize::*;
 pub(crate) const INSTRUCTION_COMPONENT_ADD: u8 = 0;
 pub(crate) const INSTRUCTION_COMPONENT_REMOVE: u8 = 1;
 pub(crate) const INSTRUCTION_ASSET_UPDATE: u8 = 2;
-pub(crate) const INSTRUCTION_ASSET_DROP: u8 = 3;
-pub(crate) const INSTRUCTION_RESOURCE_UPDATE: u8 = 4;
-pub(crate) const INSTRUCTION_RESOURCE_DROP: u8 = 5;
-pub(crate) const INSTRUCTION_HIERARCHY_CHANGE: u8 = 6;
-pub(crate) const INSTRUCTION_ENTITY_REMOVE: u8 = 7;
-pub(crate) const INSTRUCTION_END_FRAME: u8 = 8;
-pub(crate) const INSTRUCTION_ENTITY_ADD: u8 = 9;
+pub(crate) const INSTRUCTION_ASSET_RESERVE: u8 = 3;
+pub(crate) const INSTRUCTION_ASSET_DROP: u8 = 4;
+pub(crate) const INSTRUCTION_RESOURCE_UPDATE: u8 = 5;
+pub(crate) const INSTRUCTION_RESOURCE_DROP: u8 = 6;
+pub(crate) const INSTRUCTION_HIERARCHY_CHANGE: u8 = 7;
+pub(crate) const INSTRUCTION_ENTITY_REMOVE: u8 = 8;
+pub(crate) const INSTRUCTION_END_FRAME: u8 = 9;
+pub(crate) const INSTRUCTION_ENTITY_ADD: u8 = 10;
 
 #[inline(always)]
 pub(crate) unsafe fn write_component_add<T: FastWrite>(
@@ -54,6 +55,19 @@ pub(crate) unsafe fn write_asset_update<A: Asset + FastWrite>(
         asset_type.write_fast(w);
         id.write_fast(w);
         asset.write_fast(w);
+    }
+}
+
+#[inline(always)]
+pub(crate) unsafe fn write_asset_reserve<A: Asset + FastWrite>(
+    w: &mut impl ByteSink,
+    asset_type: TableId,
+    id: AssetId<A>,
+) {
+    unsafe {
+        INSTRUCTION_ASSET_RESERVE.write_fast(w);
+        asset_type.write_fast(w);
+        id.write_fast(w);
     }
 }
 
@@ -115,8 +129,9 @@ impl FastWrite for EndFrame {
 }
 impl FastRead for EndFrame {
     type Ret = Self;
+    type Context = ();
     #[inline(always)]
-    unsafe fn read_fast<'a, S: ByteSource<'a>>(_r: &mut S) -> Self {
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(_: &mut Self::Context, _r: &mut S) -> Self {
         Self
     }
 }
@@ -131,8 +146,9 @@ impl FastWrite for Halt {
 }
 impl FastRead for Halt {
     type Ret = Self;
+    type Context = ();
     #[inline(always)]
-    unsafe fn read_fast<'a, S: ByteSource<'a>>(_r: &mut S) -> Self {
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(_: &mut Self::Context, _r: &mut S) -> Self {
         Self
     }
 }
@@ -179,8 +195,9 @@ impl FastWrite for Entity {
 }
 impl FastRead for Entity {
     type Ret = Self;
+    type Context = ();
     #[inline(always)]
-    unsafe fn read_fast<'a, S: ByteSource<'a>>(r: &mut S) -> Self {
-        Entity::from_bits(read_fast(r))
+    unsafe fn read_fast<'a, S: ByteSource<'a>>(c: &mut Self::Context, r: &mut S) -> Self {
+        Entity::from_bits(read_fast(c, r))
     }
 }

@@ -38,10 +38,13 @@ impl_fast_raw_item!(Affine3A);
 mod tests {
 
     use crate::serialize::fast_io::{ByteReader, ByteWriter};
-    use crate::serialize::fast_ser::{FastRead, FastWrite};
+    use crate::serialize::fast_ser::{EasyFastRead, FastRead, FastWrite};
     use bevy::math::{Affine2, Affine3A, Mat2, Mat3, Mat3A, Quat, Vec2, Vec3, Vec3A};
 
-    fn roundtrip<T: FastWrite + FastRead<Ret = T> + core::fmt::Debug + PartialEq>(x: &T) -> T {
+    fn roundtrip<T>(x: &T) -> T
+    where
+        T: FastWrite + FastRead<Ret = T, Context = ()> + core::fmt::Debug + PartialEq,
+    {
         // generous buffer; these are small fixed-size types
         let mut buf = [0u8; 256];
         let mut w = ByteWriter::new(&mut buf);
@@ -51,7 +54,7 @@ mod tests {
         let written = w.position();
 
         let mut r = ByteReader::new(&buf[..written]);
-        unsafe { T::read_fast(&mut r) }
+        unsafe { T::easy_read_fast(&mut r) }
     }
 
     #[test]

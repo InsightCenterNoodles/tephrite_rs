@@ -52,6 +52,7 @@ pub(crate) fn make_common_app() -> App {
         ColorMaterialPlugin::default(), // we dont use this directly, other things might
         bevy::gltf::GltfPlugin::default(),
         bevy::pbr::PbrPlugin::default(),
+        bevy::render::texture::TexturePlugin,
         bevy::text::TextPlugin,
     ));
 

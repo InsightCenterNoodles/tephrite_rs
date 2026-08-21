@@ -21,6 +21,7 @@ http = "1.5"
 httparse = "1.10"
 bytes = "1.12"
 anyhow = "*"
+uuid = { version = "*", features = ["v7"] }
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]
