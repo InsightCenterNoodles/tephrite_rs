@@ -154,6 +154,7 @@ pub(crate) fn run<T: crate::TephriteApp>() -> AppExit {
                 render_sub_timing_after_prepare_fog.after(prepare_fog),
                 render_sub_timing_after_clear_bin_unpacking_buffers
                     .after(clear_bin_unpacking_buffers),
+                render_sub_timing_before_cpu_clustering.before(prepare_clusters_for_cpu_clustering),
                 render_sub_timing_after_cpu_clustering.after(prepare_clusters_for_cpu_clustering),
             ),
         );
@@ -427,6 +428,10 @@ fn render_sub_timing_after_prepare_fog(mut timing: ResMut<RenderSubAppTiming>) {
 
 fn render_sub_timing_after_clear_bin_unpacking_buffers(mut timing: ResMut<RenderSubAppTiming>) {
     timing.mark("AfterClearBinUnpackingBuffers");
+}
+
+fn render_sub_timing_before_cpu_clustering(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("BeforeCpuClustering");
 }
 
 fn render_sub_timing_after_cpu_clustering(mut timing: ResMut<RenderSubAppTiming>) {
