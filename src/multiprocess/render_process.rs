@@ -8,7 +8,10 @@ use bevy::{
     log::{Level, LogPlugin},
     pbr::{DefaultOpaqueRendererMethod, ScreenSpaceAmbientOcclusion, ScreenSpaceReflections},
     prelude::*,
-    render::{camera::TemporalJitter, pipelined_rendering::PipelinedRenderingPlugin},
+    render::{
+        ExtractSchedule, Render, RenderApp, RenderSystems, camera::TemporalJitter,
+        pipelined_rendering::PipelinedRenderingPlugin,
+    },
     window::EnabledButtons,
     winit::WinitSettings,
 };
@@ -115,6 +118,21 @@ pub(crate) fn run<T: crate::TephriteApp>() -> AppExit {
             .build()
             .disable::<PipelinedRenderingPlugin>(),
     );
+
+    if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
+        render_app.insert_resource(RenderSubAppTiming::new(rank));
+        render_app.add_systems(First, render_sub_timing_first);
+        render_app.add_systems(ExtractSchedule, render_sub_timing_extract);
+        render_app.add_systems(
+            Render,
+            (
+                render_sub_timing_render_start.before(RenderSystems::ExtractCommands),
+                render_sub_timing_before_render.before(RenderSystems::Render),
+                render_sub_timing_after_render.after(RenderSystems::Render),
+                render_sub_timing_render_end.after(RenderSystems::PostCleanup),
+            ),
+        );
+    }
 
     debug!(
         "Creating render window rank={} pid={} display={:?} card_index={:?} position={:?} resolution={:?} fullscreen={} mode={}",
@@ -253,6 +271,67 @@ fn render_timing_post_update(mut timing: ResMut<RenderScheduleTiming>) {
 
 fn render_timing_last(mut timing: ResMut<RenderScheduleTiming>) {
     timing.mark("Last");
+}
+
+#[derive(Resource)]
+struct RenderSubAppTiming {
+    rank: u32,
+    pid: u32,
+    last_marker: Option<(Instant, &'static str)>,
+}
+
+impl RenderSubAppTiming {
+    fn new(rank: u32) -> Self {
+        Self {
+            rank,
+            pid: std::process::id(),
+            last_marker: None,
+        }
+    }
+
+    fn mark(&mut self, marker: &'static str) {
+        let now = Instant::now();
+
+        if let Some((last, last_marker)) = self.last_marker {
+            let elapsed = now.duration_since(last);
+            if elapsed >= SLOW_RENDER_SCHEDULE_LOG_AFTER {
+                eprintln!(
+                    "[teph-sync] render rank {} pid={} subapp {} -> {} took {:.3} ms",
+                    self.rank,
+                    self.pid,
+                    last_marker,
+                    marker,
+                    elapsed.as_secs_f64() * 1000.0
+                );
+            }
+        }
+
+        self.last_marker = Some((now, marker));
+    }
+}
+
+fn render_sub_timing_first(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("RenderFirst");
+}
+
+fn render_sub_timing_extract(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("ExtractSchedule");
+}
+
+fn render_sub_timing_render_start(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("RenderStart");
+}
+
+fn render_sub_timing_before_render(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("BeforeRenderSystem");
+}
+
+fn render_sub_timing_after_render(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("AfterRenderSystem");
+}
+
+fn render_sub_timing_render_end(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("RenderEnd");
 }
 
 fn sync_cam_to_head(
