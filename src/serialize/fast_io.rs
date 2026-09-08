@@ -87,10 +87,10 @@ pub trait ByteSink {
     fn put_i64(&mut self, v: i64) {
         self.put_pod(&v)
     }
-    #[inline(always)]
-    fn put_f16(&mut self, v: f16) {
-        self.put_pod(&v)
-    }
+    // #[inline(always)]
+    // fn put_f16(&mut self, v: f16) {
+    //     self.put_pod(&v)
+    // }
     #[inline(always)]
     fn put_f32(&mut self, v: f32) {
         self.put_pod(&v)
@@ -194,10 +194,10 @@ pub trait ByteSource<'a> {
     fn get_i64(&mut self) -> i64 {
         self.get_pod()
     }
-    #[inline(always)]
-    fn get_f16(&mut self) -> f16 {
-        self.get_pod()
-    }
+    // #[inline(always)]
+    // fn get_f16(&mut self) -> f16 {
+    //     self.get_pod()
+    // }
     #[inline(always)]
     fn get_f32(&mut self) -> f32 {
         self.get_pod()

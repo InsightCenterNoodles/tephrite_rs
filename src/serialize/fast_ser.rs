@@ -109,7 +109,7 @@ impl_fast_prim!(u64, put_u64, get_u64);
 impl_fast_prim!(i64, put_i64, get_i64);
 impl_fast_prim!(usize, put_usize, get_usize);
 impl_fast_prim!(isize, put_isize, get_isize);
-impl_fast_prim!(half::f16, put_f16, get_f16);
+//impl_fast_prim!(half::f16, put_f16, get_f16);
 impl_fast_prim!(f32, put_f32, get_f32);
 impl_fast_prim!(f64, put_f64, get_f64);
 
@@ -243,10 +243,10 @@ fast_vec!([i32; 2]);
 fast_vec!([i32; 3]);
 fast_vec!([i32; 4]);
 
-fast_vec!(f16);
-fast_vec!([f16; 2]);
-fast_vec!([f16; 3]);
-fast_vec!([f16; 4]);
+// fast_vec!(f16);
+// fast_vec!([f16; 2]);
+// fast_vec!([f16; 3]);
+// fast_vec!([f16; 4]);
 
 fast_vec!(f32);
 fast_vec!([f32; 2]);

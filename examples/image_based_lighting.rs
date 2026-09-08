@@ -30,18 +30,12 @@ fn setup(
         x.is_srgb = false;
     };
 
-    let ground_color = server
-        .load_builder()
-        .with_settings(color_settings)
-        .load("tex/MetalPlates006_1K-JPG_Color.jpg");
+    let ground_color =
+        server.load_with_settings_override("tex/MetalPlates006_1K-JPG_Color.jpg", color_settings);
     let ground_normal = server
-        .load_builder()
-        .with_settings(linear_settings)
-        .load("tex/MetalPlates006_1K-JPG_NormalGL.jpg");
-    let ground_roughmet = server
-        .load_builder()
-        .with_settings(linear_settings)
-        .load("tex/MetalPlates006_1K-JPG_RM.png");
+        .load_with_settings_override("tex/MetalPlates006_1K-JPG_NormalGL.jpg", linear_settings);
+    let ground_roughmet =
+        server.load_with_settings_override("tex/MetalPlates006_1K-JPG_RM.png", linear_settings);
 
     let ground_mat = StandardMaterial {
         base_color: Color::WHITE,
@@ -116,7 +110,7 @@ fn setup(
     commands.spawn((
         DirectionalLight {
             illuminance: 5000.0,
-            shadow_maps_enabled: true,
+            shadows_enabled: true,
             ..default()
         },
         Transform::from_xyz(0.0, 5.0, 3.0).looking_at((0.0, 0.0, 0.0).into(), Dir3::Y),

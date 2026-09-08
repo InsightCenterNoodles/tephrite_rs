@@ -380,7 +380,7 @@ fn write_component_removals<C>(
     }
 
     world.resource_scope(|world, mut cached: Mut<CachedRemovedComponents<C>>| {
-        let Ok(mut removals) = cached.state.get_mut(world) else {
+        let mut removals = cached.state.get_mut(world) else {
             return;
         };
         for entity in removals.read() {
@@ -448,7 +448,7 @@ fn write_asset_changes<A>(
     init_asset_reader::<A>(world);
 
     world.resource_scope(|world, mut cached: Mut<CachedAssetReader<A>>| {
-        let Ok((mut events, assets)) = cached.state.get_mut(world) else {
+        let (mut events, assets) = cached.state.get_mut(world) else {
             return;
         };
 
@@ -572,7 +572,7 @@ fn write_resource_change<R>(
     world.resource_scope(|world, mut cached: Mut<CachedResourceState<R>>| {
         let resource = cached.state.get_mut(world);
         match resource {
-            Ok(Some(resource)) => {
+            Some(resource) => {
                 if resource.is_changed() {
                     unsafe {
                         crate::replication::instruction::write_resource_update(
@@ -584,14 +584,13 @@ fn write_resource_change<R>(
                 }
                 cached.existed = true;
             }
-            Ok(None) if cached.existed => {
+            None if cached.existed => {
                 cached.existed = false;
                 unsafe {
                     crate::replication::instruction::write_resource_drop(dest, resource_type);
                 }
             }
-            Ok(None) => {}
-            Err(_) => {}
+            None => {}
         }
         cached.state.apply(world);
     });

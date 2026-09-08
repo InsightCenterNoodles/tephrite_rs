@@ -84,8 +84,7 @@ impl Default for ScreenSpaceAmbientOcclusionSettings {
 /// the replicated render camera.
 #[derive(Debug, Clone, PartialEq, Resource)]
 pub struct ScreenSpaceReflectionsSettings {
-    pub min_perceptual_roughness: Range<f32>,
-    pub max_perceptual_roughness: Range<f32>,
+    pub perceptual_roughness_threshold: f32,
     pub thickness: f32,
     pub linear_steps: u32,
     pub linear_march_exponent: f32,
@@ -97,8 +96,7 @@ pub struct ScreenSpaceReflectionsSettings {
 impl Default for ScreenSpaceReflectionsSettings {
     fn default() -> Self {
         Self {
-            min_perceptual_roughness: 0.08..0.12,
-            max_perceptual_roughness: 0.55..0.6,
+            perceptual_roughness_threshold: 0.1,
             linear_steps: 10,
             bisection_steps: 5,
             use_secant: true,

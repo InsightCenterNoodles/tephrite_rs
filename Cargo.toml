@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 dirs = "6"
 bitflags = "2"
-bevy = { version = "0.19.1", features = ["jpeg", "exr", "bevy_remote"] }
+bevy = { version = "0.18", features = ["jpeg", "exr", "bevy_remote"] }
 bytemuck = "1"
 itertools = "*"
 thiserror = "*"
@@ -16,7 +16,7 @@ serde = { version = "*", features = ["derive"] }
 toml = "0.9"
 cosmic-text = "*"
 crossbeam-queue = "*"
-bevy_rich_text3d = "0.7"
+bevy_rich_text3d = "0.6"
 http = "1.5"
 httparse = "1.10"
 bytes = "1.12"
@@ -32,7 +32,7 @@ opt-level = 1
 opt-level = 3
 
 [dev-dependencies]
-bevy = { version = "0.19.1", features = [
+bevy = { version = "0.18", features = [
     "jpeg",
     "exr",
     "bevy_remote",

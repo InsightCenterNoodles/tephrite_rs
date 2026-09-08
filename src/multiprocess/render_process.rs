@@ -2,25 +2,28 @@ use std::time::{Duration, Instant};
 
 use bevy::{
     app::TaskPoolThreadAssignmentPolicy,
-    camera::{Hdr, visibility::RenderLayers},
+    camera::visibility::RenderLayers,
     core_pipeline::{
         Skybox,
-        core_3d::{prepare_core_3d_depth_textures, prepare_prepass_textures},
+        //core_3d::{prepare_core_3d_depth_textures, prepare_prepass_textures},
         oit::OrderIndependentTransparencySettings,
         tonemapping::Tonemapping,
     },
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     log::{Level, LogPlugin},
     pbr::{
-        DefaultOpaqueRendererMethod, ScreenSpaceAmbientOcclusion, ScreenSpaceReflections,
-        prepare_clusters_for_cpu_clustering, prepare_fog,
+        DefaultOpaqueRendererMethod,
+        ScreenSpaceAmbientOcclusion,
+        ScreenSpaceReflections,
+        //prepare_clusters_for_cpu_clustering, prepare_fog,
     },
     prelude::*,
     render::{
         ExtractSchedule, Render, RenderApp, RenderSystems,
-        batching::gpu_preprocessing::clear_bin_unpacking_buffers, camera::TemporalJitter,
-        pipelined_rendering::PipelinedRenderingPlugin, renderer::render_system,
-        view::prepare_view_uniforms,
+        camera::TemporalJitter,
+        pipelined_rendering::PipelinedRenderingPlugin,
+        renderer::render_system,
+        view::{Hdr, prepare_view_uniforms},
     },
     window::EnabledButtons,
     winit::WinitSettings,
@@ -131,73 +134,73 @@ pub(crate) fn run<T: crate::TephriteApp>() -> AppExit {
     );
 
     if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
-        render_app.insert_resource(RenderSubAppTiming::new(rank));
-        render_app.add_systems(First, render_sub_timing_first);
-        render_app.add_systems(ExtractSchedule, render_sub_timing_extract);
-        render_app.add_systems(
-            Render,
-            (
-                render_sub_timing_render_start.before(RenderSystems::ExtractCommands),
-                render_sub_timing_after_extract_commands.after(RenderSystems::ExtractCommands),
-                render_sub_timing_after_prepare_assets.after(RenderSystems::PrepareAssets),
-                render_sub_timing_after_prepare_meshes.after(RenderSystems::PrepareMeshes),
-                render_sub_timing_after_create_views.after(RenderSystems::CreateViews),
-                render_sub_timing_after_specialize.after(RenderSystems::Specialize),
-                render_sub_timing_after_prepare_views.after(RenderSystems::PrepareViews),
-                render_sub_timing_after_queue.after(RenderSystems::Queue),
-                render_sub_timing_after_phase_sort.after(RenderSystems::PhaseSort),
-                render_sub_timing_before_prepare_resources.before(RenderSystems::PrepareResources),
-                render_sub_timing_before_core_3d_depth_textures
-                    .in_set(RenderSystems::PrepareResources)
-                    .before(prepare_core_3d_depth_textures),
-                render_sub_timing_after_core_3d_depth_textures
-                    .in_set(RenderSystems::PrepareResources)
-                    .after(prepare_core_3d_depth_textures),
-                render_sub_timing_after_prepass_textures
-                    .in_set(RenderSystems::PrepareResources)
-                    .after(prepare_prepass_textures),
-                render_sub_timing_after_view_uniforms
-                    .in_set(RenderSystems::PrepareResources)
-                    .after(prepare_view_uniforms),
-                render_sub_timing_before_prepare_fog
-                    .in_set(RenderSystems::PrepareResources)
-                    .before(prepare_fog),
-                render_sub_timing_after_prepare_fog
-                    .in_set(RenderSystems::PrepareResources)
-                    .after(prepare_fog),
-                render_sub_timing_after_clear_bin_unpacking_buffers
-                    .in_set(RenderSystems::PrepareResources)
-                    .after(clear_bin_unpacking_buffers),
-                render_sub_timing_before_cpu_clustering
-                    .in_set(RenderSystems::PrepareResources)
-                    .before(prepare_clusters_for_cpu_clustering),
-                render_sub_timing_after_cpu_clustering
-                    .in_set(RenderSystems::PrepareResources)
-                    .after(prepare_clusters_for_cpu_clustering),
-            ),
-        );
-        render_app.add_systems(
-            Render,
-            (
-                render_sub_timing_after_prepare_resources.after(RenderSystems::PrepareResources),
-                render_sub_timing_after_prepare_batch_phases
-                    .after(RenderSystems::PrepareResourcesBatchPhases),
-                render_sub_timing_after_prepare_write_phase_buffers
-                    .after(RenderSystems::PrepareResourcesWritePhaseBuffers),
-                render_sub_timing_after_prepare_collect_phase_buffers
-                    .after(RenderSystems::PrepareResourcesCollectPhaseBuffers),
-                render_sub_timing_after_prepare_flush.after(RenderSystems::PrepareResourcesFlush),
-                render_sub_timing_after_prepare_bind_groups.after(RenderSystems::PrepareBindGroups),
-                render_sub_timing_after_prepare.after(RenderSystems::Prepare),
-                render_sub_timing_before_render
-                    .in_set(RenderSystems::Render)
-                    .before(render_system),
-                render_sub_timing_after_render
-                    .in_set(RenderSystems::Render)
-                    .after(render_system),
-                render_sub_timing_render_end.after(RenderSystems::PostCleanup),
-            ),
-        );
+        // render_app.insert_resource(RenderSubAppTiming::new(rank));
+        // render_app.add_systems(First, render_sub_timing_first);
+        // render_app.add_systems(ExtractSchedule, render_sub_timing_extract);
+        // render_app.add_systems(
+        //     Render,
+        //     (
+        //         render_sub_timing_render_start.before(RenderSystems::ExtractCommands),
+        //         render_sub_timing_after_extract_commands.after(RenderSystems::ExtractCommands),
+        //         render_sub_timing_after_prepare_assets.after(RenderSystems::PrepareAssets),
+        //         render_sub_timing_after_prepare_meshes.after(RenderSystems::PrepareMeshes),
+        //         render_sub_timing_after_create_views.after(RenderSystems::CreateViews),
+        //         render_sub_timing_after_specialize.after(RenderSystems::Specialize),
+        //         render_sub_timing_after_prepare_views.after(RenderSystems::PrepareViews),
+        //         render_sub_timing_after_queue.after(RenderSystems::Queue),
+        //         render_sub_timing_after_phase_sort.after(RenderSystems::PhaseSort),
+        //         render_sub_timing_before_prepare_resources.before(RenderSystems::PrepareResources),
+        //         render_sub_timing_before_core_3d_depth_textures
+        //             .in_set(RenderSystems::PrepareResources)
+        //             .before(prepare_core_3d_depth_textures),
+        //         render_sub_timing_after_core_3d_depth_textures
+        //             .in_set(RenderSystems::PrepareResources)
+        //             .after(prepare_core_3d_depth_textures),
+        //         render_sub_timing_after_prepass_textures
+        //             .in_set(RenderSystems::PrepareResources)
+        //             .after(prepare_prepass_textures),
+        //         render_sub_timing_after_view_uniforms
+        //             .in_set(RenderSystems::PrepareResources)
+        //             .after(prepare_view_uniforms),
+        //         render_sub_timing_before_prepare_fog
+        //             .in_set(RenderSystems::PrepareResources)
+        //             .before(prepare_fog),
+        //         render_sub_timing_after_prepare_fog
+        //             .in_set(RenderSystems::PrepareResources)
+        //             .after(prepare_fog),
+        //         render_sub_timing_after_clear_bin_unpacking_buffers
+        //             .in_set(RenderSystems::PrepareResources)
+        //             .after(clear_bin_unpacking_buffers),
+        //         render_sub_timing_before_cpu_clustering
+        //             .in_set(RenderSystems::PrepareResources)
+        //             .before(prepare_clusters_for_cpu_clustering),
+        //         render_sub_timing_after_cpu_clustering
+        //             .in_set(RenderSystems::PrepareResources)
+        //             .after(prepare_clusters_for_cpu_clustering),
+        //     ),
+        // );
+        // render_app.add_systems(
+        //     Render,
+        //     (
+        //         render_sub_timing_after_prepare_resources.after(RenderSystems::PrepareResources),
+        //         render_sub_timing_after_prepare_batch_phases
+        //             .after(RenderSystems::PrepareResourcesBatchPhases),
+        //         render_sub_timing_after_prepare_write_phase_buffers
+        //             .after(RenderSystems::PrepareResourcesWritePhaseBuffers),
+        //         render_sub_timing_after_prepare_collect_phase_buffers
+        //             .after(RenderSystems::PrepareResourcesCollectPhaseBuffers),
+        //         render_sub_timing_after_prepare_flush.after(RenderSystems::PrepareResourcesFlush),
+        //         render_sub_timing_after_prepare_bind_groups.after(RenderSystems::PrepareBindGroups),
+        //         render_sub_timing_after_prepare.after(RenderSystems::Prepare),
+        //         render_sub_timing_before_render
+        //             .in_set(RenderSystems::Render)
+        //             .before(render_system),
+        //         render_sub_timing_after_render
+        //             .in_set(RenderSystems::Render)
+        //             .after(render_system),
+        //         render_sub_timing_render_end.after(RenderSystems::PostCleanup),
+        //     ),
+        // );
     }
 
     debug!(
@@ -627,7 +630,7 @@ fn env_change_watch(
             commands.insert_resource(ClearColor(color));
         } else {
             ec.insert(Skybox {
-                image: Some(env.specular.clone()),
+                image: env.specular.clone(),
                 brightness: env.intensity,
                 ..Default::default()
             });
@@ -652,11 +655,11 @@ fn oit_resource_watch(
 
     for cam in cam_q.iter_mut() {
         let mut ec = commands.entity(cam);
-        ec.insert(OrderIndependentTransparencySettings {
-            sorted_fragment_max_count: oit.sorted_fragment_max_count,
-            fragments_per_pixel_average: oit.fragments_per_pixel_average,
-            alpha_threshold: oit.alpha_threshold,
-        });
+        // ec.insert(OrderIndependentTransparencySettings {
+        //     sorted_fragment_max_count: oit.sorted_fragment_max_count,
+        //     fragments_per_pixel_average: oit.fragments_per_pixel_average,
+        //     alpha_threshold: oit.alpha_threshold,
+        // });
     }
 }
 
@@ -738,12 +741,11 @@ fn ssr_resource_watch(
 
     for cam in cam_q.iter_mut() {
         commands.entity(cam).insert(ScreenSpaceReflections {
-            min_perceptual_roughness: ssr.min_perceptual_roughness.clone(),
-            max_perceptual_roughness: ssr.max_perceptual_roughness.clone(),
+            perceptual_roughness_threshold: ssr.perceptual_roughness_threshold,
             thickness: ssr.thickness,
             linear_steps: ssr.linear_steps,
             linear_march_exponent: ssr.linear_march_exponent,
-            edge_fadeout: ssr.edge_fadeout.clone(),
+            //edge_fadeout: ssr.edge_fadeout.clone(),
             bisection_steps: ssr.bisection_steps,
             use_secant: ssr.use_secant,
         });
