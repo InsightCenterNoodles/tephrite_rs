@@ -550,6 +550,7 @@ fn wait_until_min_acked(cb: &ControlBlock, target: u64) -> RunResult<()> {
     let mut spins = 0u32;
     let wait_start = Instant::now();
     let mut last_slow_log = wait_start;
+    let mut logged_slow_wait = false;
     loop {
         let min_acked = cb.min_acked(n);
         if min_acked >= target {
@@ -557,11 +558,13 @@ fn wait_until_min_acked(cb: &ControlBlock, target: u64) -> RunResult<()> {
         }
 
         let now = Instant::now();
-        if now.duration_since(wait_start) >= SLOW_SYNC_LOG_AFTER
-            && now.duration_since(last_slow_log) >= SLOW_SYNC_LOG_INTERVAL
+        let elapsed = now.duration_since(wait_start);
+        if elapsed >= SLOW_SYNC_LOG_AFTER
+            && (!logged_slow_wait || now.duration_since(last_slow_log) >= SLOW_SYNC_LOG_INTERVAL)
         {
             log_consumer_wait(cb, n, target, min_acked, now.duration_since(wait_start));
             last_slow_log = now;
+            logged_slow_wait = true;
         }
 
         adaptive_pause(&mut spins);
@@ -580,7 +583,6 @@ fn wait_until_min_acked(cb: &ControlBlock, target: u64) -> RunResult<()> {
             target,
             elapsed.as_secs_f64() * 1000.0
         ));
-        log_consumer_wait(cb, n, target, cb.min_acked(n), elapsed);
     }
 
     Ok(())
