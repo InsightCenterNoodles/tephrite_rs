@@ -580,6 +580,7 @@ fn wait_until_min_acked(cb: &ControlBlock, target: u64) -> RunResult<()> {
             target,
             elapsed.as_secs_f64() * 1000.0
         ));
+        log_consumer_wait(cb, n, target, cb.min_acked(n), elapsed);
     }
 
     Ok(())
