@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use bevy::ecs::entity::EntityHashMap;
 use bevy::prelude::*;
 
@@ -25,6 +27,7 @@ impl Plugin for ReplicationReaderPlugin {
         app.init_resource::<ReplicationRegistry>();
         app.insert_non_send(transcript);
         app.init_resource::<EntityMap>();
+        app.init_resource::<ReaderTimingState>();
 
         app.add_systems(PreUpdate, child_system);
     }
@@ -39,6 +42,11 @@ impl Plugin for ReplicationReaderPlugin {
 /// that represents each foreign entity.
 #[derive(Resource, Default)]
 struct EntityMap(EntityHashMap<Entity>);
+
+#[derive(Resource, Default)]
+struct ReaderTimingState {
+    last_pre_update: Option<Instant>,
+}
 
 impl EntityMap {
     fn add(&mut self, foreign: Entity, world: &mut World) -> Entity {
@@ -66,6 +74,20 @@ impl EntityMap {
 /// arbitrary registered component, asset, and resource types. Keeping this as a
 /// single system also preserves exact instruction ordering within each frame.
 fn child_system(world: &mut World) {
+    world.resource_scope(|_world, mut timing: Mut<ReaderTimingState>| {
+        let now = Instant::now();
+        if let Some(last) = timing.last_pre_update {
+            let elapsed = now.duration_since(last);
+            if elapsed >= Duration::from_millis(16) {
+                eprintln!(
+                    "[teph-sync] render replication PreUpdate gap took {:.3} ms",
+                    elapsed.as_secs_f64() * 1000.0
+                );
+            }
+        }
+        timing.last_pre_update = Some(now);
+    });
+
     // Temporarily remove the non-send transcript reader so the consume callback
     // can borrow `world` exclusively while parsing the frame.
     let Some(mut transcript) = world.remove_non_send::<TranscriptReaderResource>() else {
