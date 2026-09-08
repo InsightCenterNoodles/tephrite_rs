@@ -622,8 +622,11 @@ fn sync_debug(args: std::fmt::Arguments<'_>) {
 }
 
 pub(crate) fn sync_stderr(args: std::fmt::Arguments<'_>) {
+    let mut line = String::new();
+    let _ = std::fmt::write(&mut line, format_args!("[teph-sync] {args}\n"));
+
     let stderr = std::io::stderr();
     let mut stderr = stderr.lock();
-    let _ = writeln!(stderr, "[teph-sync] {args}");
+    let _ = stderr.write_all(line.as_bytes());
     let _ = stderr.flush();
 }
