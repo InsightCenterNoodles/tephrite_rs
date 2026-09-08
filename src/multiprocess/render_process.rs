@@ -1,5 +1,3 @@
-use std::num::NonZeroU32;
-
 use bevy::{
     app::TaskPoolThreadAssignmentPolicy,
     camera::{Hdr, visibility::RenderLayers},
@@ -40,7 +38,7 @@ pub(crate) fn run<T: crate::TephriteApp>() -> AppExit {
     let mut app = App::new();
 
     let mut window = Window {
-        present_mode: bevy::window::PresentMode::Fifo,
+        present_mode: bevy::window::PresentMode::AutoNoVsync,
         mode: bevy::window::WindowMode::Windowed,
         title: format!("Tephrite Window {}", std::process::id()),
         resolution: child_config.resolution.into(),
@@ -50,7 +48,6 @@ pub(crate) fn run<T: crate::TephriteApp>() -> AppExit {
             close: false,
         },
         position: WindowPosition::At(child_config.placement.as_ivec2()),
-        desired_maximum_frame_latency: Some(unsafe { NonZeroU32::new_unchecked(1) }),
         ..Default::default()
     };
 
