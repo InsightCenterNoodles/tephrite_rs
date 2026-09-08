@@ -35,6 +35,7 @@ use crate::{
         ScreenSpaceReflectionsSettings,
     },
     config::get_render_configuration,
+    multiprocess::shared_buffer::sync_stderr,
 };
 
 /// Function to run a render (or child) process
@@ -146,6 +147,9 @@ pub(crate) fn run<T: crate::TephriteApp>() -> AppExit {
                 render_sub_timing_after_queue.after(RenderSystems::Queue),
                 render_sub_timing_after_phase_sort.after(RenderSystems::PhaseSort),
                 render_sub_timing_before_prepare_resources.before(RenderSystems::PrepareResources),
+                render_sub_timing_before_core_3d_depth_textures
+                    .in_set(RenderSystems::PrepareResources)
+                    .before(prepare_core_3d_depth_textures),
                 render_sub_timing_after_core_3d_depth_textures
                     .in_set(RenderSystems::PrepareResources)
                     .after(prepare_core_3d_depth_textures),
@@ -288,11 +292,11 @@ impl RenderScheduleTiming {
             if let Some(last_first) = self.last_first {
                 let elapsed = now.duration_since(last_first);
                 if elapsed >= SLOW_RENDER_SCHEDULE_LOG_AFTER {
-                    eprintln!(
-                        "[teph-sync] render rank {} First-to-First gap took {:.3} ms",
+                    sync_stderr(format_args!(
+                        "render rank {} First-to-First gap took {:.3} ms",
                         self.rank,
                         elapsed.as_secs_f64() * 1000.0
-                    );
+                    ));
                 }
             }
             self.last_first = Some(now);
@@ -301,13 +305,13 @@ impl RenderScheduleTiming {
         if let Some((last, last_marker)) = self.last_marker {
             let elapsed = now.duration_since(last);
             if elapsed >= SLOW_RENDER_SCHEDULE_LOG_AFTER {
-                eprintln!(
-                    "[teph-sync] render rank {} {} -> {} took {:.3} ms",
+                sync_stderr(format_args!(
+                    "render rank {} {} -> {} took {:.3} ms",
                     self.rank,
                     last_marker,
                     marker,
                     elapsed.as_secs_f64() * 1000.0
-                );
+                ));
             }
         }
 
@@ -357,14 +361,14 @@ impl RenderSubAppTiming {
         if let Some((last, last_marker)) = self.last_marker {
             let elapsed = now.duration_since(last);
             if elapsed >= SLOW_RENDER_SCHEDULE_LOG_AFTER {
-                eprintln!(
-                    "[teph-sync] render rank {} pid={} subapp {} -> {} took {:.3} ms",
+                sync_stderr(format_args!(
+                    "render rank {} pid={} subapp {} -> {} took {:.3} ms",
                     self.rank,
                     self.pid,
                     last_marker,
                     marker,
                     elapsed.as_secs_f64() * 1000.0
-                );
+                ));
             }
         }
 
@@ -418,6 +422,10 @@ fn render_sub_timing_after_phase_sort(mut timing: ResMut<RenderSubAppTiming>) {
 
 fn render_sub_timing_before_prepare_resources(mut timing: ResMut<RenderSubAppTiming>) {
     timing.mark("BeforePrepareResources");
+}
+
+fn render_sub_timing_before_core_3d_depth_textures(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("BeforeCore3dDepthTextures");
 }
 
 fn render_sub_timing_after_core_3d_depth_textures(mut timing: ResMut<RenderSubAppTiming>) {

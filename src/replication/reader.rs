@@ -8,7 +8,7 @@ use crate::serialize::transcript_reader::TranscriptReaderResource;
 use crate::serialize::*;
 
 use super::instruction::*;
-use crate::multiprocess::child_process_id;
+use crate::multiprocess::{child_process_id, shared_buffer::sync_stderr};
 
 // =============================================================================
 
@@ -92,12 +92,12 @@ fn child_system(world: &mut World) {
         if let Some(last) = timing.last_pre_update {
             let elapsed = now.duration_since(last);
             if elapsed >= Duration::from_millis(16) {
-                eprintln!(
-                    "[teph-sync] render rank {} pid={} replication PreUpdate gap took {:.3} ms",
+                sync_stderr(format_args!(
+                    "render rank {} pid={} replication PreUpdate gap took {:.3} ms",
                     timing.rank,
                     timing.pid,
                     elapsed.as_secs_f64() * 1000.0
-                );
+                ));
             }
         }
         timing.last_pre_update = Some(now);

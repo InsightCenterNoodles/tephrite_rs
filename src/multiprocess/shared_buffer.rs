@@ -8,7 +8,7 @@ use core::sync::atomic::{
     AtomicU32, AtomicU64,
     Ordering::{AcqRel, Acquire, Relaxed, Release},
 };
-use std::io::Result;
+use std::io::{Result, Write};
 use std::time::{Duration, Instant};
 use std::{ptr, thread};
 
@@ -611,12 +611,19 @@ fn log_consumer_wait(cb: &ControlBlock, n: usize, target: u64, min_acked: u64, e
 
 fn sync_warn(args: std::fmt::Arguments<'_>) {
     warn!("{args}");
-    eprintln!("[teph-sync] {args}");
+    sync_stderr(args);
 }
 
 fn sync_debug(args: std::fmt::Arguments<'_>) {
     debug!("{args}");
     if std::env::var_os("TEPH_SYNC_TRACE_ACK").is_some() {
-        eprintln!("[teph-sync] {args}");
+        sync_stderr(args);
     }
+}
+
+pub(crate) fn sync_stderr(args: std::fmt::Arguments<'_>) {
+    let stderr = std::io::stderr();
+    let mut stderr = stderr.lock();
+    let _ = writeln!(stderr, "[teph-sync] {args}");
+    let _ = stderr.flush();
 }
