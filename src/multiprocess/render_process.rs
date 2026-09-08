@@ -127,6 +127,15 @@ pub(crate) fn run<T: crate::TephriteApp>() -> AppExit {
             Render,
             (
                 render_sub_timing_render_start.before(RenderSystems::ExtractCommands),
+                render_sub_timing_after_extract_commands.after(RenderSystems::ExtractCommands),
+                render_sub_timing_after_prepare_assets.after(RenderSystems::PrepareAssets),
+                render_sub_timing_after_prepare_meshes.after(RenderSystems::PrepareMeshes),
+                render_sub_timing_after_create_views.after(RenderSystems::CreateViews),
+                render_sub_timing_after_specialize.after(RenderSystems::Specialize),
+                render_sub_timing_after_prepare_views.after(RenderSystems::PrepareViews),
+                render_sub_timing_after_queue.after(RenderSystems::Queue),
+                render_sub_timing_after_phase_sort.after(RenderSystems::PhaseSort),
+                render_sub_timing_after_prepare.after(RenderSystems::Prepare),
                 render_sub_timing_before_render
                     .in_set(RenderSystems::Render)
                     .before(render_system),
@@ -324,6 +333,42 @@ fn render_sub_timing_extract(mut timing: ResMut<RenderSubAppTiming>) {
 
 fn render_sub_timing_render_start(mut timing: ResMut<RenderSubAppTiming>) {
     timing.mark("RenderStart");
+}
+
+fn render_sub_timing_after_extract_commands(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("AfterExtractCommands");
+}
+
+fn render_sub_timing_after_prepare_assets(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("AfterPrepareAssets");
+}
+
+fn render_sub_timing_after_prepare_meshes(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("AfterPrepareMeshes");
+}
+
+fn render_sub_timing_after_create_views(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("AfterCreateViews");
+}
+
+fn render_sub_timing_after_specialize(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("AfterSpecialize");
+}
+
+fn render_sub_timing_after_prepare_views(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("AfterPrepareViews");
+}
+
+fn render_sub_timing_after_queue(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("AfterQueue");
+}
+
+fn render_sub_timing_after_phase_sort(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("AfterPhaseSort");
+}
+
+fn render_sub_timing_after_prepare(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("AfterPrepare");
 }
 
 fn render_sub_timing_before_render(mut timing: ResMut<RenderSubAppTiming>) {
