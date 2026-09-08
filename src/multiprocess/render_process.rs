@@ -147,15 +147,29 @@ pub(crate) fn run<T: crate::TephriteApp>() -> AppExit {
                 render_sub_timing_after_phase_sort.after(RenderSystems::PhaseSort),
                 render_sub_timing_before_prepare_resources.before(RenderSystems::PrepareResources),
                 render_sub_timing_after_core_3d_depth_textures
+                    .in_set(RenderSystems::PrepareResources)
                     .after(prepare_core_3d_depth_textures),
-                render_sub_timing_after_prepass_textures.after(prepare_prepass_textures),
-                render_sub_timing_after_view_uniforms.after(prepare_view_uniforms),
-                render_sub_timing_before_prepare_fog.before(prepare_fog),
-                render_sub_timing_after_prepare_fog.after(prepare_fog),
+                render_sub_timing_after_prepass_textures
+                    .in_set(RenderSystems::PrepareResources)
+                    .after(prepare_prepass_textures),
+                render_sub_timing_after_view_uniforms
+                    .in_set(RenderSystems::PrepareResources)
+                    .after(prepare_view_uniforms),
+                render_sub_timing_before_prepare_fog
+                    .in_set(RenderSystems::PrepareResources)
+                    .before(prepare_fog),
+                render_sub_timing_after_prepare_fog
+                    .in_set(RenderSystems::PrepareResources)
+                    .after(prepare_fog),
                 render_sub_timing_after_clear_bin_unpacking_buffers
+                    .in_set(RenderSystems::PrepareResources)
                     .after(clear_bin_unpacking_buffers),
-                render_sub_timing_before_cpu_clustering.before(prepare_clusters_for_cpu_clustering),
-                render_sub_timing_after_cpu_clustering.after(prepare_clusters_for_cpu_clustering),
+                render_sub_timing_before_cpu_clustering
+                    .in_set(RenderSystems::PrepareResources)
+                    .before(prepare_clusters_for_cpu_clustering),
+                render_sub_timing_after_cpu_clustering
+                    .in_set(RenderSystems::PrepareResources)
+                    .after(prepare_clusters_for_cpu_clustering),
             ),
         );
         render_app.add_systems(
