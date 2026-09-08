@@ -27,7 +27,7 @@ pub fn instance_material_plugin(app: &mut App) {
 
 pub(crate) fn builtin_materials_plugin(app: &mut App) {
     points_material_plugin(app);
-    instance_material_plugin(app);
+    //instance_material_plugin(app);
 }
 
 #[cfg(test)]

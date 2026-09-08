@@ -10,7 +10,7 @@ use bevy::{
     prelude::*,
     render::{
         ExtractSchedule, Render, RenderApp, RenderSystems, camera::TemporalJitter,
-        pipelined_rendering::PipelinedRenderingPlugin,
+        pipelined_rendering::PipelinedRenderingPlugin, renderer::render_system,
     },
     window::EnabledButtons,
     winit::WinitSettings,
@@ -127,8 +127,8 @@ pub(crate) fn run<T: crate::TephriteApp>() -> AppExit {
             Render,
             (
                 render_sub_timing_render_start.before(RenderSystems::ExtractCommands),
-                render_sub_timing_before_render.before(RenderSystems::Render),
-                render_sub_timing_after_render.after(RenderSystems::Render),
+                render_sub_timing_before_render.before(render_system),
+                render_sub_timing_after_render.after(render_system),
                 render_sub_timing_render_end.after(RenderSystems::PostCleanup),
             ),
         );
