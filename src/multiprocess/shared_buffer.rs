@@ -437,7 +437,8 @@ impl Consumer {
         let wait_elapsed = wait_start.elapsed();
         if wait_elapsed >= SLOW_SYNC_LOG_AFTER {
             sync_warn(format_args!(
-                "render consumer {} wait_for_next gen={} slot={} took {:.3} ms",
+                "render pid={} consumer {} wait_for_next gen={} slot={} took {:.3} ms",
+                std::process::id(),
                 self.id,
                 gen_id,
                 slot,
@@ -457,7 +458,8 @@ impl Consumer {
         let callback_elapsed = callback_start.elapsed();
         if callback_elapsed >= SLOW_SYNC_LOG_AFTER {
             sync_warn(format_args!(
-                "render consumer {} callback gen={} slot={} took {:.3} ms",
+                "render pid={} consumer {} callback gen={} slot={} took {:.3} ms",
+                std::process::id(),
                 self.id,
                 gen_id,
                 slot,
@@ -466,13 +468,17 @@ impl Consumer {
         }
 
         sync_debug(format_args!(
-            "render consumer {} before ack gen={}",
-            self.id, gen_id
+            "render pid={} consumer {} before ack gen={}",
+            std::process::id(),
+            self.id,
+            gen_id
         ));
         self.ack(gen_id);
         sync_debug(format_args!(
-            "render consumer {} after ack gen={}",
-            self.id, gen_id
+            "render pid={} consumer {} after ack gen={}",
+            std::process::id(),
+            self.id,
+            gen_id
         ));
 
         Ok(())
@@ -579,7 +585,8 @@ fn wait_until_min_acked(cb: &ControlBlock, target: u64) -> RunResult<()> {
     let elapsed = wait_start.elapsed();
     if elapsed >= SLOW_SYNC_LOG_AFTER {
         sync_warn(format_args!(
-            "logic wait_until_min_acked target={} took {:.3} ms",
+            "logic pid={} wait_until_min_acked target={} took {:.3} ms",
+            std::process::id(),
             target,
             elapsed.as_secs_f64() * 1000.0
         ));
@@ -591,7 +598,8 @@ fn wait_until_min_acked(cb: &ControlBlock, target: u64) -> RunResult<()> {
 fn log_consumer_wait(cb: &ControlBlock, n: usize, target: u64, min_acked: u64, elapsed: Duration) {
     for i in 0..n {
         sync_warn(format_args!(
-            "logic wait_until_min_acked target={} min_acked={} consumer_gen[{}]={} elapsed={:.3} ms",
+            "logic pid={} wait_until_min_acked target={} min_acked={} consumer_gen[{}]={} elapsed={:.3} ms",
+            std::process::id(),
             target,
             min_acked,
             i,

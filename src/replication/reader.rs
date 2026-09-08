@@ -8,6 +8,7 @@ use crate::serialize::transcript_reader::TranscriptReaderResource;
 use crate::serialize::*;
 
 use super::instruction::*;
+use crate::multiprocess::child_process_id;
 
 // =============================================================================
 
@@ -27,7 +28,7 @@ impl Plugin for ReplicationReaderPlugin {
         app.init_resource::<ReplicationRegistry>();
         app.insert_non_send(transcript);
         app.init_resource::<EntityMap>();
-        app.init_resource::<ReaderTimingState>();
+        app.insert_resource(ReaderTimingState::new(child_process_id()));
 
         app.add_systems(PreUpdate, child_system);
     }
@@ -43,9 +44,21 @@ impl Plugin for ReplicationReaderPlugin {
 #[derive(Resource, Default)]
 struct EntityMap(EntityHashMap<Entity>);
 
-#[derive(Resource, Default)]
+#[derive(Resource)]
 struct ReaderTimingState {
+    rank: u32,
+    pid: u32,
     last_pre_update: Option<Instant>,
+}
+
+impl ReaderTimingState {
+    fn new(rank: u32) -> Self {
+        Self {
+            rank,
+            pid: std::process::id(),
+            last_pre_update: None,
+        }
+    }
 }
 
 impl EntityMap {
@@ -80,7 +93,9 @@ fn child_system(world: &mut World) {
             let elapsed = now.duration_since(last);
             if elapsed >= Duration::from_millis(16) {
                 eprintln!(
-                    "[teph-sync] render replication PreUpdate gap took {:.3} ms",
+                    "[teph-sync] render rank {} pid={} replication PreUpdate gap took {:.3} ms",
+                    timing.rank,
+                    timing.pid,
                     elapsed.as_secs_f64() * 1000.0
                 );
             }

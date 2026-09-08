@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use bevy::{
     app::TaskPoolThreadAssignmentPolicy,
     camera::{Hdr, visibility::RenderLayers},
@@ -10,6 +12,8 @@ use bevy::{
     window::EnabledButtons,
     winit::WinitSettings,
 };
+
+const SLOW_RENDER_SCHEDULE_LOG_AFTER: Duration = Duration::from_millis(16);
 
 use crate::{
     common::{
@@ -59,6 +63,7 @@ pub(crate) fn run<T: crate::TephriteApp>() -> AppExit {
     let window_mode = format!("{:?}", window.mode);
 
     app.insert_resource(WinitSettings::continuous());
+    app.insert_resource(RenderScheduleTiming::new(rank));
 
     app.add_plugins(
         DefaultPlugins
@@ -147,6 +152,12 @@ pub(crate) fn run<T: crate::TephriteApp>() -> AppExit {
 
     //app.add_plugins(bevy::camera::visibility::VisibilityPlugin);
 
+    app.add_systems(First, render_timing_first);
+    app.add_systems(PreUpdate, render_timing_pre_update);
+    app.add_systems(Update, render_timing_update);
+    app.add_systems(PostUpdate, render_timing_post_update);
+    app.add_systems(Last, render_timing_last);
+
     app.add_systems(PreStartup, setup);
 
     app.add_systems(Update, env_change_watch);
@@ -172,6 +183,76 @@ pub(crate) fn run<T: crate::TephriteApp>() -> AppExit {
     drop(vulkan_support_client);
 
     result
+}
+
+#[derive(Resource)]
+struct RenderScheduleTiming {
+    rank: u32,
+    last_first: Option<Instant>,
+    last_marker: Option<(Instant, &'static str)>,
+}
+
+impl RenderScheduleTiming {
+    fn new(rank: u32) -> Self {
+        Self {
+            rank,
+            last_first: None,
+            last_marker: None,
+        }
+    }
+
+    fn mark(&mut self, marker: &'static str) {
+        let now = Instant::now();
+
+        if marker == "First" {
+            if let Some(last_first) = self.last_first {
+                let elapsed = now.duration_since(last_first);
+                if elapsed >= SLOW_RENDER_SCHEDULE_LOG_AFTER {
+                    eprintln!(
+                        "[teph-sync] render rank {} First-to-First gap took {:.3} ms",
+                        self.rank,
+                        elapsed.as_secs_f64() * 1000.0
+                    );
+                }
+            }
+            self.last_first = Some(now);
+        }
+
+        if let Some((last, last_marker)) = self.last_marker {
+            let elapsed = now.duration_since(last);
+            if elapsed >= SLOW_RENDER_SCHEDULE_LOG_AFTER {
+                eprintln!(
+                    "[teph-sync] render rank {} {} -> {} took {:.3} ms",
+                    self.rank,
+                    last_marker,
+                    marker,
+                    elapsed.as_secs_f64() * 1000.0
+                );
+            }
+        }
+
+        self.last_marker = Some((now, marker));
+    }
+}
+
+fn render_timing_first(mut timing: ResMut<RenderScheduleTiming>) {
+    timing.mark("First");
+}
+
+fn render_timing_pre_update(mut timing: ResMut<RenderScheduleTiming>) {
+    timing.mark("PreUpdate");
+}
+
+fn render_timing_update(mut timing: ResMut<RenderScheduleTiming>) {
+    timing.mark("Update");
+}
+
+fn render_timing_post_update(mut timing: ResMut<RenderScheduleTiming>) {
+    timing.mark("PostUpdate");
+}
+
+fn render_timing_last(mut timing: ResMut<RenderScheduleTiming>) {
+    timing.mark("Last");
 }
 
 fn sync_cam_to_head(
