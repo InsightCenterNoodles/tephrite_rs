@@ -8,6 +8,7 @@ use bevy::{
     prelude::*,
     render::{camera::TemporalJitter, pipelined_rendering::PipelinedRenderingPlugin},
     window::EnabledButtons,
+    winit::WinitSettings,
 };
 
 use crate::{
@@ -56,6 +57,8 @@ pub(crate) fn run<T: crate::TephriteApp>() -> AppExit {
     }
 
     let window_mode = format!("{:?}", window.mode);
+
+    app.insert_resource(WinitSettings::continuous());
 
     app.add_plugins(
         DefaultPlugins
