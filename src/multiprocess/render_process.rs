@@ -344,6 +344,9 @@ struct RenderSubAppTiming {
     rank: u32,
     pid: u32,
     last_marker: Option<(Instant, &'static str)>,
+    core_3d_depth_textures_start: Option<Instant>,
+    prepare_fog_start: Option<Instant>,
+    cpu_clustering_start: Option<Instant>,
 }
 
 impl RenderSubAppTiming {
@@ -352,6 +355,9 @@ impl RenderSubAppTiming {
             rank,
             pid: std::process::id(),
             last_marker: None,
+            core_3d_depth_textures_start: None,
+            prepare_fog_start: None,
+            cpu_clustering_start: None,
         }
     }
 
@@ -373,6 +379,19 @@ impl RenderSubAppTiming {
         }
 
         self.last_marker = Some((now, marker));
+    }
+
+    fn log_span(&self, marker: &'static str, start: Instant) {
+        let elapsed = start.elapsed();
+        if elapsed >= SLOW_RENDER_SCHEDULE_LOG_AFTER {
+            sync_stderr(format_args!(
+                "render rank {} pid={} subapp span {} took {:.3} ms",
+                self.rank,
+                self.pid,
+                marker,
+                elapsed.as_secs_f64() * 1000.0
+            ));
+        }
     }
 }
 
@@ -425,10 +444,14 @@ fn render_sub_timing_before_prepare_resources(mut timing: ResMut<RenderSubAppTim
 }
 
 fn render_sub_timing_before_core_3d_depth_textures(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.core_3d_depth_textures_start = Some(Instant::now());
     timing.mark("BeforeCore3dDepthTextures");
 }
 
 fn render_sub_timing_after_core_3d_depth_textures(mut timing: ResMut<RenderSubAppTiming>) {
+    if let Some(start) = timing.core_3d_depth_textures_start.take() {
+        timing.log_span("Core3dDepthTextures", start);
+    }
     timing.mark("AfterCore3dDepthTextures");
 }
 
@@ -441,10 +464,14 @@ fn render_sub_timing_after_view_uniforms(mut timing: ResMut<RenderSubAppTiming>)
 }
 
 fn render_sub_timing_before_prepare_fog(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.prepare_fog_start = Some(Instant::now());
     timing.mark("BeforePrepareFog");
 }
 
 fn render_sub_timing_after_prepare_fog(mut timing: ResMut<RenderSubAppTiming>) {
+    if let Some(start) = timing.prepare_fog_start.take() {
+        timing.log_span("PrepareFog", start);
+    }
     timing.mark("AfterPrepareFog");
 }
 
@@ -453,10 +480,14 @@ fn render_sub_timing_after_clear_bin_unpacking_buffers(mut timing: ResMut<Render
 }
 
 fn render_sub_timing_before_cpu_clustering(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.cpu_clustering_start = Some(Instant::now());
     timing.mark("BeforeCpuClustering");
 }
 
 fn render_sub_timing_after_cpu_clustering(mut timing: ResMut<RenderSubAppTiming>) {
+    if let Some(start) = timing.cpu_clustering_start.take() {
+        timing.log_span("CpuClustering", start);
+    }
     timing.mark("AfterCpuClustering");
 }
 
