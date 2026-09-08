@@ -135,6 +135,15 @@ pub(crate) fn run<T: crate::TephriteApp>() -> AppExit {
                 render_sub_timing_after_prepare_views.after(RenderSystems::PrepareViews),
                 render_sub_timing_after_queue.after(RenderSystems::Queue),
                 render_sub_timing_after_phase_sort.after(RenderSystems::PhaseSort),
+                render_sub_timing_after_prepare_resources.after(RenderSystems::PrepareResources),
+                render_sub_timing_after_prepare_batch_phases
+                    .after(RenderSystems::PrepareResourcesBatchPhases),
+                render_sub_timing_after_prepare_write_phase_buffers
+                    .after(RenderSystems::PrepareResourcesWritePhaseBuffers),
+                render_sub_timing_after_prepare_collect_phase_buffers
+                    .after(RenderSystems::PrepareResourcesCollectPhaseBuffers),
+                render_sub_timing_after_prepare_flush.after(RenderSystems::PrepareResourcesFlush),
+                render_sub_timing_after_prepare_bind_groups.after(RenderSystems::PrepareBindGroups),
                 render_sub_timing_after_prepare.after(RenderSystems::Prepare),
                 render_sub_timing_before_render
                     .in_set(RenderSystems::Render)
@@ -365,6 +374,30 @@ fn render_sub_timing_after_queue(mut timing: ResMut<RenderSubAppTiming>) {
 
 fn render_sub_timing_after_phase_sort(mut timing: ResMut<RenderSubAppTiming>) {
     timing.mark("AfterPhaseSort");
+}
+
+fn render_sub_timing_after_prepare_resources(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("AfterPrepareResources");
+}
+
+fn render_sub_timing_after_prepare_batch_phases(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("AfterPrepareBatchPhases");
+}
+
+fn render_sub_timing_after_prepare_write_phase_buffers(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("AfterPrepareWritePhaseBuffers");
+}
+
+fn render_sub_timing_after_prepare_collect_phase_buffers(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("AfterPrepareCollectPhaseBuffers");
+}
+
+fn render_sub_timing_after_prepare_flush(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("AfterPrepareFlush");
+}
+
+fn render_sub_timing_after_prepare_bind_groups(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("AfterPrepareBindGroups");
 }
 
 fn render_sub_timing_after_prepare(mut timing: ResMut<RenderSubAppTiming>) {
