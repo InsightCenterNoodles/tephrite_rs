@@ -9,6 +9,7 @@ use core::sync::atomic::{
     Ordering::{AcqRel, Acquire, Relaxed, Release},
 };
 use std::io::Result;
+use std::time::{Duration, Instant};
 use std::{ptr, thread};
 
 use bevy::log::{debug, info, warn};
@@ -20,6 +21,8 @@ const MAGIC: u64 = 0x53584C4F434B5354; // "SXLOCKST" for sanity
 
 // Bookkeeping is stored in a region of this size at the start of the block.
 const SHMEM_DATA_OFFSET: usize = 8192;
+const SLOW_SYNC_LOG_AFTER: Duration = Duration::from_millis(16);
+const SLOW_SYNC_LOG_INTERVAL: Duration = Duration::from_millis(1000);
 
 pub fn compute_shmem_allocation_size(buf_count: usize, buf_size: usize) -> usize {
     const MAX_PAGE: usize = 2u32.pow(14) as usize;
@@ -429,18 +432,48 @@ impl Consumer {
     where
         F: FnMut(u64, u32, &[u8]),
     {
+        let wait_start = Instant::now();
         let (gen_id, slot, ptr) = self.wait_for_next()?;
+        let wait_elapsed = wait_start.elapsed();
+        if wait_elapsed >= SLOW_SYNC_LOG_AFTER {
+            sync_warn(format_args!(
+                "render consumer {} wait_for_next gen={} slot={} took {:.3} ms",
+                self.id,
+                gen_id,
+                slot,
+                wait_elapsed.as_secs_f64() * 1000.0
+            ));
+        }
 
         //println!("CHILD WAIT {gen_id} {slot} {ptr:?}");
 
         let buf_size = self.control_block().buf_size as usize;
 
         // Safety: We have already ensured that the ptr is pointing to a buffer of _at least_ this size.
+        let callback_start = Instant::now();
         f(gen_id, slot, unsafe {
             core::slice::from_raw_parts(ptr, buf_size)
         });
+        let callback_elapsed = callback_start.elapsed();
+        if callback_elapsed >= SLOW_SYNC_LOG_AFTER {
+            sync_warn(format_args!(
+                "render consumer {} callback gen={} slot={} took {:.3} ms",
+                self.id,
+                gen_id,
+                slot,
+                callback_elapsed.as_secs_f64() * 1000.0
+            ));
+        }
 
+        sync_debug(format_args!(
+            "render consumer {} before ack gen={}",
+            self.id, gen_id
+        ));
         self.ack(gen_id);
+        sync_debug(format_args!(
+            "render consumer {} after ack gen={}",
+            self.id, gen_id
+        ));
 
         Ok(())
     }
@@ -515,9 +548,20 @@ fn adaptive_pause(spins: &mut u32) {
 fn wait_until_min_acked(cb: &ControlBlock, target: u64) -> RunResult<()> {
     let n = cb.num_consumers as usize;
     let mut spins = 0u32;
+    let wait_start = Instant::now();
+    let mut last_slow_log = wait_start;
     loop {
-        if cb.min_acked(n) >= target {
+        let min_acked = cb.min_acked(n);
+        if min_acked >= target {
             break;
+        }
+
+        let now = Instant::now();
+        if now.duration_since(wait_start) >= SLOW_SYNC_LOG_AFTER
+            && now.duration_since(last_slow_log) >= SLOW_SYNC_LOG_INTERVAL
+        {
+            log_consumer_wait(cb, n, target, min_acked, now.duration_since(wait_start));
+            last_slow_log = now;
         }
 
         adaptive_pause(&mut spins);
@@ -529,5 +573,39 @@ fn wait_until_min_acked(cb: &ControlBlock, target: u64) -> RunResult<()> {
         }
     }
 
+    let elapsed = wait_start.elapsed();
+    if elapsed >= SLOW_SYNC_LOG_AFTER {
+        sync_warn(format_args!(
+            "logic wait_until_min_acked target={} took {:.3} ms",
+            target,
+            elapsed.as_secs_f64() * 1000.0
+        ));
+    }
+
     Ok(())
+}
+
+fn log_consumer_wait(cb: &ControlBlock, n: usize, target: u64, min_acked: u64, elapsed: Duration) {
+    for i in 0..n {
+        sync_warn(format_args!(
+            "logic wait_until_min_acked target={} min_acked={} consumer_gen[{}]={} elapsed={:.3} ms",
+            target,
+            min_acked,
+            i,
+            cb.consumer_gen[i].0.load(Acquire),
+            elapsed.as_secs_f64() * 1000.0
+        ));
+    }
+}
+
+fn sync_warn(args: std::fmt::Arguments<'_>) {
+    warn!("{args}");
+    eprintln!("[teph-sync] {args}");
+}
+
+fn sync_debug(args: std::fmt::Arguments<'_>) {
+    debug!("{args}");
+    if std::env::var_os("TEPH_SYNC_TRACE_ACK").is_some() {
+        eprintln!("[teph-sync] {args}");
+    }
 }
