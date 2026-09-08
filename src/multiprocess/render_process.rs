@@ -13,7 +13,7 @@ use bevy::{
     log::{Level, LogPlugin},
     pbr::{
         DefaultOpaqueRendererMethod, ScreenSpaceAmbientOcclusion, ScreenSpaceReflections,
-        prepare_fog,
+        prepare_clusters_for_cpu_clustering, prepare_fog,
     },
     prelude::*,
     render::{
@@ -150,9 +150,11 @@ pub(crate) fn run<T: crate::TephriteApp>() -> AppExit {
                     .after(prepare_core_3d_depth_textures),
                 render_sub_timing_after_prepass_textures.after(prepare_prepass_textures),
                 render_sub_timing_after_view_uniforms.after(prepare_view_uniforms),
+                render_sub_timing_before_prepare_fog.before(prepare_fog),
                 render_sub_timing_after_prepare_fog.after(prepare_fog),
                 render_sub_timing_after_clear_bin_unpacking_buffers
                     .after(clear_bin_unpacking_buffers),
+                render_sub_timing_after_cpu_clustering.after(prepare_clusters_for_cpu_clustering),
             ),
         );
         render_app.add_systems(
@@ -415,12 +417,20 @@ fn render_sub_timing_after_view_uniforms(mut timing: ResMut<RenderSubAppTiming>)
     timing.mark("AfterViewUniforms");
 }
 
+fn render_sub_timing_before_prepare_fog(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("BeforePrepareFog");
+}
+
 fn render_sub_timing_after_prepare_fog(mut timing: ResMut<RenderSubAppTiming>) {
     timing.mark("AfterPrepareFog");
 }
 
 fn render_sub_timing_after_clear_bin_unpacking_buffers(mut timing: ResMut<RenderSubAppTiming>) {
     timing.mark("AfterClearBinUnpackingBuffers");
+}
+
+fn render_sub_timing_after_cpu_clustering(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("AfterCpuClustering");
 }
 
 fn render_sub_timing_after_prepare_resources(mut timing: ResMut<RenderSubAppTiming>) {
