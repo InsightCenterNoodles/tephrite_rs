@@ -127,8 +127,12 @@ pub(crate) fn run<T: crate::TephriteApp>() -> AppExit {
             Render,
             (
                 render_sub_timing_render_start.before(RenderSystems::ExtractCommands),
-                render_sub_timing_before_render.before(render_system),
-                render_sub_timing_after_render.after(render_system),
+                render_sub_timing_before_render
+                    .in_set(RenderSystems::Render)
+                    .before(render_system),
+                render_sub_timing_after_render
+                    .in_set(RenderSystems::Render)
+                    .after(render_system),
                 render_sub_timing_render_end.after(RenderSystems::PostCleanup),
             ),
         );
