@@ -3,14 +3,24 @@ use std::time::{Duration, Instant};
 use bevy::{
     app::TaskPoolThreadAssignmentPolicy,
     camera::{Hdr, visibility::RenderLayers},
-    core_pipeline::{Skybox, oit::OrderIndependentTransparencySettings, tonemapping::Tonemapping},
+    core_pipeline::{
+        Skybox,
+        core_3d::{prepare_core_3d_depth_textures, prepare_prepass_textures},
+        oit::OrderIndependentTransparencySettings,
+        tonemapping::Tonemapping,
+    },
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     log::{Level, LogPlugin},
-    pbr::{DefaultOpaqueRendererMethod, ScreenSpaceAmbientOcclusion, ScreenSpaceReflections},
+    pbr::{
+        DefaultOpaqueRendererMethod, ScreenSpaceAmbientOcclusion, ScreenSpaceReflections,
+        prepare_fog,
+    },
     prelude::*,
     render::{
-        ExtractSchedule, Render, RenderApp, RenderSystems, camera::TemporalJitter,
+        ExtractSchedule, Render, RenderApp, RenderSystems,
+        batching::gpu_preprocessing::clear_bin_unpacking_buffers, camera::TemporalJitter,
         pipelined_rendering::PipelinedRenderingPlugin, renderer::render_system,
+        view::prepare_view_uniforms,
     },
     window::EnabledButtons,
     winit::WinitSettings,
@@ -135,6 +145,19 @@ pub(crate) fn run<T: crate::TephriteApp>() -> AppExit {
                 render_sub_timing_after_prepare_views.after(RenderSystems::PrepareViews),
                 render_sub_timing_after_queue.after(RenderSystems::Queue),
                 render_sub_timing_after_phase_sort.after(RenderSystems::PhaseSort),
+                render_sub_timing_before_prepare_resources.before(RenderSystems::PrepareResources),
+                render_sub_timing_after_core_3d_depth_textures
+                    .after(prepare_core_3d_depth_textures),
+                render_sub_timing_after_prepass_textures.after(prepare_prepass_textures),
+                render_sub_timing_after_view_uniforms.after(prepare_view_uniforms),
+                render_sub_timing_after_prepare_fog.after(prepare_fog),
+                render_sub_timing_after_clear_bin_unpacking_buffers
+                    .after(clear_bin_unpacking_buffers),
+            ),
+        );
+        render_app.add_systems(
+            Render,
+            (
                 render_sub_timing_after_prepare_resources.after(RenderSystems::PrepareResources),
                 render_sub_timing_after_prepare_batch_phases
                     .after(RenderSystems::PrepareResourcesBatchPhases),
@@ -374,6 +397,30 @@ fn render_sub_timing_after_queue(mut timing: ResMut<RenderSubAppTiming>) {
 
 fn render_sub_timing_after_phase_sort(mut timing: ResMut<RenderSubAppTiming>) {
     timing.mark("AfterPhaseSort");
+}
+
+fn render_sub_timing_before_prepare_resources(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("BeforePrepareResources");
+}
+
+fn render_sub_timing_after_core_3d_depth_textures(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("AfterCore3dDepthTextures");
+}
+
+fn render_sub_timing_after_prepass_textures(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("AfterPrepassTextures");
+}
+
+fn render_sub_timing_after_view_uniforms(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("AfterViewUniforms");
+}
+
+fn render_sub_timing_after_prepare_fog(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("AfterPrepareFog");
+}
+
+fn render_sub_timing_after_clear_bin_unpacking_buffers(mut timing: ResMut<RenderSubAppTiming>) {
+    timing.mark("AfterClearBinUnpackingBuffers");
 }
 
 fn render_sub_timing_after_prepare_resources(mut timing: ResMut<RenderSubAppTiming>) {
