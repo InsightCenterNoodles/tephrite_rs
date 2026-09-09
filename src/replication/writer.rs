@@ -39,7 +39,7 @@ impl Plugin for ReplicationWriterPlugin {
         let transcript = TranscriptWriterResource::new(self.children_count);
 
         app.init_resource::<ReplicationRegistry>();
-        app.insert_non_send(transcript);
+        app.insert_non_send_resource(transcript);
         app.init_resource::<TrackedEntities>();
         app.add_systems(Startup, setup_shmem);
         app.add_systems(Update, watch_for_exit);
@@ -49,9 +49,9 @@ impl Plugin for ReplicationWriterPlugin {
 
 fn setup_shmem(world: &mut World) {
     debug!("Starting up shared memory");
-    let mut transcript = world.non_send_mut::<TranscriptWriterResource>();
+    let mut transcript = world.non_send_resource_mut::<TranscriptWriterResource>();
     let session = transcript.prepare().expect("should not fail at start");
-    world.insert_non_send(session);
+    world.insert_non_send_resource(session);
 }
 
 fn watch_for_exit(mut res: NonSendMut<TranscriptWriterResource>, reader: MessageReader<AppExit>) {
@@ -62,7 +62,7 @@ fn watch_for_exit(mut res: NonSendMut<TranscriptWriterResource>, reader: Message
 }
 
 fn write_replication_frame(world: &mut World) {
-    let Some(mut dest) = world.remove_non_send::<TranscriptWriteStateResource>() else {
+    let Some(mut dest) = world.remove_non_send_resource::<TranscriptWriteStateResource>() else {
         return;
     };
 
@@ -134,7 +134,7 @@ fn write_replication_frame(world: &mut World) {
 }
 
 fn commit_frame(world: &mut World, state: TranscriptWriteStateResource) {
-    let Some(mut writer) = world.get_non_send_mut::<TranscriptWriterResource>() else {
+    let Some(mut writer) = world.get_non_send_resource_mut::<TranscriptWriterResource>() else {
         return;
     };
 
@@ -146,7 +146,7 @@ fn commit_frame(world: &mut World, state: TranscriptWriteStateResource) {
         return;
     };
 
-    world.insert_non_send(next);
+    world.insert_non_send_resource(next);
 }
 
 fn discover_tracked_entities(
@@ -228,9 +228,7 @@ fn write_hierarchy_changes(
     }
 
     world.resource_scope(|world, mut cached: Mut<CachedRemovedChildOf>| {
-        let Ok(mut removals) = cached.state.get_mut(world) else {
-            return;
-        };
+        let mut removals = cached.state.get_mut(world);
         for child in removals.read() {
             if tracked.contains(&child) {
                 unsafe {

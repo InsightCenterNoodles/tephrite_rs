@@ -380,9 +380,7 @@ fn write_component_removals<C>(
     }
 
     world.resource_scope(|world, mut cached: Mut<CachedRemovedComponents<C>>| {
-        let Ok(mut removals) = cached.state.get_mut(world) else {
-            return;
-        };
+        let mut removals = cached.state.get_mut(world);
         for entity in removals.read() {
             if tracked.contains(&entity) {
                 unsafe {
@@ -432,6 +430,14 @@ fn remove_component<C: Component>(entity: Entity, world: &mut World) {
 }
 
 fn init_asset_reader<A: Asset>(world: &mut World) {
+    if !world.contains_resource::<Assets<A>>() {
+        world.init_resource::<Assets<A>>();
+    }
+
+    if !world.contains_resource::<Messages<AssetEvent<A>>>() {
+        world.init_resource::<Messages<AssetEvent<A>>>();
+    }
+
     if !world.contains_resource::<CachedAssetReader<A>>() {
         let state = SystemState::new(world);
         world.insert_resource(CachedAssetReader::<A> { state });
@@ -448,9 +454,7 @@ fn write_asset_changes<A>(
     init_asset_reader::<A>(world);
 
     world.resource_scope(|world, mut cached: Mut<CachedAssetReader<A>>| {
-        let Ok((mut events, assets)) = cached.state.get_mut(world) else {
-            return;
-        };
+        let (mut events, assets) = cached.state.get_mut(world);
 
         for event in events.read() {
             match event {
@@ -570,9 +574,8 @@ fn write_resource_change<R>(
     }
 
     world.resource_scope(|world, mut cached: Mut<CachedResourceState<R>>| {
-        let resource = cached.state.get_mut(world);
-        match resource {
-            Ok(Some(resource)) => {
+        match cached.state.get_mut(world) {
+            Some(resource) => {
                 if resource.is_changed() {
                     unsafe {
                         crate::replication::instruction::write_resource_update(
@@ -584,14 +587,13 @@ fn write_resource_change<R>(
                 }
                 cached.existed = true;
             }
-            Ok(None) if cached.existed => {
+            None if cached.existed => {
                 cached.existed = false;
                 unsafe {
                     crate::replication::instruction::write_resource_drop(dest, resource_type);
                 }
             }
-            Ok(None) => {}
-            Err(_) => {}
+            None => {}
         }
         cached.state.apply(world);
     });

@@ -35,7 +35,6 @@ pub(crate) fn make_common_app() -> App {
             unapproved_path_mode: bevy::asset::UnapprovedPathMode::Allow,
             ..Default::default()
         },
-        bevy::world_serialization::WorldSerializationPlugin,
         bevy::input::InputPlugin,
     ));
 

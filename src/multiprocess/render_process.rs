@@ -2,13 +2,13 @@ use std::num::NonZeroU32;
 
 use bevy::{
     app::TaskPoolThreadAssignmentPolicy,
-    camera::{Hdr, visibility::RenderLayers},
+    camera::visibility::RenderLayers,
     core_pipeline::{Skybox, oit::OrderIndependentTransparencySettings, tonemapping::Tonemapping},
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     log::{Level, LogPlugin},
     pbr::{DefaultOpaqueRendererMethod, ScreenSpaceAmbientOcclusion, ScreenSpaceReflections},
     prelude::*,
-    render::{camera::TemporalJitter, pipelined_rendering::PipelinedRenderingPlugin},
+    render::{camera::TemporalJitter, pipelined_rendering::PipelinedRenderingPlugin, view::Hdr},
     window::EnabledButtons,
 };
 
@@ -270,7 +270,7 @@ fn env_change_watch(
             commands.insert_resource(ClearColor(color));
         } else {
             ec.insert(Skybox {
-                image: Some(env.specular.clone()),
+                image: env.specular.clone(),
                 brightness: env.intensity,
                 ..Default::default()
             });
@@ -296,8 +296,7 @@ fn oit_resource_watch(
     for cam in cam_q.iter_mut() {
         let mut ec = commands.entity(cam);
         ec.insert(OrderIndependentTransparencySettings {
-            sorted_fragment_max_count: oit.sorted_fragment_max_count,
-            fragments_per_pixel_average: oit.fragments_per_pixel_average,
+            layer_count: oit.sorted_fragment_max_count as i32,
             alpha_threshold: oit.alpha_threshold,
         });
     }
@@ -381,12 +380,10 @@ fn ssr_resource_watch(
 
     for cam in cam_q.iter_mut() {
         commands.entity(cam).insert(ScreenSpaceReflections {
-            min_perceptual_roughness: ssr.min_perceptual_roughness.clone(),
-            max_perceptual_roughness: ssr.max_perceptual_roughness.clone(),
+            perceptual_roughness_threshold: ssr.perceptual_roughness_threshold,
             thickness: ssr.thickness,
             linear_steps: ssr.linear_steps,
             linear_march_exponent: ssr.linear_march_exponent,
-            edge_fadeout: ssr.edge_fadeout.clone(),
             bisection_steps: ssr.bisection_steps,
             use_secant: ssr.use_secant,
         });

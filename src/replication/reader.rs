@@ -23,7 +23,7 @@ impl Plugin for ReplicationReaderPlugin {
         let transcript = TranscriptReaderResource::new();
 
         app.init_resource::<ReplicationRegistry>();
-        app.insert_non_send(transcript);
+        app.insert_non_send_resource(transcript);
         app.init_resource::<EntityMap>();
 
         app.add_systems(PreUpdate, child_system);
@@ -68,7 +68,7 @@ impl EntityMap {
 fn child_system(world: &mut World) {
     // Temporarily remove the non-send transcript reader so the consume callback
     // can borrow `world` exclusively while parsing the frame.
-    let Some(mut transcript) = world.remove_non_send::<TranscriptReaderResource>() else {
+    let Some(mut transcript) = world.remove_non_send_resource::<TranscriptReaderResource>() else {
         return;
     };
 
@@ -76,7 +76,7 @@ fn child_system(world: &mut World) {
         consume_buffer(slice, world);
     });
 
-    world.insert_non_send(transcript);
+    world.insert_non_send_resource(transcript);
 
     if result.is_err() {
         debug!("Logic is requesting terminate...");
