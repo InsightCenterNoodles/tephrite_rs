@@ -81,7 +81,8 @@ pub struct LaserSelected {
 
 #[derive(Debug, Component)]
 struct LaserPointerVisual {
-    child: Entity,
+    beam: Entity,
+    endpoint: Entity,
 }
 
 #[derive(Debug, Component)]
@@ -142,17 +143,18 @@ fn attach_laser_visuals(
 ) {
     for (entity, pointer) in &pointers {
         let mesh = meshes.add(Cylinder::new(pointer.radius, 1.0));
+        let endpoint_mesh = meshes.add(Sphere::new(pointer.radius * 2.0));
         let material = materials.add(StandardMaterial {
             base_color: pointer.color,
             unlit: true,
             ..Default::default()
         });
 
-        let child = commands
+        let beam = commands
             .spawn((
                 LaserPointerVisualChild,
                 Mesh3d(mesh),
-                MeshMaterial3d(material),
+                MeshMaterial3d(material.clone()),
                 Transform::from_xyz(0.0, 0.0, -pointer.length * 0.5)
                     .with_rotation(Quat::from_rotation_x(-FRAC_PI_2)),
                 if pointer.visible {
@@ -164,7 +166,20 @@ fn attach_laser_visuals(
             ))
             .id();
 
-        commands.entity(entity).insert(LaserPointerVisual { child });
+        let endpoint = commands
+            .spawn((
+                LaserPointerVisualChild,
+                Mesh3d(endpoint_mesh),
+                MeshMaterial3d(material),
+                Transform::from_xyz(0.0, 0.0, -pointer.length),
+                Visibility::Hidden,
+                ChildOf(entity),
+            ))
+            .id();
+
+        commands
+            .entity(entity)
+            .insert(LaserPointerVisual { beam, endpoint });
     }
 }
 
@@ -174,10 +189,13 @@ fn on_laser_pointer_removal(
     children: Query<(), With<LaserPointerVisualChild>>,
     mut commands: Commands,
 ) {
-    if let Ok(visual) = visuals.get(trigger.entity)
-        && children.contains(visual.child)
-    {
-        commands.entity(visual.child).despawn();
+    if let Ok(visual) = visuals.get(trigger.entity) {
+        if children.contains(visual.beam) {
+            commands.entity(visual.beam).despawn();
+        }
+        if children.contains(visual.endpoint) {
+            commands.entity(visual.endpoint).despawn();
+        }
     }
 
     commands
@@ -221,6 +239,7 @@ fn update_lasers(
         update_laser_visual(
             pointer,
             hit.map_or(pointer.length, |(_, distance)| distance),
+            hit.is_some(),
             visual,
             &mut visual_children,
         );
@@ -266,6 +285,7 @@ fn update_laser_hit_component(
 fn update_laser_visual(
     pointer: &LaserPointer,
     distance: f32,
+    hit: bool,
     visual: Option<&LaserPointerVisual>,
     visual_children: &mut Query<(&mut Transform, &mut Visibility), With<LaserPointerVisualChild>>,
 ) {
@@ -273,19 +293,29 @@ fn update_laser_visual(
         return;
     };
 
-    let Ok((mut transform, mut visibility)) = visual_children.get_mut(visual.child) else {
-        return;
-    };
-
     let distance = distance.clamp(0.0, pointer.length);
-    transform.translation = Vec3::new(0.0, 0.0, -distance * 0.5);
-    transform.rotation = Quat::from_rotation_x(-FRAC_PI_2);
-    transform.scale = Vec3::new(1.0, distance, 1.0);
-    *visibility = if pointer.visible {
-        Visibility::Visible
-    } else {
-        Visibility::Hidden
-    };
+
+    if let Ok((mut transform, mut visibility)) = visual_children.get_mut(visual.beam) {
+        transform.translation = Vec3::new(0.0, 0.0, -distance * 0.5);
+        transform.rotation = Quat::from_rotation_x(-FRAC_PI_2);
+        transform.scale = Vec3::new(1.0, distance, 1.0);
+        *visibility = if pointer.visible {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+    }
+
+    if let Ok((mut transform, mut visibility)) = visual_children.get_mut(visual.endpoint) {
+        transform.translation = Vec3::new(0.0, 0.0, -distance);
+        transform.rotation = Quat::IDENTITY;
+        transform.scale = Vec3::ONE;
+        *visibility = if pointer.visible && hit {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+    }
 }
 
 fn remove_stale_highlights(
@@ -613,6 +643,17 @@ mod tests {
         app.update();
 
         assert!(app.world().resource::<LaserLog>().0.is_empty());
+        let visual = app
+            .world()
+            .entity(interactor)
+            .get::<LaserPointerVisual>()
+            .expect("laser pointer visual should be tracked");
+        let endpoint_visibility = app
+            .world()
+            .entity(visual.endpoint)
+            .get::<Visibility>()
+            .expect("laser endpoint should have visibility");
+        assert_eq!(*endpoint_visibility, Visibility::Hidden);
     }
 
     #[test]
@@ -668,13 +709,26 @@ mod tests {
             .entity(interactor)
             .get::<LaserPointerVisual>()
             .expect("laser pointer visual should be tracked");
-        let transform = app
+        let beam_transform = app
             .world()
-            .entity(visual.child)
+            .entity(visual.beam)
             .get::<Transform>()
-            .expect("laser visual should have a transform");
-        assert!((transform.translation.z + 0.45).abs() < 0.001);
-        assert!((transform.scale.y - 0.9).abs() < 0.001);
+            .expect("laser beam should have a transform");
+        assert!((beam_transform.translation.z + 0.45).abs() < 0.001);
+        assert!((beam_transform.scale.y - 0.9).abs() < 0.001);
+
+        let endpoint_transform = app
+            .world()
+            .entity(visual.endpoint)
+            .get::<Transform>()
+            .expect("laser endpoint should have a transform");
+        let endpoint_visibility = app
+            .world()
+            .entity(visual.endpoint)
+            .get::<Visibility>()
+            .expect("laser endpoint should have visibility");
+        assert!((endpoint_transform.translation.z + 0.9).abs() < 0.001);
+        assert_eq!(*endpoint_visibility, Visibility::Visible);
     }
 
     #[test]
@@ -805,7 +859,12 @@ mod tests {
             .expect("laser pointer visual should be tracked");
         assert!(
             app.world()
-                .entity(visual.child)
+                .entity(visual.beam)
+                .contains::<LaserPointerVisualChild>()
+        );
+        assert!(
+            app.world()
+                .entity(visual.endpoint)
                 .contains::<LaserPointerVisualChild>()
         );
     }
