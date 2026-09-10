@@ -28,6 +28,7 @@ pub enum NavigatorMode {
 
 /// Marks an entity as the navigation target.
 #[derive(Debug, Default, Clone, Component)]
+#[require(Transform)]
 pub struct NavigatorMarker;
 
 /// Initial transform applied to navigation targets at startup and reset.

@@ -104,4 +104,4 @@ impl Default for ScreenSpaceReflectionsSettings {
 }
 
 #[derive(Debug, Event)]
-pub(crate) struct TephExit;
+pub struct TephExit;
