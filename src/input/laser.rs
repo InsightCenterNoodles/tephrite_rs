@@ -42,6 +42,20 @@ impl Default for LaserPointer {
     }
 }
 
+/// Enables automatic laser setup for interactor entities.
+///
+/// Insert this resource before or while [`LaserSelectionPlugin`] is active to
+/// copy the contained [`LaserPointer`] onto every interactor that does not
+/// already have one.
+#[derive(Debug, Clone, Copy, PartialEq, Resource)]
+pub struct AutoLaserPointer(pub LaserPointer);
+
+impl Default for AutoLaserPointer {
+    fn default() -> Self {
+        Self(LaserPointer::default())
+    }
+}
+
 /// Marks an entity as eligible for laser selection.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Component)]
 #[require(InteractionBounds)]
@@ -93,8 +107,30 @@ pub struct LaserSelectionPlugin;
 
 impl Plugin for LaserSelectionPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (attach_laser_visuals, update_lasers).chain());
+        app.add_systems(
+            Update,
+            (
+                auto_attach_laser_pointers,
+                attach_laser_visuals,
+                update_lasers,
+            )
+                .chain(),
+        );
         app.add_observer(on_laser_pointer_removal);
+    }
+}
+
+fn auto_attach_laser_pointers(
+    settings: Option<Res<AutoLaserPointer>>,
+    interactors: Query<Entity, (With<Interactor>, Without<LaserPointer>)>,
+    mut commands: Commands,
+) {
+    let Some(settings) = settings else {
+        return;
+    };
+
+    for entity in &interactors {
+        commands.entity(entity).insert(settings.0);
     }
 }
 
@@ -530,6 +566,32 @@ mod tests {
                 interactor,
             }]
         );
+    }
+
+    #[test]
+    fn auto_laser_pointer_resource_adds_pointer_to_interactors() {
+        let mut app = selection_app();
+        app.insert_resource(AutoLaserPointer(LaserPointer {
+            length: 1.25,
+            ..Default::default()
+        }));
+        let interactor = app
+            .world_mut()
+            .spawn((
+                Interactor::Controller,
+                InteractorState::new(Interactor::Controller),
+                Transform::IDENTITY,
+            ))
+            .id();
+
+        app.update();
+
+        let pointer = app
+            .world()
+            .entity(interactor)
+            .get::<LaserPointer>()
+            .expect("auto laser resource should attach a pointer");
+        assert_eq!(pointer.length, 1.25);
     }
 
     #[test]

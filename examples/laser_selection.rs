@@ -1,7 +1,8 @@
 //! Laser selection example.
 //!
-//! Spawn a laser pointer interactor and several selectable shapes. Press the
-//! primary interactor button to print the currently highlighted shape.
+//! Automatically add a laser pointer to Tephrite's built-in interactor and
+//! spawn several selectable shapes. Press the primary interactor button to
+//! print the currently highlighted shape.
 
 use bevy::{math::bounding::Aabb3d, prelude::*};
 use tephrite_rs::prelude::*;
@@ -11,6 +12,10 @@ struct MyPlugin;
 impl Plugin for MyPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(LaserSelectionPlugin);
+        app.insert_resource(AutoLaserPointer(LaserPointer {
+            length: 2.5,
+            ..Default::default()
+        }));
         app.add_systems(Startup, setup);
         app.add_observer(print_laser_selection);
     }
