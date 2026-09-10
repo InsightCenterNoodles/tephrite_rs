@@ -17,11 +17,17 @@ impl Plugin for MyPlugin {
             ..Default::default()
         }));
         app.add_systems(Startup, setup);
+        app.add_systems(Update, expire_laser_hit_lights);
         app.add_observer(print_laser_selection);
     }
 }
 
 impl tephrite_rs::TephriteApp for MyPlugin {}
+
+#[derive(Component)]
+struct LaserHitLight {
+    timer: Timer,
+}
 
 fn setup(
     mut commands: Commands,
@@ -116,12 +122,49 @@ fn spawn_selectable(
     ));
 }
 
-fn print_laser_selection(trigger: On<LaserSelected>, names: Query<&Name>) {
+fn print_laser_selection(
+    trigger: On<LaserSelected>,
+    names: Query<&Name>,
+    transforms: Query<&GlobalTransform>,
+    mut commands: Commands,
+) {
     let event = trigger.event();
     if let Ok(name) = names.get(event.entity) {
         println!("Laser hit: {}", name.as_str());
     } else {
         println!("Laser hit: {:?}", event.entity);
+    }
+
+    let Ok(transform) = transforms.get(event.entity) else {
+        return;
+    };
+
+    commands.spawn((
+        Name::new("Laser Hit Light"),
+        LaserHitLight {
+            timer: Timer::from_seconds(1.0, TimerMode::Once),
+        },
+        PointLight {
+            color: Color::WHITE,
+            intensity: 1200.0,
+            range: 1.0,
+            shadows_enabled: false,
+            ..Default::default()
+        },
+        Transform::from_translation(transform.translation() + Vec3::Y * 0.5),
+    ));
+}
+
+fn expire_laser_hit_lights(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut lights: Query<(Entity, &mut LaserHitLight)>,
+) {
+    for (entity, mut light) in &mut lights {
+        light.timer.tick(time.delta());
+        if light.timer.is_finished() {
+            commands.entity(entity).despawn();
+        }
     }
 }
 
