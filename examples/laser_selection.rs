@@ -47,17 +47,6 @@ fn setup(
         Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
     ));
 
-    commands.spawn((
-        Name::new("Demo Laser Pointer"),
-        Interactor::Controller,
-        InteractorState::new(Interactor::Controller),
-        LaserPointer {
-            length: 2.5,
-            ..Default::default()
-        },
-        Transform::from_xyz(0.0, 0.55, 1.15).looking_at(Vec3::new(0.0, 0.2, 0.0), Dir3::Y),
-    ));
-
     spawn_selectable(
         &mut commands,
         meshes.add(Sphere::new(0.16)),

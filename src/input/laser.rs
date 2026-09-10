@@ -181,6 +181,7 @@ fn update_lasers(
         );
 
         update_laser_hit_component(&mut commands, interactor, hit);
+
         update_laser_visual(
             pointer,
             hit.map_or(pointer.length, |(_, distance)| distance),
@@ -235,6 +236,7 @@ fn update_laser_visual(
     let Some(visual) = visual else {
         return;
     };
+
     let Ok((mut transform, mut visibility)) = visual_children.get_mut(visual.child) else {
         return;
     };
