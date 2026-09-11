@@ -19,7 +19,7 @@ pub use bevy;
 
 use bevy::{
     DefaultPlugins,
-    app::{App, Plugin, PluginGroup, Plugins},
+    app::{App, AppExit, Plugin, PluginGroup, Plugins},
     asset::AssetPlugin,
     ecs::error::BevyError,
     prelude::{Asset, Component, Resource},
@@ -73,6 +73,16 @@ pub trait TephriteApp: Plugin {
     /// transcript.
     #[allow(unused)]
     fn configure_tephrite(config: &mut TephriteAppConfig) {}
+
+    /// Run cleanup or reporting code after the logic app exits.
+    ///
+    /// In multiprocess mode, this runs in the logic process after render
+    /// processes have been shut down. In `TEPH_DISABLE` mode, it runs after the
+    /// single Bevy app exits.
+    ///
+    /// Note that this will not execute if [`TephriteApp::process_command_line`] fails.
+    #[allow(unused)]
+    fn on_exit(app: &mut App, result: AppExit) {}
 }
 
 type AppConfigurator = Box<dyn FnOnce(&mut App) + Send + 'static>;
@@ -260,6 +270,7 @@ fn apply_tephrite_config<T: TephriteApp>(app: &mut App, is_render_process: bool)
 /// See examples for demonstrations of this approach.
 ///
 pub fn run<T: TephriteApp>(user_plugin: T) -> bevy::app::AppExit {
+    // Users can run a 'not' teph app this way
     if std::env::var("TEPH_DISABLE").is_ok() {
         let mut app = App::new();
 
@@ -272,10 +283,15 @@ pub fn run<T: TephriteApp>(user_plugin: T) -> bevy::app::AppExit {
         app.add_plugins(T::non_tephrite_plugin());
         apply_tephrite_config::<T>(&mut app, true);
 
-        return app.run();
+        let result = app.run();
+
+        T::on_exit(&mut app, result.clone());
+
+        return result;
     }
 
     if multiprocess::is_child_process() {
+        // render process just runs and exits here
         multiprocess::render_process::run::<T>()
     } else {
         let mut app = multiprocess::logic_process::setup();
@@ -291,7 +307,13 @@ pub fn run<T: TephriteApp>(user_plugin: T) -> bevy::app::AppExit {
 
         let result = app.run();
 
-        multiprocess::logic_process::cleanup(app);
+        multiprocess::logic_process::cleanup(&mut app);
+
+        // render procs are halted here.
+
+        T::on_exit(&mut app, result.clone());
+
+        drop(app);
 
         result
     }
