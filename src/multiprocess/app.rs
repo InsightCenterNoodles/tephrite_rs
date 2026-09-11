@@ -1,5 +1,5 @@
 use bevy::{
-    app::{App, PanicHandlerPlugin, ScheduleRunnerPlugin},
+    app::{App, PanicHandlerPlugin},
     diagnostic::DiagnosticsPlugin,
     image::{CompressedImageFormatSupport, CompressedImageFormats},
     log::LogPlugin,
@@ -24,7 +24,7 @@ pub(crate) fn make_common_app() -> App {
             ..Default::default()
         },
         bevy::diagnostic::FrameCountPlugin,
-        ScheduleRunnerPlugin::run_loop(std::time::Duration::from_secs_f64(1.0 / 60.0)),
+        //ScheduleRunnerPlugin::run_loop(std::time::Duration::from_secs_f64(1.0 / 60.0)),
         TaskPoolPlugin::default(),
     ));
     app.add_plugins((
