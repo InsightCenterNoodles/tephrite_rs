@@ -174,6 +174,12 @@ fn attach_laser_visuals(
                 Transform::from_xyz(0.0, 0.0, -pointer.length),
                 Visibility::Hidden,
                 ChildOf(entity),
+                PointLight {
+                    color: pointer.color,
+                    intensity: 2400.0,
+                    range: 0.5,
+                    ..Default::default()
+                },
             ))
             .id();
 

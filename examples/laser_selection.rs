@@ -142,11 +142,11 @@ fn print_laser_selection(
     commands.spawn((
         Name::new("Laser Hit Light"),
         LaserHitLight {
-            timer: Timer::from_seconds(1.0, TimerMode::Once),
+            timer: Timer::from_seconds(3.0, TimerMode::Once),
         },
         PointLight {
             color: Color::WHITE,
-            intensity: 1200.0,
+            intensity: 10000.0,
             range: 1.0,
             shadows_enabled: false,
             ..Default::default()
