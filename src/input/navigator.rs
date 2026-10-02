@@ -50,7 +50,7 @@ struct NavigatorSettings {
 /// Per-interactor transient state used by flystick navigation gestures.
 #[derive(Debug, Default, Component)]
 pub struct InteractorNavigatorState {
-    last_yaw: Option<f32>,
+    last_rotation: Option<Quat>,
     last_height: Option<f32>,
 }
 
@@ -58,7 +58,7 @@ pub struct InteractorNavigatorState {
 enum FlystickNavigationOperation {
     None,
     Reset,
-    RotateY(f32),
+    Rotate(Quat),
     VerticalDisplace(Vec3),
     Scale(f32),
     Pan(Vec3),
@@ -81,7 +81,9 @@ impl NavigationPlugin {
         }
     }
 
-    /// Enable or disable controller-driven X-axis rotation.
+    /// Enable or disable controller-driven X-axis rotation and full flystick rotation.
+    ///
+    /// When disabled, flystick rotation is restricted to yaw.
     pub fn with_x_rotation(mut self, allow: bool) -> Self {
         self.settings.allow_x_rotation = allow;
         self
@@ -171,6 +173,7 @@ fn on_tick(
                 state,
                 &time,
                 &mut navigator_state,
+                settings.allow_x_rotation,
             );
 
             for (mut target_tf, target_parent) in &mut target {
@@ -196,8 +199,8 @@ fn apply_flystick_navigation(
         FlystickNavigationOperation::Reset => {
             *target_tf = initial.0;
         }
-        FlystickNavigationOperation::RotateY(delta_yaw) => {
-            target_tf.rotation = Quat::from_rotation_y(delta_yaw) * target_tf.rotation;
+        FlystickNavigationOperation::Rotate(rotation) => {
+            target_tf.rotation = rotation * target_tf.rotation;
         }
         FlystickNavigationOperation::VerticalDisplace(global_displace)
         | FlystickNavigationOperation::Pan(global_displace) => {
@@ -328,11 +331,12 @@ fn flystick_navigation_operation(
     interactor_state: &InteractorState,
     time: &Time,
     navigator_state: &mut InteractorNavigatorState,
+    allow_x_rotation: bool,
 ) -> FlystickNavigationOperation {
     let speed_meters_per_second = 2.0;
 
     if DTrackFlystick::just_pressed(FlystickButton::JoystickButton, interactor_state) {
-        navigator_state.last_yaw = None;
+        navigator_state.last_rotation = None;
         navigator_state.last_height = None;
         return FlystickNavigationOperation::Reset;
     }
@@ -340,17 +344,23 @@ fn flystick_navigation_operation(
     if DTrackFlystick::pressed(FlystickButton::RightWhiteButton, interactor_state) {
         navigator_state.last_height = None;
 
-        let yaw = yaw_from_global_transform(interactor_global_tf);
+        let rotation = interactor_global_tf.compute_transform().rotation;
         let operation = navigator_state
-            .last_yaw
-            .map(|last_yaw| FlystickNavigationOperation::RotateY(wrap_angle(yaw - last_yaw)))
+            .last_rotation
+            .map(|last_rotation| {
+                FlystickNavigationOperation::Rotate(flystick_rotation_delta(
+                    last_rotation,
+                    rotation,
+                    allow_x_rotation,
+                ))
+            })
             .unwrap_or(FlystickNavigationOperation::None);
 
-        navigator_state.last_yaw = Some(yaw);
+        navigator_state.last_rotation = Some(rotation);
         return operation;
     }
 
-    navigator_state.last_yaw = None;
+    navigator_state.last_rotation = None;
 
     if DTrackFlystick::pressed(FlystickButton::LeftWhiteButton, interactor_state) {
         let height = interactor_global_tf.translation().y;
@@ -393,8 +403,18 @@ fn local_displace(global_displace: Vec3, parent_global_tf: Option<&GlobalTransfo
         .transform_vector3(global_displace)
 }
 
-fn yaw_from_global_transform(transform: &GlobalTransform) -> f32 {
-    let mut forward = transform.affine().transform_vector3(Vec3::Z);
+fn flystick_rotation_delta(last: Quat, current: Quat, allow_x_rotation: bool) -> Quat {
+    if allow_x_rotation {
+        current * last.inverse()
+    } else {
+        Quat::from_rotation_y(wrap_angle(
+            yaw_from_rotation(current) - yaw_from_rotation(last),
+        ))
+    }
+}
+
+fn yaw_from_rotation(rotation: Quat) -> f32 {
+    let mut forward = rotation * Vec3::Z;
     forward.y = 0.0;
 
     if forward.length_squared() == 0.0 {
@@ -406,4 +426,36 @@ fn yaw_from_global_transform(transform: &GlobalTransform) -> f32 {
 
 fn wrap_angle(angle: f32) -> f32 {
     (angle + PI).rem_euclid(TAU) - PI
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_quat_approx_eq(actual: Quat, expected: Quat) {
+        assert!(
+            actual.angle_between(expected) < 1e-5,
+            "expected {expected:?}, got {actual:?}"
+        );
+    }
+
+    #[test]
+    fn flystick_full_rotation_uses_relative_orientation() {
+        let last = Quat::from_euler(EulerRot::YXZ, 0.4, -0.2, 0.1);
+        let expected_delta = Quat::from_euler(EulerRot::YXZ, -0.3, 0.25, 0.35);
+        let current = expected_delta * last;
+
+        assert_quat_approx_eq(flystick_rotation_delta(last, current, true), expected_delta);
+    }
+
+    #[test]
+    fn flystick_rotation_remains_yaw_only_when_x_rotation_is_disabled() {
+        let last = Quat::from_rotation_y(170.0_f32.to_radians());
+        let current = Quat::from_euler(EulerRot::YXZ, -170.0_f32.to_radians(), 0.4, -0.6);
+
+        assert_quat_approx_eq(
+            flystick_rotation_delta(last, current, false),
+            Quat::from_rotation_y(20.0_f32.to_radians()),
+        );
+    }
 }
