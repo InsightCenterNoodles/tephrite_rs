@@ -16,6 +16,7 @@ pub mod hover;
 pub mod interaction;
 mod interactor;
 pub mod interactor_types;
+mod laser;
 mod navigator;
 pub mod spatial;
 
@@ -27,6 +28,7 @@ pub use hover::*;
 pub use interaction::*;
 pub use interactor::*;
 pub use interactor_types::*;
+pub use laser::*;
 pub use navigator::*;
 pub use spatial::*;
 

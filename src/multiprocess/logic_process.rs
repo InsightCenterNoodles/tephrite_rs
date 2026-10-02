@@ -187,7 +187,7 @@ fn destroy_child_process(mut child: Child) {
     }
 }
 
-pub(crate) fn cleanup(mut app: App) -> Option<()> {
+pub(crate) fn cleanup(app: &mut App) -> Option<()> {
     debug!("Cleaning up");
 
     let res = app.world_mut().remove_resource::<ChildProcessResource>()?;

@@ -13,13 +13,13 @@ pub(crate) mod simulator;
 pub mod ui;
 pub(crate) mod vrpn;
 
-use std::{fmt::Debug, num::NonZero};
+use std::{fmt::Debug, num::NonZero, time::Duration};
 
 pub use bevy;
 
 use bevy::{
     DefaultPlugins,
-    app::{App, Plugin, PluginGroup, Plugins},
+    app::{App, AppExit, Plugin, PluginGroup, Plugins},
     asset::AssetPlugin,
     ecs::error::BevyError,
     prelude::{Asset, Component, Resource},
@@ -73,6 +73,16 @@ pub trait TephriteApp: Plugin {
     /// transcript.
     #[allow(unused)]
     fn configure_tephrite(config: &mut TephriteAppConfig) {}
+
+    /// Run cleanup or reporting code after the logic app exits.
+    ///
+    /// This runs only in the multiprocess logic process, after render processes
+    /// have been shut down. It is not called in `TEPH_DISABLE` mode or in a
+    /// render process.
+    ///
+    /// Note that this will not execute if [`TephriteApp::process_command_line`] fails.
+    #[allow(unused)]
+    fn on_exit(app: &mut App, result: AppExit) {}
 }
 
 type AppConfigurator = Box<dyn FnOnce(&mut App) + Send + 'static>;
@@ -260,6 +270,7 @@ fn apply_tephrite_config<T: TephriteApp>(app: &mut App, is_render_process: bool)
 /// See examples for demonstrations of this approach.
 ///
 pub fn run<T: TephriteApp>(user_plugin: T) -> bevy::app::AppExit {
+    // Users can run a 'not' teph app this way
     if std::env::var("TEPH_DISABLE").is_ok() {
         let mut app = App::new();
 
@@ -276,6 +287,7 @@ pub fn run<T: TephriteApp>(user_plugin: T) -> bevy::app::AppExit {
     }
 
     if multiprocess::is_child_process() {
+        // render process just runs and exits here
         multiprocess::render_process::run::<T>()
     } else {
         let mut app = multiprocess::logic_process::setup();
@@ -289,17 +301,77 @@ pub fn run<T: TephriteApp>(user_plugin: T) -> bevy::app::AppExit {
         apply_tephrite_config::<T>(&mut app, false);
         multiprocess::logic_process::finish_setup(&mut app);
 
-        let result = app.run();
+        let result = run_offscreen_mode(&mut app);
 
-        multiprocess::logic_process::cleanup(app);
+        multiprocess::logic_process::cleanup(&mut app);
+
+        // render procs are halted here.
+
+        T::on_exit(&mut app, result.clone());
+
+        drop(app);
 
         result
     }
 }
 
+/// Run the logic app without consuming it through Bevy's runner.
+///
+/// This mirrors `ScheduleRunnerPlugin::run_loop` while keeping ownership with
+/// the caller so `TephriteApp::on_exit` can inspect the world after shutdown.
+fn run_offscreen_mode(app: &mut App) -> AppExit {
+    let pacer = Duration::from_secs_f64(1.0 / 60.0);
+
+    prepare_app_for_manual_runner(app);
+
+    loop {
+        match loop_runner(app, Some(pacer)) {
+            Ok(Some(delay)) => bevy::platform::thread::sleep(delay),
+            Ok(None) => continue,
+            Err(x) => return x,
+        }
+    }
+}
+
+fn prepare_app_for_manual_runner(app: &mut App) {
+    use bevy::app::PluginsState;
+
+    if app.plugins_state() == PluginsState::Cleaned {
+        return;
+    }
+
+    while app.plugins_state() == PluginsState::Adding {
+        bevy::tasks::tick_global_task_pools_on_main_thread();
+    }
+
+    app.finish();
+    app.cleanup();
+}
+
+#[inline]
+fn loop_runner(app: &mut App, wait: Option<Duration>) -> Result<Option<Duration>, AppExit> {
+    let start_time = std::time::Instant::now();
+
+    app.update();
+
+    if let Some(exit) = app.should_exit() {
+        return Err(exit);
+    };
+
+    if let Some(wait) = wait {
+        let exe_time = start_time.elapsed();
+        if exe_time < wait {
+            return Ok(Some(wait - exe_time));
+        }
+    }
+
+    Ok(None)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bevy::prelude::{MessageWriter, PostStartup, PreStartup, ResMut, Startup, Update};
 
     #[derive(Resource, Default)]
     struct BothPluginApplied;
@@ -347,5 +419,76 @@ mod tests {
 
         assert!(app.world().contains_resource::<BothPluginApplied>());
         assert!(app.world().contains_resource::<RenderOnlyPluginApplied>());
+    }
+
+    #[derive(Resource, Default)]
+    struct ManualRunnerCounts {
+        pre_startup: u32,
+        startup: u32,
+        post_startup: u32,
+        update: u32,
+    }
+
+    fn count_pre_startup(mut counts: ResMut<ManualRunnerCounts>) {
+        counts.pre_startup += 1;
+    }
+
+    fn count_startup(mut counts: ResMut<ManualRunnerCounts>) {
+        counts.startup += 1;
+    }
+
+    fn count_post_startup(mut counts: ResMut<ManualRunnerCounts>) {
+        counts.post_startup += 1;
+    }
+
+    fn count_update_and_exit(
+        mut counts: ResMut<ManualRunnerCounts>,
+        mut exit_writer: MessageWriter<AppExit>,
+    ) {
+        counts.update += 1;
+        exit_writer.write(AppExit::Success);
+    }
+
+    #[test]
+    fn manual_runner_runs_startup_schedules_before_update() {
+        let mut app = App::new();
+        app.init_resource::<ManualRunnerCounts>()
+            .add_systems(PreStartup, count_pre_startup)
+            .add_systems(Startup, count_startup)
+            .add_systems(PostStartup, count_post_startup)
+            .add_systems(Update, count_update_and_exit);
+
+        let result = run_offscreen_mode(&mut app);
+        let counts = app.world().resource::<ManualRunnerCounts>();
+
+        assert_eq!(result, AppExit::Success);
+        assert_eq!(counts.pre_startup, 1);
+        assert_eq!(counts.startup, 1);
+        assert_eq!(counts.post_startup, 1);
+        assert_eq!(counts.update, 1);
+    }
+
+    #[test]
+    fn manual_loop_runs_startup_schedules_only_once() {
+        let mut app = App::new();
+        app.init_resource::<ManualRunnerCounts>()
+            .add_systems(PreStartup, count_pre_startup)
+            .add_systems(Startup, count_startup)
+            .add_systems(PostStartup, count_post_startup)
+            .add_systems(Update, count_update_and_exit);
+
+        prepare_app_for_manual_runner(&mut app);
+
+        assert_eq!(loop_runner(&mut app, None), Err(AppExit::Success));
+        app.world_mut()
+            .resource_mut::<bevy::ecs::message::Messages<AppExit>>()
+            .clear();
+        assert_eq!(loop_runner(&mut app, None), Err(AppExit::Success));
+
+        let counts = app.world().resource::<ManualRunnerCounts>();
+        assert_eq!(counts.pre_startup, 1);
+        assert_eq!(counts.startup, 1);
+        assert_eq!(counts.post_startup, 1);
+        assert_eq!(counts.update, 2);
     }
 }
