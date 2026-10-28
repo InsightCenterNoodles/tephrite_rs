@@ -61,6 +61,10 @@ impl Default for AutoLaserPointer {
 #[require(InteractionBounds)]
 pub struct LaserSelectable;
 
+/// Marker indicating the entity is currently hovered by at least one laser pointer.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Component)]
+pub struct IsLaserHovered;
+
 /// Overrides the wireframe highlight color for a [`LaserSelectable`] target.
 ///
 /// Targets without this component use a red highlight.
@@ -242,6 +246,7 @@ fn update_lasers(
         With<LaserSelectable>,
     >,
     highlights: Query<(Entity, &LaserHighlightVisual)>,
+    laser_hovered: Query<Entity, With<IsLaserHovered>>,
     mut visual_children: Query<(&mut Transform, &mut Visibility), With<LaserPointerVisualChild>>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -282,6 +287,7 @@ fn update_lasers(
         }
     }
 
+    sync_laser_hover(&mut commands, &frame.hit, &laser_hovered);
     remove_stale_highlights(&mut commands, &frame.hit, &highlights);
 
     update_highlights(
@@ -292,6 +298,24 @@ fn update_lasers(
         &targets,
         &highlights,
     );
+}
+
+fn sync_laser_hover(
+    commands: &mut Commands,
+    current_hits: &EntityHashSet,
+    laser_hovered: &Query<Entity, With<IsLaserHovered>>,
+) {
+    for entity in current_hits {
+        if !laser_hovered.contains(*entity) {
+            commands.entity(*entity).insert(IsLaserHovered);
+        }
+    }
+
+    for entity in laser_hovered {
+        if !current_hits.contains(&entity) {
+            commands.entity(entity).remove::<IsLaserHovered>();
+        }
+    }
 }
 
 fn update_laser_hit_component(
@@ -772,6 +796,31 @@ mod tests {
             .expect("laser endpoint should have visibility");
         assert!((endpoint_transform.translation.z + 0.9).abs() < 0.001);
         assert_eq!(*endpoint_visibility, Visibility::Visible);
+    }
+
+    #[test]
+    fn laser_hover_marker_tracks_current_hit() {
+        let mut app = selection_app();
+        let interactor = app
+            .world_mut()
+            .spawn((
+                Interactor::Controller,
+                InteractorState::new(Interactor::Controller),
+                LaserPointer::default(),
+                GlobalTransform::IDENTITY,
+            ))
+            .id();
+        let target = selectable_at(&mut app, -1.0);
+
+        app.update();
+        assert!(app.world().entity(target).contains::<IsLaserHovered>());
+
+        app.world_mut()
+            .entity_mut(interactor)
+            .insert(GlobalTransform::from(Transform::from_xyz(5.0, 0.0, 0.0)));
+        app.update();
+
+        assert!(!app.world().entity(target).contains::<IsLaserHovered>());
     }
 
     #[test]
