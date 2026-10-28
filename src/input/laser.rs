@@ -61,6 +61,18 @@ impl Default for AutoLaserPointer {
 #[require(InteractionBounds)]
 pub struct LaserSelectable;
 
+/// Overrides the wireframe highlight color for a [`LaserSelectable`] target.
+///
+/// Targets without this component use a red highlight.
+#[derive(Debug, Clone, Copy, PartialEq, Component)]
+pub struct LaserHighlightColor(pub Color);
+
+impl Default for LaserHighlightColor {
+    fn default() -> Self {
+        Self(Color::linear_rgb(1.0, 0.0, 0.0))
+    }
+}
+
 /// Current target hit by a [`LaserPointer`].
 #[derive(Debug, Clone, Copy, PartialEq, Component)]
 pub struct LaserPointerHit {
@@ -220,7 +232,15 @@ fn update_lasers(
         ),
         With<Interactor>,
     >,
-    targets: Query<(Entity, &GlobalTransform, &InteractionBounds), With<LaserSelectable>>,
+    targets: Query<
+        (
+            Entity,
+            &GlobalTransform,
+            &InteractionBounds,
+            Option<&LaserHighlightColor>,
+        ),
+        With<LaserSelectable>,
+    >,
     highlights: Query<(Entity, &LaserHighlightVisual)>,
     mut visual_children: Query<(&mut Transform, &mut Visibility), With<LaserPointerVisualChild>>,
     mut commands: Commands,
@@ -342,14 +362,25 @@ fn update_highlights(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     frame: &LaserHighlightFrame,
-    targets: &Query<(Entity, &GlobalTransform, &InteractionBounds), With<LaserSelectable>>,
+    targets: &Query<
+        (
+            Entity,
+            &GlobalTransform,
+            &InteractionBounds,
+            Option<&LaserHighlightColor>,
+        ),
+        With<LaserSelectable>,
+    >,
     highlights: &Query<(Entity, &LaserHighlightVisual)>,
 ) {
     for entity in frame.hit.iter().copied() {
+        let Ok((_, _, bounds, highlight_color)) = targets.get(entity) else {
+            continue;
+        };
         let color = if frame.selected.contains(&entity) {
             Color::WHITE
         } else {
-            Color::linear_rgb(1.0, 0.0, 0.0)
+            highlight_color.copied().unwrap_or_default().0
         };
 
         if let Ok((_, visual)) = highlights.get(entity) {
@@ -358,10 +389,6 @@ fn update_highlights(
             }
             continue;
         }
-
-        let Ok((_, _, bounds)) = targets.get(entity) else {
-            continue;
-        };
 
         let material = materials.add(StandardMaterial {
             base_color: color,
@@ -479,7 +506,15 @@ fn spawn_edge(
 fn nearest_laser_hit(
     interactor_tf: &GlobalTransform,
     max_distance: f32,
-    targets: &Query<(Entity, &GlobalTransform, &InteractionBounds), With<LaserSelectable>>,
+    targets: &Query<
+        (
+            Entity,
+            &GlobalTransform,
+            &InteractionBounds,
+            Option<&LaserHighlightColor>,
+        ),
+        With<LaserSelectable>,
+    >,
     cached: &mut Vec<(Entity, f32)>,
 ) -> Option<(Entity, f32)> {
     cached.clear();
@@ -494,14 +529,16 @@ fn nearest_laser_hit(
     {
         let guarded = std::sync::Mutex::<&mut Vec<(Entity, f32)>>::new(cached);
 
-        targets.par_iter().for_each(|(entity, target_tf, bounds)| {
-            if let Some(ev) =
-                ray_intersection_at(origin, direction, max_distance, target_tf, bounds)
-                    .map(|distance| (entity, distance))
-            {
-                guarded.lock().unwrap().push(ev);
-            }
-        });
+        targets
+            .par_iter()
+            .for_each(|(entity, target_tf, bounds, _)| {
+                if let Some(ev) =
+                    ray_intersection_at(origin, direction, max_distance, target_tf, bounds)
+                        .map(|distance| (entity, distance))
+                {
+                    guarded.lock().unwrap().push(ev);
+                }
+            });
     }
 
     cached
@@ -768,6 +805,36 @@ mod tests {
             .iter(app.world())
             .count();
         assert_eq!(edge_count, 12);
+    }
+
+    #[test]
+    fn highlight_color_can_be_customized_per_target() {
+        let mut app = selection_app();
+        app.world_mut().spawn((
+            Interactor::Controller,
+            InteractorState::new(Interactor::Controller),
+            LaserPointer::default(),
+            GlobalTransform::IDENTITY,
+        ));
+        let target = selectable_at(&mut app, -1.0);
+        let custom_color = Color::linear_rgb(0.0, 1.0, 0.5);
+        app.world_mut()
+            .entity_mut(target)
+            .insert(LaserHighlightColor(custom_color));
+
+        app.update();
+
+        let highlight = app
+            .world()
+            .entity(target)
+            .get::<LaserHighlightVisual>()
+            .expect("hit target should get a highlight");
+        let material = app
+            .world()
+            .resource::<Assets<StandardMaterial>>()
+            .get(highlight.material.id())
+            .expect("highlight material should exist");
+        assert_eq!(material.base_color, custom_color);
     }
 
     #[test]
