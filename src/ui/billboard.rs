@@ -72,7 +72,13 @@ impl BillboardAxis {
 fn update_billboards(
     target_heads: Query<&GlobalTransform, With<Head>>,
     target_cameras: Query<&GlobalTransform, With<Camera3d>>,
-    mut billboards: Query<(&Billboard, &GlobalTransform, &mut Transform)>,
+    parent_transforms: Query<&GlobalTransform>,
+    mut billboards: Query<(
+        &Billboard,
+        &GlobalTransform,
+        &mut Transform,
+        Option<&ChildOf>,
+    )>,
 ) {
     let target_translation = target_heads
         .iter()
@@ -84,8 +90,14 @@ fn update_billboards(
         return;
     };
 
-    for (billboard, current_global, mut current_local) in &mut billboards {
-        let mut direction = target_translation - current_global.translation();
+    for (billboard, current_global, mut current_local, child_of) in &mut billboards {
+        let parent_global = child_of.and_then(|child_of| parent_transforms.get(child_of.0).ok());
+        let mut direction = direction_to_target(
+            target_translation,
+            current_global,
+            current_local.translation,
+            parent_global,
+        );
 
         if billboard.only_rotate_y() {
             direction.y = 0.0;
@@ -99,6 +111,23 @@ fn update_billboards(
         direction /= len_sq.sqrt();
         current_local.rotation = rotation_looking_axis(direction, billboard.facing_axis(), Vec3::Y);
     }
+}
+
+fn direction_to_target(
+    target_translation: Vec3,
+    current_global: &GlobalTransform,
+    current_local_translation: Vec3,
+    parent_global: Option<&GlobalTransform>,
+) -> Vec3 {
+    parent_global
+        .map(|parent_global| {
+            parent_global
+                .affine()
+                .inverse()
+                .transform_point3(target_translation)
+                - current_local_translation
+        })
+        .unwrap_or_else(|| target_translation - current_global.translation())
 }
 
 fn rotation_looking_axis(direction: Vec3, facing_axis: BillboardAxis, fallback_up: Vec3) -> Quat {
@@ -168,5 +197,31 @@ mod tests {
             Billboard::YRotation(BillboardAxis::Z).facing_axis(),
             BillboardAxis::Z
         );
+    }
+
+    #[test]
+    fn billboard_under_rotated_parent_faces_world_space_target() {
+        let parent_translation = Vec3::new(2.0, 0.5, -1.0);
+        let parent_rotation = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
+        let parent_global = GlobalTransform::from(
+            Transform::from_translation(parent_translation).with_rotation(parent_rotation),
+        );
+        let billboard_local_translation = Vec3::new(1.0, 0.25, -0.5);
+        let billboard_world_translation =
+            parent_translation + parent_rotation * billboard_local_translation;
+        let target_translation = Vec3::new(-3.0, 2.0, 4.0);
+
+        let direction = direction_to_target(
+            target_translation,
+            &GlobalTransform::from_translation(billboard_world_translation),
+            billboard_local_translation,
+            Some(&parent_global),
+        )
+        .normalize();
+        let local_rotation = rotation_looking_axis(direction, BillboardAxis::Z, Vec3::Y);
+        let world_facing = parent_rotation * (local_rotation * Vec3::Z);
+        let expected_world_facing = (target_translation - billboard_world_translation).normalize();
+
+        assert_vec3_near(world_facing, expected_world_facing);
     }
 }
